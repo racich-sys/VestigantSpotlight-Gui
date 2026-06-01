@@ -325,6 +325,8 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_spotlight_chat_app_attribution_summary.csv", "Separates explicit chat-app bundle/domain/external-id attribution from plain chat-app keyword/link mentions.");
     row("exports/ios_spotlight_communication_summary.csv", "Record-centric iOS Spotlight communication summary by Messages/Mail/Call/chat-app/contact/web categories.");
     row("exports/ios_spotlight_communication_record_review_sample.csv", "Bounded, record-centric communication review sample with title/snippet/account/path/context columns.");
+    row("exports/ios_spotlight_message_text_review_sample.csv", "Bounded message/mail/call/chat Spotlight review with extracted investigator-visible text.");
+    row("exports/ios_spotlight_message_media_review_sample.csv", "Bounded message-adjacent media/photo/attachment Spotlight review.");
     row("exports/ios_spotlight_attachment_reference_review_sample.csv", "Bounded Spotlight attachment/media/content reference sample for communications review.");
     row("investigator_dashboard.html", "Bounded investigator-facing HTML dashboard with usage, recent activity, WhereFroms, folder, volume, and content-type pivots.");
     row("exports/artifact_summary.csv", "One row per artifact with core metadata, date, usage, and path indicators.");
@@ -1133,6 +1135,8 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_spotlight_chat_app_attribution_summary.csv", "SELECT * FROM vw_ios_spotlight_chat_app_attribution_summary ORDER BY text_context_category, context_record_count DESC", log);
         exportQuery(db, exportDir / "ios_spotlight_communication_summary.csv", "SELECT * FROM vw_ios_spotlight_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
         exportQuery(db, exportDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        exportQuery(db, exportDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        exportQuery(db, exportDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_attachment_reference_review_sample.csv", "SELECT * FROM vw_ios_spotlight_attachment_reference_review ORDER BY spotlight_date_utc DESC, communication_context_type, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_high_value_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_high_value_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
@@ -1990,6 +1994,14 @@ LIMIT 5000
     if (tableExists(db, "vw_ios_spotlight_communication_record_review")) {
         exportQuery(db, sampleDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
         manifest << "ios_spotlight_communication_record_review_sample.csv,vw_ios_spotlight_communication_record_review," << tableRowCount(db, "vw_ios_spotlight_communication_record_review") << "," << FocusSampleLimit << ",record-centric communications review with direct Spotlight text/context columns\n";
+    }
+    if (tableExists(db, "vw_ios_spotlight_message_text_review")) {
+        exportQuery(db, sampleDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        manifest << "ios_spotlight_message_text_review_sample.csv,vw_ios_spotlight_message_text_review," << tableRowCount(db, "vw_ios_spotlight_message_text_review") << "," << FocusSampleLimit << ",message/mail/call/chat Spotlight review with extracted investigator-visible text\n";
+    }
+    if (tableExists(db, "vw_ios_spotlight_message_media_review")) {
+        exportQuery(db, sampleDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        manifest << "ios_spotlight_message_media_review_sample.csv,vw_ios_spotlight_message_media_review," << tableRowCount(db, "vw_ios_spotlight_message_media_review") << "," << FocusSampleLimit << ",message-adjacent media/photo/attachment Spotlight review\n";
     }
     if (tableExists(db, "vw_ios_spotlight_attachment_reference_review")) {
         exportQuery(db, sampleDir / "ios_spotlight_attachment_reference_review_sample.csv", "SELECT * FROM vw_ios_spotlight_attachment_reference_review ORDER BY spotlight_date_utc DESC, communication_context_type, raw_record_id DESC LIMIT 5000", log);

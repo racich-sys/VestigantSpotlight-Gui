@@ -1,7 +1,7 @@
-## V0_9_27 - record-centric iOS Spotlight communications review
+## V0_9_28 - record-centric iOS Spotlight communications review
 
 - Reviewed V0_9_26_1 thin output: CLI run completed successfully with 344,445 raw iOS Spotlight records, 982,230 compact key/value rows, 336,037 compact date candidates, and complete_success.
-- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_27.
+- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_28.
 - Added record-centric iOS Spotlight communication review views/exports that pivot compact Spotlight fields into investigator columns for Messages/SMS/RCS/iMessage, Mail/email, phone/FaceTime calls, WhatsApp/Signal/Telegram context, contacts, calendar/invitations, and URL/web context.
 - Added attachment/media-focused Spotlight reference review for communications.
 - Added communication summary output and upload samples so investigators can start from compact high-value communication surfaces instead of broad raw key/value tables.

@@ -1,7 +1,7 @@
-## V0_9_27 - record-centric iOS Spotlight communications review
+## V0_9_28 - record-centric iOS Spotlight communications review
 
 - Reviewed V0_9_26_1 thin output: CLI run completed successfully with 344,445 raw iOS Spotlight records, 982,230 compact key/value rows, 336,037 compact date candidates, and complete_success.
-- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_27.
+- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_28.
 - Added record-centric iOS Spotlight communication review views/exports that pivot compact Spotlight fields into investigator columns for Messages/SMS/RCS/iMessage, Mail/email, phone/FaceTime calls, WhatsApp/Signal/Telegram context, contacts, calendar/invitations, and URL/web context.
 - Added attachment/media-focused Spotlight reference review for communications.
 - Added communication summary output and upload samples so investigators can start from compact high-value communication surfaces instead of broad raw key/value tables.
@@ -415,3 +415,11 @@ WhatsApp status remains `WHATSAPP_DB_NOT_FOUND` in the current test dataset beca
 - Adds SQLite export heartbeat progress using `sqlite3_progress_handler` so long-running query execution writes progress before the first row is returned.
 - Updates the iOS Missing From FFS GUI column registry to show same-record Spotlight text context/status.
 - Replaces the V0_9_20 state collector ZIP creation path to avoid the non-fatal `Resolve-Path` warning seen in V0_9_19 state collection.
+
+## V0_9_28
+
+- Fixed V0_9_27 Windows GUI compile failure caused by a duplicate/dead SQL block in `src/gui/win32_gui.cpp` that referenced `execGuiSqlParts` outside its scope.
+- Added iOS Spotlight Message Text Review and Message Media Review views/exports to make recovered Spotlight communications, message text, mail/call/chat context, and message-adjacent media easier to review.
+- Added `investigator_visible_text`, `message_domain_handle_or_chat`, and `mail_participants` to communication review output.
+- Corrected message title extraction to include `kMDItemAppEntityTitle`, so many iOS Messages rows show direct recovered message text rather than only `------NONAME------`.
+- Split media saved/shared from Messages into `MEDIA_SAVED_OR_SHARED_FROM_MESSAGES`, avoiding over-classification of Photos/mobile-slideshow assets as direct message body records.

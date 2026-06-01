@@ -182,9 +182,12 @@ const std::vector<ViewSpec>& views() {
         {L"iOS - High-Value Spotlight Text Context", "vw_ios_spotlight_high_value_text_context_review", {"raw_kv_id","raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","last_updated_utc","file_name","display_name","content_type","text_context_category","review_priority","text_context_reason","classification_evidence","spotlight_text_context_sample","interpretation_note"}, {"store_guid","source_db","spotlight_inode_or_object_id","last_updated_utc","file_name","display_name","content_type","text_context_category","review_priority","text_context_reason","classification_evidence","spotlight_text_context_sample","interpretation_note"}, "review_priority_sort, last_updated_utc DESC, raw_record_id DESC"},
         {L"iOS - Spotlight Chat App Attribution Summary", "vw_ios_spotlight_chat_app_attribution_summary", {"text_context_category","review_priority","classification_evidence","context_record_count","distinct_spotlight_object_count","earliest_last_updated_utc","latest_last_updated_utc","min_text_context_sample","max_text_context_sample","text_context_reason","interpretation_note"}, {"text_context_category","review_priority","classification_evidence","context_record_count","distinct_spotlight_object_count","min_text_context_sample","max_text_context_sample","text_context_reason","interpretation_note"}, "text_context_category, context_record_count DESC"},
 
-        {L"iOS - Spotlight Communications Investigator Review", "vw_ios_spotlight_communication_record_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","spotlight_date_source_field","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_service","best_title_or_name","description_or_snippet","account_identifier","phone_or_callback","callback_url","url_or_content_reference","attachment_or_media_path","message_identifier","mailbox_or_thread","saved_from_app","spotlight_text_context_sample","interpretation_note","validation_locator"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_service","best_title_or_name","description_or_snippet","account_identifier","phone_or_callback","url_or_content_reference","attachment_or_media_path","message_identifier","saved_from_app","spotlight_text_context_sample","interpretation_note","validation_locator"}, "review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC"},
-        {L"iOS - Spotlight Communication Summary", "vw_ios_spotlight_communication_summary", {"communication_context_type","review_priority","bundle_id","domain_identifier","message_service","content_type","spotlight_record_count","distinct_spotlight_object_count","rows_with_title_or_name","rows_with_description_or_snippet","rows_with_attachment_or_media_path","rows_with_url_or_content_reference","rows_with_phone_or_callback","earliest_spotlight_date_utc","latest_spotlight_date_utc","min_context_sample","max_context_sample","interpretation_note"}, {"communication_context_type","review_priority","bundle_id","domain_identifier","message_service","content_type","spotlight_record_count","rows_with_title_or_name","rows_with_description_or_snippet","rows_with_attachment_or_media_path","rows_with_url_or_content_reference","rows_with_phone_or_callback","min_context_sample","max_context_sample","interpretation_note"}, "review_priority_sort, spotlight_record_count DESC, communication_context_type"},
-        {L"iOS - Spotlight Attachment/Media References", "vw_ios_spotlight_attachment_reference_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","best_title_or_name","description_or_snippet","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","attachment_reference_basis","validation_locator","interpretation_note"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","best_title_or_name","description_or_snippet","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","attachment_reference_basis","validation_locator","interpretation_note"}, "spotlight_date_utc DESC, communication_context_type, raw_record_id DESC"},        {L"iOS - Spotlight Text Context Priority Summary", "vw_ios_spotlight_text_context_priority_summary", {"text_context_category","review_priority","text_context_record_count","distinct_spotlight_object_count","rows_with_last_updated","earliest_last_updated_utc","latest_last_updated_utc","min_text_context_sample","max_text_context_sample","classification_evidence","text_context_reason","interpretation_note"}, {"text_context_category","review_priority","text_context_record_count","distinct_spotlight_object_count","min_text_context_sample","max_text_context_sample","classification_evidence","text_context_reason","interpretation_note"}, "review_priority_sort, text_context_record_count DESC"},
+        {L"iOS - Spotlight Communications Investigator Review", "vw_ios_spotlight_communication_record_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","spotlight_date_source_field","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_domain_handle_or_chat","message_service","best_title_or_name","investigator_visible_text","description_or_snippet","account_identifier","phone_or_callback","callback_url","url_or_content_reference","attachment_or_media_path","message_identifier","mailbox_or_thread","mail_participants","saved_from_app","spotlight_text_context_sample","interpretation_note","validation_locator"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_domain_handle_or_chat","message_service","best_title_or_name","investigator_visible_text","description_or_snippet","account_identifier","phone_or_callback","url_or_content_reference","attachment_or_media_path","message_identifier","mail_participants","saved_from_app","spotlight_text_context_sample","interpretation_note","validation_locator"}, "review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC"},
+        {L"iOS - Spotlight Message Text Review", "vw_ios_spotlight_message_text_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","spotlight_date_source_field","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_domain_handle_or_chat","best_title_or_name","investigator_visible_text","description_or_snippet","snippet","account_identifier","message_service","phone_or_callback","callback_url","url_or_content_reference","attachment_or_media_path","message_identifier","mailbox_or_thread","mail_participants","spotlight_text_context_sample","interpretation_note","validation_locator"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","message_domain_handle_or_chat","best_title_or_name","investigator_visible_text","account_identifier","message_service","url_or_content_reference","attachment_or_media_path","message_identifier","mail_participants","spotlight_text_context_sample","interpretation_note","validation_locator"}, "review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC"},
+        {L"iOS - Spotlight Message Media Review", "vw_ios_spotlight_message_media_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","spotlight_date_source_field","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","saved_from_app","best_title_or_name","investigator_visible_text","description_or_snippet","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","validation_locator","interpretation_note"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","saved_from_app","best_title_or_name","investigator_visible_text","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","validation_locator","interpretation_note"}, "spotlight_date_utc DESC, raw_record_id DESC"},
+        {L"iOS - Spotlight Communication Summary", "vw_ios_spotlight_communication_summary", {"communication_context_type","review_priority","bundle_id","domain_identifier","message_service","content_type","spotlight_record_count","distinct_spotlight_object_count","rows_with_title_or_name","rows_with_investigator_visible_text","rows_with_description_or_snippet","rows_with_attachment_or_media_path","rows_with_url_or_content_reference","rows_with_phone_or_callback","earliest_spotlight_date_utc","latest_spotlight_date_utc","min_context_sample","max_context_sample","interpretation_note"}, {"communication_context_type","review_priority","bundle_id","domain_identifier","message_service","content_type","spotlight_record_count","rows_with_title_or_name","rows_with_investigator_visible_text","rows_with_description_or_snippet","rows_with_attachment_or_media_path","rows_with_url_or_content_reference","rows_with_phone_or_callback","min_context_sample","max_context_sample","interpretation_note"}, "review_priority_sort, spotlight_record_count DESC, communication_context_type"},
+        {L"iOS - Spotlight Attachment/Media References", "vw_ios_spotlight_attachment_reference_review", {"raw_record_id","source_id","store_guid","source_db","spotlight_inode_or_object_id","spotlight_store_id","parent_inode_num","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","best_title_or_name","investigator_visible_text","description_or_snippet","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","attachment_reference_basis","validation_locator","interpretation_note"}, {"store_guid","source_db","spotlight_date_utc","communication_context_type","review_priority","content_type","bundle_id","domain_identifier","best_title_or_name","investigator_visible_text","description_or_snippet","attachment_or_media_path","url_or_content_reference","spotlight_text_context_sample","attachment_reference_basis","validation_locator","interpretation_note"}, "spotlight_date_utc DESC, communication_context_type, raw_record_id DESC"},
+        {L"iOS - Spotlight Text Context Priority Summary", "vw_ios_spotlight_text_context_priority_summary", {"text_context_category","review_priority","text_context_record_count","distinct_spotlight_object_count","rows_with_last_updated","earliest_last_updated_utc","latest_last_updated_utc","min_text_context_sample","max_text_context_sample","classification_evidence","text_context_reason","interpretation_note"}, {"text_context_category","review_priority","text_context_record_count","distinct_spotlight_object_count","min_text_context_sample","max_text_context_sample","classification_evidence","text_context_reason","interpretation_note"}, "review_priority_sort, text_context_record_count DESC"},
         {L"iOS - Residency Summary", "vw_ios_spotlight_residency_summary", {"residency_status","confidence","reference_count","distinct_record_count","first_path_sample","last_path_sample"}, {"residency_status","confidence","first_path_sample","last_path_sample"}, "residency_status, confidence"},
         {L"iOS - App Database Record Inventory", "vw_ios_app_database_record_inventory", {"ios_record_inventory_id","source_id","ios_db_id","database_normalized_path","database_name","database_category","app_hint","table_name","row_count","sample_columns","record_category","parse_status","notes","created_utc"}, {"database_normalized_path","database_name","database_category","app_hint","table_name","sample_columns","record_category","parse_status","notes"}, "database_category,database_name,table_name"},
         {L"iOS - App Database Record Summary", "vw_ios_app_database_record_summary", {"database_category","app_hint","record_category","parse_status","table_count","total_rows","first_database","last_database"}, {"database_category","app_hint","record_category","parse_status","first_database","last_database"}, "database_category,record_category"},
@@ -4505,153 +4508,6 @@ bool updateReviewViewTooltipTextFromCursor() {
         return false;
     }
     return true;
-    execGuiSqlParts({
-        R"VSGUI27(
-DROP VIEW IF EXISTS vw_ios_spotlight_communication_record_review;
-CREATE VIEW vw_ios_spotlight_communication_record_review AS
-WITH rec AS (
-  SELECT raw_record_id,source_id,store_guid,store_path,source_db,inode_num,COALESCE(store_id,'') AS store_id_key,store_id,parent_inode_num,
-         file_name,display_name,content_type,last_updated_utc,last_updated_raw,record_state
-  FROM raw_records
-  WHERE store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%'
-), kv AS (
-  SELECT r.raw_record_id,kv.field_name,kv.field_value,lower(COALESCE(kv.field_value,'')) AS v
-  FROM rec r
-  JOIN raw_key_values kv ON kv.source_id=r.source_id AND kv.store_guid=r.store_guid AND kv.source_db=r.source_db
-       AND kv.inode_num=r.inode_num AND COALESCE(kv.store_id,'')=r.store_id_key
-  WHERE COALESCE(kv.field_value,'')<>''
-), p AS (
-  SELECT raw_record_id,
-    MAX(CASE WHEN field_name='_kMDItemBundleID' THEN field_value ELSE '' END) AS bundle_id,
-    MAX(CASE WHEN field_name='_kMDItemDomainIdentifier' THEN field_value ELSE '' END) AS domain_identifier,
-    MAX(CASE WHEN field_name='_kMDItemPersonaID' THEN field_value ELSE '' END) AS persona_id,
-    MAX(CASE WHEN field_name='_kMDItemAppEntityTypeIdentifier' THEN field_value ELSE '' END) AS app_entity_type_identifier,
-    MAX(CASE WHEN field_name='_kMDItemAppEntityTypeDisplayRepresentationName' THEN field_value ELSE '' END) AS app_entity_type_display_name,
-    MAX(CASE WHEN field_name='_kMDItemAppEntityInstanceIdentifier' THEN field_value ELSE '' END) AS app_entity_instance_identifier,
-    MAX(CASE WHEN field_name IN ('kMDItemTitle','_kMDItemAppEntityTitle') THEN field_value ELSE '' END) AS title,
-    MAX(CASE WHEN field_name IN ('kMDItemDisplayName','_ICItemDisplayName') THEN field_value ELSE '' END) AS item_display_name,
-    MAX(CASE WHEN field_name IN ('kMDItemDescription','_kMDItemSnippet','kMDItemComment') THEN field_value ELSE '' END) AS description_or_snippet,
-    MAX(CASE WHEN field_name='_kMDItemSnippet' THEN field_value ELSE '' END) AS snippet,
-    MAX(CASE WHEN field_name='kMDItemAccountIdentifier' THEN field_value ELSE '' END) AS account_identifier,
-    MAX(CASE WHEN field_name='kMDItemContainerDisplayName' THEN field_value ELSE '' END) AS container_display_name,
-    MAX(CASE WHEN field_name='_kMDItemMessageService' THEN field_value ELSE '' END) AS message_service,
-    MAX(CASE WHEN field_name IN ('kMDItemPhoneNumbers','com_apple_mobilephone_callbackURL') THEN field_value ELSE '' END) AS phone_or_callback,
-    MAX(CASE WHEN field_name='com_apple_mobilephone_callbackURL' THEN field_value ELSE '' END) AS callback_url,
-    MAX(CASE WHEN field_name IN ('kMDItemContentURL','kMDItemURL','_kMDItemUserActivityRequiredString','kMDItemRelatedUniqueIdentifier') THEN field_value ELSE '' END) AS url_or_content_reference,
-    MAX(CASE WHEN field_name IN ('kMDItemAttachmentPaths','com_apple_mobilesms_groupPhotoPath','com_apple_mobilesms_lpPluginPaths','com_apple_mobilesms_suggested_contact_photo','com_apple_mobilesms_livePhotoComplementPath') THEN field_value ELSE '' END) AS attachment_or_media_path,
-    MAX(CASE WHEN field_name IN ('com_apple_mail_messageID','kMDItemEventMessageIdentifier') THEN field_value ELSE '' END) AS message_identifier,
-    MAX(CASE WHEN field_name IN ('com_apple_mail_search_indexer_mailbox','kMDItemMailboxIdentifiers') THEN field_value ELSE '' END) AS mailbox_or_thread,
-    MAX(CASE WHEN field_name IN ('kMDItemPhotosSavedFromAppBundleIdentifier','kMDItemPhotosSavedFromAppName') THEN field_value ELSE '' END) AS saved_from_app,
-    MAX(CASE WHEN field_name='__spotlight_investigator_text_context' THEN field_value ELSE '' END) AS spotlight_text_context_sample,
-    SUM(CASE WHEN field_name='__spotlight_investigator_text_context' THEN 1 ELSE 0 END) AS has_text_context,
-    COUNT(*) AS compact_value_count
-  FROM kv
-  GROUP BY raw_record_id
-), d AS (
-  SELECT r.raw_record_id,
-         MAX(NULLIF(rd.parsed_utc,'')) AS spotlight_date_utc,
-         MAX(rd.field_name) AS spotlight_date_source_field,
-         COUNT(rd.raw_date_id) AS compact_date_candidate_count
-  FROM rec r
-  LEFT JOIN raw_date_candidates rd ON rd.source_id=r.source_id AND rd.store_guid=r.store_guid AND rd.source_db=r.source_db
-       AND rd.inode_num=r.inode_num AND COALESC)VSGUI27",
-        R"VSGUI27(E(rd.store_id,'')=r.store_id_key
-  GROUP BY r.raw_record_id
-), classified AS (
-  SELECT r.*,p.*,COALESCE(d.spotlight_date_utc,r.last_updated_utc) AS spotlight_date_utc,
-         COALESCE(d.spotlight_date_source_field,'Last_Updated') AS spotlight_date_source_field,
-         COALESCE(d.compact_date_candidate_count,0) AS compact_date_candidate_count,
-         lower(COALESCE(r.content_type,'')) AS ct,
-         lower(COALESCE(p.bundle_id,'')) AS lbundle,
-         lower(COALESCE(p.domain_identifier,'')) AS ldomain,
-         lower(COALESCE(p.spotlight_text_context_sample,'')) AS lctx
-  FROM rec r
-  LEFT JOIN p ON p.raw_record_id=r.raw_record_id
-  LEFT JOIN d ON d.raw_record_id=r.raw_record_id
-), scored AS (
-  SELECT *,
-    CASE
-      WHEN ct LIKE '%email%' OR lbundle LIKE '%mobilemail%' OR lbundle LIKE '%email.searchindexer%' OR COALESCE(message_identifier,'') LIKE '<%@%' OR COALESCE(message_identifier,'') LIKE '<%>' THEN 'APPLE_MAIL_OR_EMAIL'
-      WHEN ct LIKE '%message%' OR lbundle LIKE '%mobilesms%' OR COALESCE(message_service,'')<>'' OR lower(COALESCE(account_identifier,'')) LIKE 'imessage%' OR lower(COALESCE(account_identifier,'')) LIKE 'sms%' OR lower(COALESCE(account_identifier,'')) LIKE 'rcs%' THEN 'APPLE_MESSAGES_SMS_RCS_IMESSAGE'
-      WHEN ct='kspotlightitemtypecall' OR lbundle LIKE '%mobilephone%' OR COALESCE(callback_url,'')<>'' OR lctx LIKE '%com_apple_mobilephone_%' THEN 'PHONE_OR_FACETIME_CALL'
-      WHEN lower(COALESCE(saved_from_app,'')) LIKE '%whatsapp%' OR lctx LIKE '%net.whatsapp.whatsapp%' OR lctx LIKE '%chat.whatsapp.com%' OR lctx LIKE '%wa.me/%' THEN 'WHATSAPP_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN lctx LIKE '%org.whispersystems.signal%' OR lctx LIKE '%signal.messenger%' OR lctx LIKE '%signal.org/%' THEN 'SIGNAL_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN lctx LIKE '%org.telegram%' OR lctx LIKE '%telegram.messenger%' OR lctx LIKE '%t.me/%' OR lctx LIKE '%telegram.me/%' THEN 'TELEGRAM_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN ct LIKE '%calendar%' OR lctx LIKE '%calendar%' OR lctx LIKE '%vevent%' THEN 'CALENDAR_OR_INVITATION_CONTEXT'
-      WHEN lower(COALESCE(app_entity_type_identifier,'')) LIKE '%contact%' OR lower(COALESCE(domain_identifier,'')) LIKE '%contact%' OR COALESCE(phone_or_callback,'')<>'' THEN 'CONTACT_OR_ACCOUNT_CONTEXT'
-      WHEN COALESCE(url_or_content_reference,'')<>'' OR lctx LIKE '%http://%' OR lctx LIKE '%https://%' OR lctx LIKE '%www.%' THEN 'URL_OR_WEB_CONTEXT'
-      ELSE 'OTHER_SPOTLIGHT_CONTEXT'
-    END AS communication_context_type
-  FROM classified
-)
-SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode_or_object_id,store_id AS spotlight_store_id,parent_inode_num,
-       spotlight_date_utc,spotlight_date_source_field,compact_date_candidate_count,last_updated_utc,
-       communication_context_type,
-       CASE
-         WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'HIGH_COMMUNICATION_REVIEW_VALUE'
-         WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'HIGH_APP_COMMUNICATION_CONTEXT_VALUE'
-         WHEN communication_context_type IN ('CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
-         ELSE 'LOW_CONTEXT_VALUE'
-       END AS review_priority,
-       CASE
-         WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' THEN 1
-         WHEN communication_context_type='APPLE_MAIL_OR_EMAIL' THEN 2
-         WHEN communication_context_type='PHONE_OR_FACETIME_CALL' THEN 3
-         WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 4
-         WHEN communication_context_type='CONTACT_OR_ACCOUNT_CONTEXT' THEN 5
-         WHEN communication_context_type='URL_OR_WEB_CONTEXT' THEN 6
-         WHEN communication_context_type='CALENDAR_OR_INVITATION_CONTEXT' THEN 7
-         ELSE 50
-       END AS review_priority_sort,
-       content_type,bundle_id,domain_identifier,persona_id,app_entity_type_identifier,app_entity_type_display_name,app_entity_instance_identifier,
-       COALESCE(NULLIF(title,''),NULLIF(item_display)VSGUI27",
-        R"VSGUI27(_name,''),NULLIF(display_name,''),NULLIF(file_name,'')) AS best_title_or_name,
-       substr(description_or_snippet,1,1800) AS description_or_snippet,
-       substr(snippet,1,1200) AS snippet,
-       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,saved_from_app,
-       compact_value_count,has_text_context,substr(spotlight_text_context_sample,1,2500) AS spotlight_text_context_sample,
-       CASE
-         WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'Explicit Apple communication content type/bundle/service/callback evidence recovered from Spotlight.'
-         WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'Chat-app context found in Spotlight text/app reference; treat as Spotlight evidence and corroborate with app DB if support parsing is enabled.'
-         ELSE 'Communication-adjacent Spotlight context retained for triage; verify with raw locators before reporting.'
-       END AS interpretation_note,
-       'raw_records.raw_record_id=' || raw_record_id || '; source_db=' || COALESCE(source_db,'') || '; inode_or_object=' || COALESCE(inode_num,'') || '; store_id=' || COALESCE(store_id,'') AS validation_locator
-FROM scored
-WHERE communication_context_type<>'OTHER_SPOTLIGHT_CONTEXT';
-
-DROP VIEW IF EXISTS vw_ios_spotlight_communication_summary;
-CREATE VIEW vw_ios_spotlight_communication_summary AS
-SELECT communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type,
-       COUNT(*) AS spotlight_record_count,
-       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
-       COUNT(NULLIF(best_title_or_name,'')) AS rows_with_title_or_name,
-       COUNT(NULLIF(description_or_snippet,'')) AS rows_with_description_or_snippet,
-       COUNT(NULLIF(attachment_or_media_path,'')) AS rows_with_attachment_or_media_path,
-       COUNT(NULLIF(url_or_content_reference,'')) AS rows_with_url_or_content_reference,
-       COUNT(NULLIF(phone_or_callback,'')) AS rows_with_phone_or_callback,
-       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
-       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
-       substr(MIN(COALESCE(NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS min_context_sample,
-       substr(MAX(COALESCE(NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS max_context_sample,
-       'Record-centric summary of communication-relevant Spotlight/CoreSpotlight records. Counts are Spotlight records, not live app database records.' AS interpretation_note
-FROM vw_ios_spotlight_communication_record_review
-GROUP BY communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type;
-
-DROP VIEW IF EXISTS vw_ios_spotlight_attachment_reference_review;
-CREATE VIEW vw_ios_spotlight_attachment_reference_review AS
-SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
-       spotlight_date_utc,communication_context_type,review_priority,content_type,bundle_id,domain_identifier,
-       best_title_or_name,description_or_snippet,attachment_or_media_path,url_or_content_reference,spotlight_text_context_sample,
-       CASE WHEN COALESCE(attachment_or_media_path,'')<>'' THEN 'EXPLICIT_ATTACHMENT_OR_MEDIA_PATH_FIELD'
-            WHEN COALESCE(url_or_content_reference,'')<>'' THEN 'URL_OR_CONTENT_REFERENCE_FIELD'
-            ELSE 'TEXT_CONTEXT_ONLY' END AS attachment_reference_basis,
-       validation_locator,
-       'Attachment/media-focused subset of communication Spotlight review. Missing/present status is available in Missing From FFS views where path lookup can be resolved.' AS interpretation_note
-FROM vw_ios_spotlight_communication_record_review
-WHERE COALESCE(attachment_or_media_path,'')<>'' OR COALESCE(url_or_content_reference,'')<>'';
-)VSGUI27"
-    });
-
 }
 
 void ensureReviewViewTooltip(HWND owner) {

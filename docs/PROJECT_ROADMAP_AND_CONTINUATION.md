@@ -1,6 +1,6 @@
-## V0_9_27 continuation
+## V0_9_28 continuation
 
-Current baseline after V0_9_27 should be a more usable iOS Spotlight investigator workflow: compact normal-mode parsing is stable, the GUI C2026 issue from V0_9_26_1 is incorporated via V0_9_26_2, and new communication-centric review surfaces have been added. Next validation should check whether the new communication/attachment views make iOS Spotlight evidence review practical and whether specific records need better dbStr/property-name mapping. Continue using the saved thin-upload review workflow before changing code.
+Current baseline after V0_9_28 should be a more usable iOS Spotlight investigator workflow: compact normal-mode parsing is stable, the GUI C2026 issue from V0_9_26_1 is incorporated via V0_9_26_2, and new communication-centric review surfaces have been added. Next validation should check whether the new communication/attachment views make iOS Spotlight evidence review practical and whether specific records need better dbStr/property-name mapping. Continue using the saved thin-upload review workflow before changing code.
 
 ## V0_9_26_2 - MSVC oversized SQL literal compile fix
 
@@ -264,3 +264,7 @@ The unified keyword surface combines CoreSpotlight human-readable strings, parse
 Contact, calendar, and web review views are triage views over parsed local app database records. They are not deletion findings. Cache/FTS/contact-token tables can duplicate or tokenize records, and calendar rows can represent support rows rather than user events. Use the source database path, table name, primary key, provenance, and timestamp source columns before reporting.
 
 WhatsApp status remains `WHATSAPP_DB_NOT_FOUND` in the current test dataset because no iOS WhatsApp `ChatStorage.sqlite`, `ContactsV2.sqlite`, or WhatsApp `CallHistory.sqlite` was present. WhatsApp parsing still needs validation on a dataset containing those databases.
+
+## V0_9_28 continuation note
+
+Next review should confirm Windows/MSVC GUI build succeeds after the `win32_gui.cpp` fix. If the build succeeds, run the usual iOS reuse-cache thin upload and inspect the new `ios_spotlight_message_text_review_sample.csv` and `ios_spotlight_message_media_review_sample.csv` outputs for investigative usefulness. Continue improving investigator-first iOS Spotlight views by separating direct message/mail/call content from message-adjacent media, app-attribution-only records, and low-value cache/thumbnail references.

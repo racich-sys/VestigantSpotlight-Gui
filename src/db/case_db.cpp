@@ -4851,10 +4851,11 @@ WITH rec AS (
     MAX(CASE WHEN field_name='_kMDItemAppEntityTypeIdentifier' THEN field_value ELSE '' END) AS app_entity_type_identifier,
     MAX(CASE WHEN field_name='_kMDItemAppEntityTypeDisplayRepresentationName' THEN field_value ELSE '' END) AS app_entity_type_display_name,
     MAX(CASE WHEN field_name='_kMDItemAppEntityInstanceIdentifier' THEN field_value ELSE '' END) AS app_entity_instance_identifier,
-    MAX(CASE WHEN field_name IN ('kMDItemTitle','_kMDItemAppEntityTitle') THEN field_value ELSE '' END) AS title,
-    MAX(CASE WHEN field_name IN ('kMDItemDisplayName','_ICItemDisplayName') THEN field_value ELSE '' END) AS item_display_name,
-    MAX(CASE WHEN field_name IN ('kMDItemDescription','_kMDItemSnippet','kMDItemComment') THEN field_value ELSE '' END) AS description_or_snippet,
-    MAX(CASE WHEN field_name='_kMDItemSnippet' THEN field_value ELSE '' END) AS snippet,
+    MAX(CASE WHEN field_name IN ('kMDItemTitle','_kMDItemAppEntityTitle','kMDItemAppEntityTitle') THEN field_value ELSE '' END) AS title,
+    MAX(CASE WHEN field_name IN ('_kMDItemAppEntitySubtitle','kMDItemAppEntitySubtitle','_kMDItemSnippet','kMDItemDescription','kMDItemDescription') THEN field_value ELSE '' END) AS app_entity_subtitle,
+    MAX(CASE WHEN field_name IN ('kMDItemDisplayName','_ICItemDisplayName','FPFilename') THEN field_value ELSE '' END) AS item_display_name,
+    MAX(CASE WHEN field_name IN ('kMDItemDescription','_kMDItemSnippet','kMDItemComment','kMDItemAppEntitySubtitle','_kMDItemAppEntitySubtitle') THEN field_value ELSE '' END) AS description_or_snippet,
+    MAX(CASE WHEN field_name IN ('_kMDItemSnippet','kMDItemTextContent','kMDItemTextContentSummary') THEN field_value ELSE '' END) AS snippet,
     MAX(CASE WHEN field_name='kMDItemAccountIdentifier' THEN field_value ELSE '' END) AS account_identifier,
     MAX(CASE WHEN field_name='kMDItemContainerDisplayName' THEN field_value ELSE '' END) AS container_display_name,
     MAX(CASE WHEN field_name='_kMDItemMessageService' THEN field_value ELSE '' END) AS message_service,
@@ -4864,6 +4865,7 @@ WITH rec AS (
     MAX(CASE WHEN field_name IN ('kMDItemAttachmentPaths','com_apple_mobilesms_groupPhotoPath','com_apple_mobilesms_lpPluginPaths','com_apple_mobilesms_suggested_contact_photo','com_apple_mobilesms_livePhotoComplementPath') THEN field_value ELSE '' END) AS attachment_or_media_path,
     MAX(CASE WHEN field_name IN ('com_apple_mail_messageID','kMDItemEventMessageIdentifier') THEN field_value ELSE '' END) AS message_identifier,
     MAX(CASE WHEN field_name IN ('com_apple_mail_search_indexer_mailbox','kMDItemMailboxIdentifiers') THEN field_value ELSE '' END) AS mailbox_or_thread,
+    MAX(CASE WHEN field_name IN ('kMDItemAuthorEmailAddresses','kMDItemRecipientEmailAddresses','kMDItemEmailAddresses','kMDItemAuthors','kMDItemRecipients') THEN field_value ELSE '' END) AS mail_participants,
     MAX(CASE WHEN field_name IN ('kMDItemPhotosSavedFromAppBundleIdentifier','kMDItemPhotosSavedFromAppName') THEN field_value ELSE '' END) AS saved_from_app,
     MAX(CASE WHEN field_name='__spotlight_investigator_text_context' THEN field_value ELSE '' END) AS spotlight_text_context_sample,
     SUM(CASE WHEN field_name='__spotlight_investigator_text_context' THEN 1 ELSE 0 END) AS has_text_context,
@@ -4887,7 +4889,10 @@ WITH rec AS (
          lower(COALESCE(r.content_type,'')) AS ct,
          lower(COALESCE(p.bundle_id,'')) AS lbundle,
          lower(COALESCE(p.domain_identifier,'')) AS ldomain,
-         lower(COALESCE(p.spotlight_text_context_sample,'')) AS lctx
+         lower(COALESCE(p.spotlight_text_context_sample,'')) AS lctx,
+         lower(COALESCE(p.title,'')) AS ltitle,
+         lower(COALESCE(p.description_or_snippet,'')) AS ldesc,
+         lower(COALESCE(p.app_entity_type_display_name,'')) AS lentity_type
   FROM rec r
   LEFT JOIN p ON p.raw_record_id=r.raw_record_id
   LEFT JOIN d ON d.raw_record_id=r.raw_record_id
@@ -4895,7 +4900,10 @@ WITH rec AS (
   SELECT *,
     CASE
       WHEN ct LIKE '%email%' OR lbundle LIKE '%mobilemail%' OR lbundle LIKE '%email.searchindexer%' OR COALESCE(message_identifier,'') LIKE '<%@%' OR COALESCE(message_identifier,'') LIKE '<%>' THEN 'APPLE_MAIL_OR_EMAIL'
-      WHEN ct LIKE '%message%' OR lbundle LIKE '%mobilesms%' OR COALESCE(message_service,'')<>'' OR lower(COALESCE(account_identifier,'')) LIKE 'imessage%' OR lower(COALESCE(account_identifier,'')) LIKE 'sms%' OR lower(COALESCE(account_identifier,'')) LIKE 'rcs%' THEN 'APPLE_MESSAGES_SMS_RCS_IMESSAGE'
+      WHEN (ct LIKE '%message%' OR lbundle LIKE '%mobilesms%' OR COALESCE(message_service,'')<>'' OR lower(COALESCE(account_identifier,'')) LIKE 'imessage%' OR lower(COALESCE(account_identifier,'')) LIKE 'sms%' OR lower(COALESCE(account_identifier,'')) LIKE 'rcs%')
+           AND (lentity_type NOT LIKE '%asset%' OR lbundle LIKE '%mobilesms%' OR ct LIKE '%message%' OR ldomain LIKE 'sms;%' OR ldomain LIKE 'imessage;%') THEN 'APPLE_MESSAGES_SMS_RCS_IMESSAGE'
+      WHEN (lower(COALESCE(saved_from_app,'')) LIKE '%mobilesms%' OR lower(COALESCE(saved_from_app,'')) LIKE '%mobile sms%' OR lower(COALESCE(saved_from_app,'')) LIKE '%messages%')
+           AND (ct LIKE '%image%' OR ct LIKE '%movie%' OR ct LIKE '%video%' OR lentity_type LIKE '%asset%' OR lbundle LIKE '%mobileslideshow%') THEN 'MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
       WHEN ct='kspotlightitemtypecall' OR lbundle LIKE '%mobilephone%' OR COALESCE(callback_url,'')<>'' OR lctx LIKE '%com_apple_mobilephone_%' THEN 'PHONE_OR_FACETIME_CALL'
       WHEN lower(COALESCE(saved_from_app,'')) LIKE '%whatsapp%' OR lctx LIKE '%net.whatsapp.whatsapp%' OR lctx LIKE '%chat.whatsapp.com%' OR lctx LIKE '%wa.me/%' THEN 'WHATSAPP_RELATED_SPOTLIGHT_CONTEXT'
       WHEN lctx LIKE '%org.whispersystems.signal%' OR lctx LIKE '%signal.messenger%' OR lctx LIKE '%signal.org/%' THEN 'SIGNAL_RELATED_SPOTLIGHT_CONTEXT'
@@ -4912,6 +4920,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
        communication_context_type,
        CASE
          WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'HIGH_COMMUNICATION_REVIEW_VALUE'
+         WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 'HIGH_MESSAGE_MEDIA_REVIEW_VALUE'
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'HIGH_APP_COMMUNICATION_CONTEXT_VALUE'
          WHEN communication_context_type IN ('CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
          ELSE 'LOW_CONTEXT_VALUE'
@@ -4920,21 +4929,30 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' THEN 1
          WHEN communication_context_type='APPLE_MAIL_OR_EMAIL' THEN 2
          WHEN communication_context_type='PHONE_OR_FACETIME_CALL' THEN 3
-         WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 4
-         WHEN communication_context_type='CONTACT_OR_ACCOUNT_CONTEXT' THEN 5
-         WHEN communication_context_type='URL_OR_WEB_CONTEXT' THEN 6
-         WHEN communication_context_type='CALENDAR_OR_INVITATION_CONTEXT' THEN 7
+         WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 4
+         WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 5
+         WHEN communication_context_type='CONTACT_OR_ACCOUNT_CONTEXT' THEN 6
+         WHEN communication_context_type='URL_OR_WEB_CONTEXT' THEN 7
+         WHEN communication_context_type='CALENDAR_OR_INVITATION_CONTEXT' THEN 8
          ELSE 50
        END AS review_priority_sort,
        content_type,bundle_id,domain_identifier,persona_id,app_entity_type_identifier,app_entity_type_display_name,app_entity_instance_identifier,
+       CASE
+         WHEN domain_identifier LIKE 'SMS;%;%' THEN substr(domain_identifier,5 + instr(substr(domain_identifier,5),';'))
+         WHEN domain_identifier LIKE 'iMessage;%;%' THEN substr(domain_identifier,10 + instr(substr(domain_identifier,10),';'))
+         WHEN domain_identifier='chatDomain' THEN 'conversation_index_record'
+         ELSE ''
+       END AS message_domain_handle_or_chat,
        COALESCE(NULLIF(title,''),NULLIF(item_display)VSQL27",
         R"VSQL27(_name,''),NULLIF(display_name,''),NULLIF(file_name,'')) AS best_title_or_name,
+       substr(COALESCE(NULLIF(title,''),NULLIF(description_or_snippet,''),NULLIF(snippet,''),NULLIF(spotlight_text_context_sample,'')),1,2500) AS investigator_visible_text,
        substr(description_or_snippet,1,1800) AS description_or_snippet,
        substr(snippet,1,1200) AS snippet,
-       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,saved_from_app,
+       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,saved_from_app,
        compact_value_count,has_text_context,substr(spotlight_text_context_sample,1,2500) AS spotlight_text_context_sample,
        CASE
          WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'Explicit Apple communication content type/bundle/service/callback evidence recovered from Spotlight.'
+         WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 'Media/photo asset indexed by Spotlight with Photos saved-from-app context pointing to Messages/MobileSMS. Treat as message-related media context and corroborate with FFS/app DB where available.'
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'Chat-app context found in Spotlight text/app reference; treat as Spotlight evidence and corroborate with app DB if support parsing is enabled.'
          ELSE 'Communication-adjacent Spotlight context retained for triage; verify with raw locators before reporting.'
        END AS interpretation_note,
@@ -4948,14 +4966,15 @@ SELECT communication_context_type,review_priority,review_priority_sort,bundle_id
        COUNT(*) AS spotlight_record_count,
        COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
        COUNT(NULLIF(best_title_or_name,'')) AS rows_with_title_or_name,
+       COUNT(NULLIF(investigator_visible_text,'')) AS rows_with_investigator_visible_text,
        COUNT(NULLIF(description_or_snippet,'')) AS rows_with_description_or_snippet,
        COUNT(NULLIF(attachment_or_media_path,'')) AS rows_with_attachment_or_media_path,
        COUNT(NULLIF(url_or_content_reference,'')) AS rows_with_url_or_content_reference,
        COUNT(NULLIF(phone_or_callback,'')) AS rows_with_phone_or_callback,
        MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
        MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
-       substr(MIN(COALESCE(NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS min_context_sample,
-       substr(MAX(COALESCE(NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS max_context_sample,
+       substr(MIN(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS min_context_sample,
+       substr(MAX(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS max_context_sample,
        'Record-centric summary of communication-relevant Spotlight/CoreSpotlight records. Counts are Spotlight records, not live app database records.' AS interpretation_note
 FROM vw_ios_spotlight_communication_record_review
 GROUP BY communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type;
@@ -4964,7 +4983,7 @@ DROP VIEW IF EXISTS vw_ios_spotlight_attachment_reference_review;
 CREATE VIEW vw_ios_spotlight_attachment_reference_review AS
 SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
        spotlight_date_utc,communication_context_type,review_priority,content_type,bundle_id,domain_identifier,
-       best_title_or_name,description_or_snippet,attachment_or_media_path,url_or_content_reference,spotlight_text_context_sample,
+       best_title_or_name,investigator_visible_text,description_or_snippet,attachment_or_media_path,url_or_content_reference,spotlight_text_context_sample,
        CASE WHEN COALESCE(attachment_or_media_path,'')<>'' THEN 'EXPLICIT_ATTACHMENT_OR_MEDIA_PATH_FIELD'
             WHEN COALESCE(url_or_content_reference,'')<>'' THEN 'URL_OR_CONTENT_REFERENCE_FIELD'
             ELSE 'TEXT_CONTEXT_ONLY' END AS attachment_reference_basis,
@@ -4972,6 +4991,31 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
        'Attachment/media-focused subset of communication Spotlight review. Missing/present status is available in Missing From FFS views where path lookup can be resolved.' AS interpretation_note
 FROM vw_ios_spotlight_communication_record_review
 WHERE COALESCE(attachment_or_media_path,'')<>'' OR COALESCE(url_or_content_reference,'')<>'';
+
+DROP VIEW IF EXISTS vw_ios_spotlight_message_text_review;
+CREATE VIEW vw_ios_spotlight_message_text_review AS
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
+       message_domain_handle_or_chat,best_title_or_name,investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,
+       phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
+       spotlight_text_context_sample,interpretation_note,validation_locator
+FROM vw_ios_spotlight_communication_record_review
+WHERE communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL')
+   OR communication_context_type LIKE '%WHATSAPP%'
+   OR communication_context_type LIKE '%SIGNAL%'
+   OR communication_context_type LIKE '%TELEGRAM%';
+
+DROP VIEW IF EXISTS vw_ios_spotlight_message_media_review;
+CREATE VIEW vw_ios_spotlight_message_media_review AS
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
+       saved_from_app,best_title_or_name,investigator_visible_text,description_or_snippet,attachment_or_media_path,url_or_content_reference,
+       spotlight_text_context_sample,validation_locator,
+       'Media/photo/video Spotlight record with message-related saved-from-app or attachment context; review as message-adjacent media, not as a direct message body unless corroborated.' AS interpretation_note
+FROM vw_ios_spotlight_communication_record_review
+WHERE communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
+   OR COALESCE(saved_from_app,'')<>''
+   OR COALESCE(attachment_or_media_path,'')<>'';
 )VSQL27"
     }));
 

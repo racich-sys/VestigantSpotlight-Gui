@@ -1,6 +1,6 @@
-## V0_9_27 repeatable review checkpoint
+## V0_9_28 repeatable review checkpoint
 
-For V0_9_27 and later, always inspect the new communication review outputs during thin-upload review:
+For V0_9_28 and later, always inspect the new communication review outputs during thin-upload review:
 - exports/ios_spotlight_communication_summary.csv
 - exports/ios_spotlight_communication_record_review_sample.csv
 - exports/ios_spotlight_attachment_reference_review_sample.csv

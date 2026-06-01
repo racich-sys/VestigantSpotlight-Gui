@@ -1,7 +1,7 @@
-## V0_9_27 - record-centric iOS Spotlight communications review
+## V0_9_28 - record-centric iOS Spotlight communications review
 
 - Reviewed V0_9_26_1 thin output: CLI run completed successfully with 344,445 raw iOS Spotlight records, 982,230 compact key/value rows, 336,037 compact date candidates, and complete_success.
-- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_27.
+- Incorporated V0_9_26_2 GUI C2026 oversized SQL literal fix as the base for V0_9_28.
 - Added record-centric iOS Spotlight communication review views/exports that pivot compact Spotlight fields into investigator columns for Messages/SMS/RCS/iMessage, Mail/email, phone/FaceTime calls, WhatsApp/Signal/Telegram context, contacts, calendar/invitations, and URL/web context.
 - Added attachment/media-focused Spotlight reference review for communications.
 - Added communication summary output and upload samples so investigators can start from compact high-value communication surfaces instead of broad raw key/value tables.
@@ -184,3 +184,11 @@ The unified keyword surface combines CoreSpotlight human-readable strings, parse
 Contact, calendar, and web review views are triage views over parsed local app database records. They are not deletion findings. Cache/FTS/contact-token tables can duplicate or tokenize records, and calendar rows can represent support rows rather than user events. Use the source database path, table name, primary key, provenance, and timestamp source columns before reporting.
 
 WhatsApp status remains `WHATSAPP_DB_NOT_FOUND` in the current test dataset because no iOS WhatsApp `ChatStorage.sqlite`, `ContactsV2.sqlite`, or WhatsApp `CallHistory.sqlite` was present. WhatsApp parsing still needs validation on a dataset containing those databases.
+
+## V0_9_28 validation
+
+- Reviewed V0_9_27 build log: CLI/self-test linked, GUI failed at `win32_gui.cpp(4508)` with `execGuiSqlParts` identifier not found.
+- Reviewed V0_9_27 thin upload: run reached complete_success; DB/export bloat did not recur.
+- Linux CMake build completed successfully; CLI returned `Vestigant Spotlight v0.9.28`.
+- Linux self-test passed.
+- Windows/MSVC validation is still required, especially for GUI compile confirmation.
