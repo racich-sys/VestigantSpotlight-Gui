@@ -1,0 +1,43 @@
+Vestigant Spotlight V0_9_4 Change and Validation Note
+
+Baseline reviewed
+- Input baseline: V0_9_1 source package and Upload_Thin_iOS_GUI_V0_9_1_Check.zip.
+- V0_9_1 run status: complete_success.
+- V0_9_1 app version in source_probe_summary.json: 0.9.1.
+- V0_9_1 iOS records: 5 Store-V2 groups, 37,719 raw Spotlight records, 407,826 imported iOS FFS file rows, 2,898 app database inventory rows, 32 extracted/opened app databases, 109,592 parsed app records, 14,965 Spotlight-to-app-DB candidate links, and 5,288 Spotlight-to-FFS links.
+
+V0_9_1 findings that drove V0_9_4
+- No actual WhatsApp ChatStorage.sqlite, ContactsV2.sqlite, or WhatsApp CallHistory.sqlite was present in the uploaded iOS FFS test data, so WhatsApp parser runtime validation remains pending for a dataset containing WhatsApp databases.
+- Apple Messages SMS.db was present, but live message/chat/attachment tables were empty in the uploaded test data.
+- CallHistory.storedata parsed generic call/call-participant rows and should be surfaced more directly in the iOS Investigation workflow.
+- The keychain material view was too broad because it mixed real /private/var/Keychains and keybag artifacts with app framework/code references such as SAMKeychain framework paths.
+- The iOS Investigation workflow needs a communications-centered review layer, not only separate per-database exports.
+
+V0_9_4 changes
+- Added unified iOS communications review views and exports:
+  - ios_communications_review_records.csv
+  - ios_communications_review_summary.csv
+  - ios_spotlight_communication_candidates.csv
+- Added GUI views for:
+  - iOS - Communications Review Records
+  - iOS - Communications Review Summary
+  - iOS - Spotlight Communication Candidates
+- Improved WhatsApp database status so the status view returns an explicit WHATSAPP_DB_NOT_FOUND row when no iOS WhatsApp databases are present. This avoids an empty view being misread as a view/export failure.
+- Tightened keychain material reporting:
+  - iOS - Keychain Material Inventory now focuses on /private/var/Keychains, keychain-2.db, and keybag paths.
+  - Added iOS - Keychain Support References for lower-priority keychain-named framework/code references outside core keychain/keybag locations.
+- Added exports and thin-upload packaging support for the new communications and keychain-support views.
+- Updated GUI hover text for the new iOS communications/keychain views.
+- Preserved cautious forensic language: Spotlight communication candidates are not treated as live messages/calls/chats unless supported by parsed app database rows or exact file/database links.
+
+Validation performed in this environment
+- Linux CMake/core build: passed.
+- VestigantSpotlightCli --version: Vestigant Spotlight v0.9.4.
+- VestigantSpotlightTests: passed.
+- Static SQL/schema initialization was exercised by self-test.
+- Windows/MSVC build and Win32 GUI launch were not available in this environment and must be validated by the user.
+
+Known limitations
+- WhatsApp parsing still requires a test FFS source containing actual iOS WhatsApp ChatStorage.sqlite / ContactsV2.sqlite / CallHistory.sqlite files.
+- Keychain handling remains inventory/provenance only. V0_9_4 does not perform keychain extraction, WhatsApp decryption, or credential recovery.
+- iOS CoreSpotlight formal property-name decoding remains incomplete; generic string-probe fields are still the main iOS content-bearing output.

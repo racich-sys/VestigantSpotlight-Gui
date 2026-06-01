@@ -1,0 +1,30 @@
+V0_9_21 change and validation note
+
+Triggering review:
+- V0_9_20 built successfully on Windows/MSVC as Vestigant Spotlight v0.9.20.
+- V0_9_20 no-writes stopped-state package showed the database was no longer exploding, but export stalled at stage:
+  export_query_sql_progress ios_spotlight_record_review.csv
+- Last progress showed SQLite was still actively stepping the query, but the export CSV had only a header. The largest completed normal export was ios_spotlight_object_inode_summary split into two CSV parts totaling hundreds of MB.
+
+Failure class:
+- This is no longer the original raw SQLite/WAL bloat failure.
+- The remaining failure is heavy normal-mode SQL/export materialization over broad per-record/per-object views.
+- The review also indicates the user's hypothesis must be preserved: some expansion may be caused by representing the same underlying object/inode across separate raw/key/date/reference views rather than aggregating object-centrically.
+
+Changes:
+- V0_9_21 keeps normal iOS investigator exports compact by default.
+- Full ios_spotlight_record_review.csv is now support/diagnostic only.
+- Full ios_spotlight_date_provenance.csv is now support/diagnostic only.
+- Full ios_spotlight_investigative_items_with_dates.csv and ios_spotlight_investigative_item_date_evidence.csv are support/diagnostic only.
+- Full ios_spotlight_object_inode_summary.csv is support/diagnostic only.
+- Normal mode now exports ios_spotlight_object_inode_diagnostic_summary.csv, a compact object/inode record-splitting diagnostic.
+- Added indexes for raw_records/raw_key_values/raw_date_candidates object-key and raw-record sort patterns.
+- Fixed vw_ios_spotlight_human_text_values so raw_key_values joins to a single preferred raw_record_id per object key instead of multiplying when multiple raw_records share the same source/store/source_db/inode/store_id.
+- GUI registry includes iOS - Spotlight Object/Inode Diagnostic Summary.
+- V0_9_21 collection/build/reuse-cache scripts added.
+
+Validation:
+- Linux CMake configured and compiled VestigantSpotlightCli and VestigantSpotlightTests successfully.
+- CLI reports Vestigant Spotlight v0.9.21.
+- Linux self-test passed.
+- Windows/MSVC validation still needs to be run by the user.

@@ -1,0 +1,30 @@
+# V0_9_11_1 Change and Validation Note
+
+## Purpose
+
+V0_9_11 built CLI/tests successfully but the GUI compile failed under MSVC with:
+
+`src\gui\win32_gui.cpp(...): error C3861: 'exec': identifier not found`
+
+The failure was caused by split GUI SQL blocks accidentally using the case_db helper name `exec(...)` instead of the GUI helper lambda `execGuiSql(...)`.
+
+## Significant changes
+
+- Fixed all remaining split SQL blocks in `src/gui/win32_gui.cpp` to call `execGuiSql(...)`.
+- Preserved all V0_9_11 Spotlight-first iOS review views and exports.
+- Preserved reuse-cache scripts with `--skip-container-hash` by default for fast development/test iteration.
+- Updated package/version strings to V0_9_11_1 / 0.9.11.1.
+- Legacy V7 import remains present; planned removal is deferred to a separate cleanup build after the active iOS Spotlight review path remains stable.
+
+## Validation performed in packaging environment
+
+- Verified no `exec(R"SQL(` calls remain in `src/gui/win32_gui.cpp`.
+- Verified raw SQL segments in `src/gui/win32_gui.cpp` and `src/db/case_db.cpp` contain no nested `R"SQL(` delimiter text.
+- Verified max raw SQL segment size remains below the prior MSVC C2026 risk threshold.
+- Verified package ZIP and patch ZIP integrity.
+
+## Not validated in packaging environment
+
+- Windows/MSVC build.
+- Win32 GUI launch.
+- Full V0_9_11_1 reused-cache runtime run.

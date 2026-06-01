@@ -1,0 +1,19 @@
+V0_9_22 change and validation note
+
+Baseline reviewed:
+- V0_9_21 build log: Windows/MSVC build succeeded and reported Vestigant Spotlight v0.9.21.
+- V0_9_21 thin upload: run reached complete_success, native parse and enrichment completed, and compact investigator export completed.
+- V0_9_21 object/inode diagnostic: all six stores showed ONE_RECORD_PER_OBJECT, so the observed bloat/stall was not explained by same-inode/object record splitting in this test run.
+
+Changes:
+- Added slim iOS FFS path lookup table for normal reused-cache mode.
+- Missing From FFS views now use full inventory when materialized, otherwise the slim lookup.
+- Missing From FFS candidates now include lookup status and Spotlight text context so GUI review can assess investigative value.
+- Added compact Missing From FFS summary export and bounded upload sample.
+
+Validation still needed on Windows:
+- Build V0_9_22 with MSVC.
+- Run the standard large iOS reuse-cache test.
+- Confirm DB/WAL remain bounded.
+- Confirm `ios_spotlight_missing_from_ffs_summary.csv` and upload sample are produced.
+- In GUI, open iOS Missing From FFS and verify text context appears and residency status is based on lookup availability.

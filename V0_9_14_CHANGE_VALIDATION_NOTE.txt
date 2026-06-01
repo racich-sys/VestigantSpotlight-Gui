@@ -1,0 +1,28 @@
+Vestigant Spotlight V0_9_15 Change / Validation Note
+
+Baseline: V0_9_13.
+
+Purpose:
+- Review V0_9_13 build/thin upload and older GUI full-intake logs.
+- Keep Spotlight/CoreSpotlight investigation as the primary workflow.
+- Reduce large iOS FFS ZIP re-read/hash delays and improve GUI review responsiveness.
+
+Changes:
+1. Build script Visual Studio discovery was hardened to remove the noisy `TryVsPath` batch-label failure seen in V0_9_13 build logs.
+2. iOS ZIP source hashing is deferred by default for parser/development runs unless `--force-container-hash` is supplied. This applies to very large iOS FFS ZIPs and reuse-cache runs; source path/size/provenance are still registered and the hash status is marked deferred.
+3. GUI iOS/CoreSpotlight reuse-cache mode now automatically skips full original-container hashing.
+4. GUI iOS review page loading uses fast preview ordering for large Spotlight-first views when no search/filter/manual sort is active, avoiding expensive default ORDER BY expressions for initial page loads. Manual sorting and searching still work.
+5. Default GUI page size was reduced to 250 rows for faster first-page review.
+6. Legacy V7 output/sample exports were suppressed from normal export/upload sample generation. The importer code remains compiled for now but is further hidden from the normal workflow.
+7. Documentation/scripts were updated to V0_9_15; generated reuse-cache scripts continue to pass `--skip-container-hash`.
+
+Validation performed in ChatGPT sandbox:
+- Reviewed V0_9_13 build log: MSVC build ultimately succeeded despite Visual Studio label-discovery noise.
+- Reviewed V0_9_13 thin upload: complete_success.
+- Reviewed V0_9_11 GUI full-intake logs: long delay occurred between open_sqlite and iOS inventory import, consistent with expensive source-container handling before cached import.
+- Performed static source checks and package integrity checks.
+
+Not validated here:
+- Windows/MSVC build.
+- Win32 GUI launch.
+- Full V0_9_15 runtime.

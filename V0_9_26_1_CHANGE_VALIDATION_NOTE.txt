@@ -1,0 +1,18 @@
+V0_9_26_2_CHANGE_VALIDATION_NOTE
+
+Purpose:
+- Fix Windows/MSVC compile failure in src\db\case_db.cpp: C2026 string too big, trailing characters truncated.
+
+Change:
+- Split the affected SQL raw-string literal fragment in case_db.cpp into smaller VSQLFIX raw-string fragments passed through joinSql(...).
+- No SQL semantics were intentionally changed from V0_9_26.
+- Version metadata and run scripts updated to 0.9.26.2 / V0_9_26_2.
+
+Validation performed in this environment:
+- Static check of raw SQL literal fragments in src/db/case_db.cpp: maximum raw string body size was 7557 bytes after the fix.
+- Linux CMake build completed successfully after continuing through the large app_runner.cpp compile step.
+- CLI version reported: Vestigant Spotlight v0.9.26.2.
+- Linux self-test passed.
+
+Validation still required:
+- Windows/MSVC build on the user's machine, because the failure was MSVC-specific.

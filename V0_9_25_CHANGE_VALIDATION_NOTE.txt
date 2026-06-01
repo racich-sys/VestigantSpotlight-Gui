@@ -1,0 +1,10 @@
+## V0_9_25 - high-value Spotlight text triage and cleaner thin uploads
+
+- Reviewed V0_9_24 build/thin results: Windows/MSVC build completed, run reached complete_success, and parser limits report was present.
+- Added priority/category scoring to same-record iOS Spotlight text context so communications, email, chat, URL, call/contact, and calendar contexts surface before generic text.
+- Added GUI views `iOS - High-Value Spotlight Text Context` and `iOS - Spotlight Text Context Priority Summary`.
+- Added exports/samples `ios_spotlight_high_value_text_context_review_sample.csv` and `ios_spotlight_text_context_priority_summary.csv`.
+- Fixed thin upload packaging to avoid recursively including prior `Upload` folders and to downsample oversized generic upload_samples while preserving high-value samples.
+- Kept normal iOS mode compact; full native/dbStr/property and broad FFS/app DB materialization remain diagnostic/support options.
+- Validation: Linux build/self-test attempted in this environment; Windows/MSVC validation required.
+

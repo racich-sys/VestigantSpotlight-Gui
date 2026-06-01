@@ -1,0 +1,54 @@
+Vestigant Spotlight V0_9_20 change / validation note
+
+Baseline reviewed
+- Source baseline: V0_9_17.
+- V0_9_17 build log showed a successful build and reported Vestigant Spotlight v0.9.17.
+- V0_9_17 stopped-state collection showed the normal iOS reused-cache run still produced a very large SQLite DB/WAL pair before export completion:
+  - VestigantSpotlight.case.sqlite: approximately 29.77 GB.
+  - VestigantSpotlight.case.sqlite-wal: approximately 24.49 GB.
+- V0_9_17 run_progress showed native parse counts of raw_records=344,445, raw_key_values=12,939,306, raw_date_candidates=1,995,556, and enrichment timeline=1,855,631.
+- Failure class: normal-mode database materialization, not only CSV export. Broad native/dbStr/property persistence and broad date candidate persistence were still too large for normal investigator mode.
+
+V0_9_20 fixes
+1. Normal iOS CoreSpotlight mode now uses a stricter compact persistence policy:
+   - raw_key_values no longer automatically persists every date field.
+   - broad native/dbStr/property values are suppressed unless they are high-value Spotlight/entity/reference fields or contain forensic references such as URLs, iOS paths, cloud/app references, email/contact values, or communication-related identifiers.
+   - default per-record key/value persistence is capped more aggressively.
+
+2. Date provenance is bounded by default:
+   - raw_date_candidates no longer stores every decoded/probed date-like field in normal iOS mode.
+   - derived/ranking/component date fields are suppressed.
+   - only parsed ISO high-value date fields are retained, capped per record, plus Last_Updated for record/index timing provenance.
+   - full per-record/per-value/per-date expansion remains diagnostic/support behavior only.
+
+3. DB/WAL guardrails added:
+   - default guardrail is 5 GiB for either the SQLite DB or WAL.
+   - parser writes heartbeat/status information with parsed item counts, persisted KV/date counts, DB size, and WAL size.
+   - if the guardrail is hit, the run writes run_status/last_stage and aborts instead of continuing for hours into a tens-of-GB DB.
+   - CLI options added: --db-size-guardrail-gb N and --disable-db-size-guardrail.
+
+4. WAL growth reduction:
+   - native parser now commits/checkpoints during long native parse loops instead of waiting for a very large store to finish.
+   - WAL checkpoint/truncate is attempted after parser heartbeats and store completion.
+
+5. Diagnostic full-native mode is safer:
+   - --diagnostic-full-native-db remains the explicit flag for full raw native key/value persistence.
+   - when full-native diagnostics are used without an explicit --max-native-records value, the parser defaults to a bounded 10,000-record sample.
+
+6. Normal exports reduced:
+   - usage_event_detail_attributed_raw.csv is now support/diagnostic export only.
+   - artifact_dates_wide.csv remains support/diagnostic export only.
+   - normal investigator mode remains Spotlight-first and retains compact high-value review/summary outputs.
+
+Validation performed in this environment
+- SHA256 values of the uploaded V0_9_17 and V0_9_16 stopped-state ZIPs matched the uploaded hash files.
+- Linux CMake configuration succeeded.
+- native_storedb_parser.cpp, sqlite_exporter.cpp, and dependent core files compiled before app_runner.cpp compilation exceeded the environment time limit.
+- The environment timed out while compiling the large app_runner.cpp translation unit; no app_runner.cpp compiler error was observed before timeout.
+- Full Windows MSVC validation must be performed by running scripts\Build-V0_9_20.ps1 or build_windows_msvc.bat on the target Windows build host.
+
+Expected test result
+- Reused-cache iOS run should complete or safely stop at the guardrail without DB/WAL exploding into tens of GB.
+- raw_records may remain around 344,445.
+- raw_key_values and raw_date_candidates should be dramatically smaller than V0_9_17.
+- ios_string_probe_values and other support/raw diagnostic exports should not be emitted in normal investigator mode unless diagnostic/support export profile is selected.

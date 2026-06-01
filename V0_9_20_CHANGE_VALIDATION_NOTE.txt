@@ -1,0 +1,33 @@
+Vestigant Spotlight v0.9.20 change/validation note
+
+Trigger for this build
+- V0_9_19 successfully compiled, but the reused-cache iOS run stalled after normal DB growth was controlled.
+- The thin upload showed the last active stage as export_query_execute ios_spotlight_record_review.csv.
+- ios_spotlight_record_review.csv contained only the header and no manifest, indicating the exporter opened the file and then stalled while executing/fetching the review query.
+- This points to a long-running export/view query rather than the earlier DB/WAL explosion.
+
+Primary fixes
+- Reworked vw_ios_spotlight_record_review so it no longer joins full FFS/app-residency views.
+- Collapsed date provenance to one date row per raw_record_id for the record-review view, preventing record splitting in that view.
+- Added vw_ios_spotlight_object_inode_summary to evaluate whether multiple Spotlight raw records share the same inode/object/store identifier and whether future review should become more object-centric.
+- Added ios_spotlight_object_inode_summary.csv to normal investigator exports.
+- Moved full FFS/app correlation detail exports to support/diagnostic mode by default where they can be expensive:
+  - ios_spotlight_missing_from_ffs_candidates.csv
+  - ios_spotlight_to_ffs_object_links.csv
+  - ios_spotlight_to_app_db_record_links.csv
+  - ios_spotlight_high_value_timeline.csv
+  - ios_spotlight_file_reference_review.csv
+  - ios_spotlight_entity_review.csv
+- Kept compact Spotlight-first exports in normal mode, including investigative items with dates, date provenance, URL/account/contact reviews, object identity, field/text summaries, parser coverage, and object/inode summary.
+- Added SQLite export progress heartbeat using sqlite3_progress_handler so long-running SQL execution emits run_status/run_progress updates before the first output row is written.
+- Fixed the V0_9_20 state collector to avoid the non-fatal Resolve-Path/Compress-Archive warning seen in V0_9_19 by using System.IO.Compression.ZipFile with a temporary output ZIP.
+
+GUI updates
+- Added iOS - Spotlight Object/Inode Summary view.
+- Updated iOS - Missing From FFS Candidates column registry to include spotlight_text_context_sample and spotlight_text_context_status.
+- Kept Missing From FFS in the GUI so investigators can review same-record Spotlight text context without relying on full CSV export.
+
+Validation
+- Linux CMake configured and compiled modified case_db.cpp and sqlite_exporter.cpp successfully.
+- The environment timed out while compiling the very large app_runner.cpp translation unit, consistent with prior versions. No new compiler error appeared before timeout.
+- Full MSVC build must be run on the Windows host.

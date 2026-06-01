@@ -1,0 +1,46 @@
+Vestigant Spotlight V0_9_4 change and validation note
+
+Baseline reviewed: V0_9_2 thin iOS GUI upload.
+
+V0_9_2 review findings:
+- run_status reached complete_success.
+- 5 valid iOS CoreSpotlight stores were processed.
+- 37,719 raw Spotlight records were parsed.
+- 407,826 iOS FFS inventory rows were imported.
+- 2,898 iOS app database inventory rows were imported.
+- 32 extracted app databases were opened.
+- 109,592 parsed app database records were produced.
+- 550 communications review records were produced, all from Phone/FaceTime Call History in this dataset.
+- 228 Spotlight communication candidates were produced.
+- 51 core keychain/keybag material rows and 739 keychain support-reference rows were produced.
+- SMS.db remains present but live message/chat/attachment/handle tables were empty in this dataset.
+- WhatsApp database status correctly reports WHATSAPP_DB_NOT_FOUND in this dataset.
+
+V0_9_4 implemented changes:
+- Added iOS Contact Identity Review and Summary views/exports.
+- Added iOS Web History Review and Summary views/exports.
+- Added iOS Calendar Review and Summary views/exports.
+- Added iOS Unified Keyword Search Surface view/export combining Spotlight text, app records, high-value FFS paths, and app database inventory.
+- Added the new views to the iOS Investigation tab and hover tooltip/help text.
+- Added export manifest/review-index entries for the new views.
+- Added the new CSVs to the thin-upload required export list.
+- Updated user documentation, release notes, validation notes, and roadmap material.
+
+Validation performed in this environment:
+- Source version strings updated to 0.9.4.
+- Linux CMake/core build attempted after static SQL/code edits.
+- Static raw-string size scan performed to reduce MSVC C2026 risk.
+- Package and SHA256 files generated.
+
+Validation still required in Windows:
+- MSVC build.
+- VestigantSpotlightCli --version.
+- VestigantSpotlightTests.
+- Win32 GUI launch.
+- iOS ZIP GUI run using the standard test FFS ZIP.
+- Thin upload package creation and review.
+
+Known limits:
+- WhatsApp parser remains unvalidated against populated iOS WhatsApp databases because the current test dataset does not include ChatStorage.sqlite, ContactsV2.sqlite, or WhatsApp CallHistory.sqlite.
+- SMS parser remains unvalidated against populated SMS message/chat/attachment rows because SMS.db live tables are empty in the current dataset.
+- Unified keyword search is a review/pivot surface, not an evidentiary conclusion. All rows preserve source and interpretation context.

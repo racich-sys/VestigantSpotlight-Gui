@@ -1,0 +1,47 @@
+Vestigant Spotlight V0_9_1 change / validation note
+
+Baseline reviewed:
+- Source baseline: V0_9_0.
+- Runtime thin bundle reviewed: Upload_Thin_iOS_GUI_V0_9_0_Check.zip.
+- The V0_9_0 run reached complete_success.
+- V0_9_0 iOS case summary showed 5 valid stores, 37,719 raw records, 15,104 raw key/value rows, 407,826 FFS inventory rows, 2,899 app database inventory rows, 28 opened extracted databases, and 109,592 parsed app records.
+- V0_9_0 Apple Messages/SMS.db was present, but live message/chat/attachment/handle rows were empty in the uploaded dataset, so SMS parsed records were expectedly 0.
+- The uploaded full ios_ffs_file_inventory.csv showed keychain-related files under /private/var/keychains and only one WhatsApp-name hit: an unrelated Amtrak SVG named logo-whatsapp.svg. V0_9_1 tightens WhatsApp DB classification so such non-database web assets are not classified as WhatsApp app databases.
+
+Implemented in V0_9_1:
+1. Added schema-aware iOS WhatsApp parser hooks using the uploaded WhatsApp/iLEAPP reference material as the local trusted schema reference.
+   - Targets WhatsApp iOS table families including ZWAMESSAGE, ZWAMEDIAITEM, ZWACHATSESSION, ZWAADDRESSBOOKCONTACT, ZWAPROFILEPUSHNAME, ZWAGROUPMEMBER, and call-related ZWA* call tables when present.
+   - Parses WhatsApp messages, media/attachments, chats, contacts/members, and calls into ios_app_parsed_records with source DB/table/row provenance.
+   - Preserves cautious interpretation. Parsed rows are app database records; absence of a parsed row is not deletion proof.
+2. Added WhatsApp exports and GUI views:
+   - ios_whatsapp_database_status.csv / iOS - WhatsApp Database Status
+   - ios_whatsapp_parsed_records.csv / iOS - WhatsApp Parsed Records
+   - ios_whatsapp_parsed_summary.csv / iOS - WhatsApp Parsed Summary
+3. Added keychain/keybag inventory context:
+   - ios_keychain_material_inventory.csv / iOS - Keychain Material Inventory
+   - Inventory-only; does not claim WhatsApp decryption or key extraction.
+4. Improved iOS app database discovery/classification:
+   - ChatStorage.sqlite, ContactsV2.sqlite, WhatsApp shared-group SQLite paths, and WhatsApp CallHistory.sqlite are identified for WhatsApp parsing when present.
+   - keychain-2.db and keychain-related DBs are classified separately as KEYCHAIN.
+   - Non-database files with 'whatsapp' in the filename/path are no longer treated as WhatsApp databases.
+5. Updated GUI view hover help for the new WhatsApp and keychain views.
+6. Updated release/roadmap/manual/quick-start/troubleshooting notes and scripts for V0_9_1.
+
+Validation performed here:
+- Linux CMake core build completed successfully.
+- Linux CLI/test targets linked successfully.
+- Self-test passed: ./build-linux/VestigantSpotlightTests ./build-linux/selftest_out
+- CLI version returned: Vestigant Spotlight v0.9.1
+- Static raw-string scan found no oversized raw string literals approaching the prior MSVC C2026 risk range.
+
+Validation not performed here:
+- Windows/MSVC build was not run in this Linux container.
+- Win32 GUI binary was not compiled or launched here.
+- Runtime WhatsApp parsing could not be validated against the uploaded V0_9_0 dataset because the FFS inventory did not contain actual WhatsApp ChatStorage.sqlite / ContactsV2.sqlite / WhatsApp CallHistory.sqlite files.
+
+Expected V0_9_1 runtime indicators on the Windows test workstation:
+- VestigantSpotlightCli.exe --version reports Vestigant Spotlight v0.9.1.
+- GUI iOS ingest reaches complete_success.
+- The unrelated Amtrak logo-whatsapp.svg should remain in FFS inventory but should not appear as a WHATSAPP database candidate.
+- ios_keychain_material_inventory.csv should contain keychain/keybag-related rows if those paths are present in the FFS ZIP.
+- If a future FFS contains WhatsApp ChatStorage.sqlite / ContactsV2.sqlite / WhatsApp CallHistory.sqlite, the WhatsApp Database Status and Parsed Records exports/views should populate based on supported ZWA* tables.

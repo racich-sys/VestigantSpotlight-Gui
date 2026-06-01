@@ -1,0 +1,61 @@
+# Build outputs
+build-msvc/
+build/
+out/
+bin/
+obj/
+.vs/
+.vscode/
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Generated packages / uploads
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.sha256
+Upload/
+Upload_*/
+*_Check/
+*_QuickDiagnostics*/
+*_MinimalEvidence*/
+
+# Case/evidence outputs
+SpotlightCase/
+EvidenceStaging/
+ExtractedSpotlight/
+exports/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.wal
+*.shm
+
+# Forensic evidence / images
+*.aff4
+*.aff
+*.E01
+*.Ex01
+*.dd
+*.img
+*.raw
+
+# Runtime status/logs
+*.log
+run_status.txt
+last_stage.txt
+run_progress.tsv
+last_progress.tsv
+
+# OS/editor
+Thumbs.db
+.DS_Store
