@@ -1,6 +1,6 @@
 # Vestigant Spotlight Help
 
-Current version: 0.9.30
+Current version: 0.9.31
 
 Start here:
 

@@ -1,6 +1,6 @@
 # Vestigant Spotlight User Manual
 
-Version: 0.9.30
+Version: 0.9.31
 
 ## Purpose
 
@@ -21,22 +21,22 @@ Normal iOS runs are intentionally compact. They parse all available native recor
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_30.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_30" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_30.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_30\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_30_build.log"
-& "T:\VestigantSpotlightInv_V0_9_30\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_30\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_30\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_31.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_31" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_31.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_31\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_31_build.log"
+& "T:\VestigantSpotlightInv_V0_9_31\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_31\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_31\build-msvc\selftest_out"
 ```
 
 ## iOS CoreSpotlight reuse-cache run
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_30\scripts\Run-V0_9_30-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_31\scripts\Run-V0_9_31-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_30_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_30_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_31_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_31_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources for development iterations. For final forensic reporting, run without skip-container-hash or run an explicit container/source hash workflow and preserve the hash with the case.
@@ -46,7 +46,7 @@ The reuse-cache script passes `--skip-container-hash` by default to avoid reread
 Start with these views in the iOS Investigation tab:
 
 - `iOS - Spotlight Communication Summary`: counts by communication class, bundle, domain, and content type.
-- `iOS - Spotlight Message Body Review`: record-level message, mail, call, and chat context. V0.9.30 extracts message/mail body, subject, snippet, and thread/contact text from compact same-record Spotlight context.
+- `iOS - Spotlight Message Body Review`: record-level message, mail, call, and chat context. V0.9.31 extracts message/mail body, subject, snippet, and thread/contact text from compact same-record Spotlight context.
 - `iOS - User-Focus Message Body Review`: filters out conversation placeholders and likely noise while preserving the full review view elsewhere.
 - `iOS - Message Contact/Thread Summary`: groups message/domain handle, suggested contact, and thread/title context.
 - `iOS - Spotlight Message Media Review`: media/photo/video records saved from or associated with messages.
@@ -88,6 +88,6 @@ Use support/diagnostic modes only when a focused parser or review question requi
 
 ## Troubleshooting
 
-If the run stalls or stops writing, use the matching `Collect-V0_9_30-DBBloat-State.ps1` script to collect status, logs, DB/WAL sizes, and recent outputs before stopping or rerunning. If Windows Defender is the only process reading the original large ZIP, collect state first and then consider controlled exclusions on the test system only.
+If the run stalls or stops writing, use the matching `Collect-V0_9_31-DBBloat-State.ps1` script to collect status, logs, DB/WAL sizes, and recent outputs before stopping or rerunning. If Windows Defender is the only process reading the original large ZIP, collect state first and then consider controlled exclusions on the test system only.
 
 If MSVC reports `C2026: string too big`, the likely source is an oversized SQL raw-string literal. The current validation check should keep large SQL fragments below conservative MSVC-safe sizes, but any new large SQL block should be split or moved into the database schema layer.

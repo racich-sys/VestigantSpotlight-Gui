@@ -1,8 +1,12 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.30
+Current version: 0.9.31
 
-## V0_9_30
+## V0_9_31
+
+V0_9_31 continues the iOS investigator workflow after V0_9_30 completed successfully. It reduces oversized contact/thread summary output by grouping handles into review buckets, adds bounded contact/thread detail sampling, adds a message/body focus summary, adds parser diagnostic severity and recommended-action guidance, and introduces a Plaso/L2T-compatible timeline sample export.
+
+## V0_9_31
 
 - Reviewed V0_9_29 build/thin output: Windows/MSVC build completed, GUI linked, self-test passed, and the iOS reuse-cache run reached `complete_success` with stable compact counts.
 - Consolidated user help into `docs/CONSOLIDATED_USER_MANUAL.md` and version history into this document.

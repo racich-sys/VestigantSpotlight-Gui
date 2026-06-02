@@ -5020,7 +5020,7 @@ WHERE communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
     }));
 
 
-    // V0_9_30: defensibility and investigator-review views. Keep these in CaseDatabase so
+    // V0_9_31: defensibility and investigator-review views. Keep these in CaseDatabase so
     // the GUI consumes schema owned by the database layer instead of duplicating SQL.
     exec(joinSql({R"VSQL29(
 DROP VIEW IF EXISTS vw_case_provenance_summary;
@@ -5126,7 +5126,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
        END AS noise_hint,
        investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
        spotlight_text_context_sample,validation_locator,
-       'V0_9_30 extracts message body/subject, conversation title, and suggested contact from compact Spotlight text context. This is Spotlight index evidence; corroborate against Messages/Mail/app DB records when support parsing is enabled.' AS interpretation_note
+       'V0_9_31 extracts message body/subject, conversation title, and suggested contact from compact Spotlight text context. This is Spotlight index evidence; corroborate against Messages/Mail/app DB records when support parsing is enabled.' AS interpretation_note
 FROM extracted;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_user_focus_message_review;
@@ -5211,7 +5211,7 @@ FROM vw_ios_spotlight_normalized_timeline
 GROUP BY date_anomaly_flag,event_type,review_category;
 )VSQL29"}));
 
-    // V0_9_30: documentation/consolidation support plus more useful compact message/body extraction
+    // V0_9_31: documentation/consolidation support plus more useful compact message/body extraction
     // and visible parser diagnostics detail. These override V0_9_29 views without changing raw persistence.
     exec(joinSql({R"VSQL30(
 DROP VIEW IF EXISTS vw_ios_spotlight_message_body_review;
@@ -5273,7 +5273,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
        END AS noise_hint,
        investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
        spotlight_text_context_sample,validation_locator,
-       'V0_9_30 extracts message/mail body, subject, snippet, and thread/contact context from compact same-record Spotlight text. This is Spotlight index evidence; corroborate against app DB/FFS where available.' AS interpretation_note
+       'V0_9_31 extracts message/mail body, subject, snippet, and thread/contact context from compact same-record Spotlight text. This is Spotlight index evidence; corroborate against app DB/FFS where available.' AS interpretation_note
 FROM extracted;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_user_focus_message_review;
@@ -5338,6 +5338,126 @@ SELECT 'partial_decode_error' AS diagnostic_source,
 FROM raw_key_values
 WHERE field_name='__decode_error';
 )VSQL30"}));
+
+
+    // V0_9_31: compact review-quality refinements. Keep normal investigator exports small
+    // while adding defensible summaries and interoperability surfaces.
+    exec(joinSql({R"VSQL31(
+DROP VIEW IF EXISTS vw_ios_spotlight_message_contact_summary;
+CREATE VIEW vw_ios_spotlight_message_contact_summary AS
+WITH classified AS (
+  SELECT *,
+         CASE
+           WHEN message_domain_handle_or_chat GLOB '[0-9][0-9][0-9][0-9][0-9]' OR message_domain_handle_or_chat GLOB '[0-9][0-9][0-9][0-9]' THEN 'SHORT_CODE_OR_MARKETING_HANDLE'
+           WHEN message_domain_handle_or_chat LIKE '+%' OR message_domain_handle_or_chat LIKE 'SMS;+;%' OR message_domain_handle_or_chat LIKE 'iMessage;%;+%' THEN 'PHONE_NUMBER_OR_HANDLE'
+           WHEN LOWER(message_domain_handle_or_chat) LIKE '%chat%' OR domain_identifier='chatDomain' THEN 'CHAT_OR_THREAD_IDENTIFIER'
+           WHEN message_domain_handle_or_chat LIKE '%@%' THEN 'EMAIL_OR_ACCOUNT_HANDLE'
+           WHEN COALESCE(message_domain_handle_or_chat,'')='' THEN 'NO_HANDLE_IN_COMPACT_CONTEXT'
+           ELSE 'OTHER_HANDLE_OR_DOMAIN'
+         END AS handle_bucket
+  FROM vw_ios_spotlight_message_body_review
+), summarized AS (
+  SELECT communication_context_type,bundle_id,content_type,body_review_bucket,noise_hint,handle_bucket,
+         COUNT(*) AS spotlight_record_count,
+         COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+         SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_message_text,
+         SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_thread_or_snippet_text,
+         COUNT(DISTINCT NULLIF(message_domain_handle_or_chat,'')) AS distinct_handle_or_thread_count,
+         MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+         MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+         substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(message_domain_handle_or_chat,''))),1,1200) AS min_message_sample,
+         substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(message_domain_handle_or_chat,''))),1,1200) AS max_message_sample
+  FROM classified
+  GROUP BY communication_context_type,bundle_id,content_type,body_review_bucket,noise_hint,handle_bucket
+)
+SELECT *,
+       'V0_9_31 compact contact/thread summary. This intentionally groups handles into buckets to avoid very large per-thread exports; use the detail sample or GUI record views for examples.' AS interpretation_note
+FROM summarized;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_message_contact_thread_detail_sample;
+CREATE VIEW vw_ios_spotlight_message_contact_thread_detail_sample AS
+SELECT communication_context_type,bundle_id,domain_identifier,message_domain_handle_or_chat,suggested_contact_name,conversation_or_thread_title,body_review_bucket,noise_hint,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_message_text,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(NULLIF(extracted_message_text_or_subject,'')),1,1200) AS min_message_sample,
+       substr(MAX(NULLIF(extracted_message_text_or_subject,'')),1,1200) AS max_message_sample,
+       'Bounded top contact/thread detail sample from Spotlight message body review. Counts are index rows, not live-app DB rows.' AS interpretation_note
+FROM vw_ios_spotlight_message_body_review
+GROUP BY communication_context_type,bundle_id,domain_identifier,message_domain_handle_or_chat,suggested_contact_name,conversation_or_thread_title,body_review_bucket,noise_hint
+ORDER BY CASE WHEN noise_hint='USER_REVIEW_CANDIDATE' THEN 0 ELSE 1 END, rows_with_extracted_message_text DESC, spotlight_record_count DESC, latest_spotlight_date_utc DESC
+LIMIT 5000;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_message_body_focus_summary;
+CREATE VIEW vw_ios_spotlight_message_body_focus_summary AS
+SELECT noise_hint,body_review_bucket,communication_context_type,bundle_id,content_type,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_text,
+       SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_supporting_text,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS min_review_sample,
+       substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS max_review_sample,
+       'Compact summary of message/body review buckets. Use this first to triage user-facing message evidence before opening row-level samples.' AS interpretation_note
+FROM vw_ios_spotlight_message_body_review
+GROUP BY noise_hint,body_review_bucket,communication_context_type,bundle_id,content_type;
+)VSQL31", R"VSQL31(
+DROP VIEW IF EXISTS vw_parser_diagnostics_action_summary;
+CREATE VIEW vw_parser_diagnostics_action_summary AS
+SELECT diagnostic_source,diagnostic_category,diagnostic_count,first_seen_utc,last_seen_utc,sample_min_message,sample_max_message,
+       CASE
+         WHEN diagnostic_source='native_decode_attempts' AND diagnostic_category='SUCCESS' THEN 'INFO_SUCCESS'
+         WHEN diagnostic_source='partial_decode_error' THEN 'PARSER_GAP_REVIEW'
+         WHEN LOWER(sample_min_message || ' ' || sample_max_message) LIKE '%inode id exceeds int64 range%' THEN 'HIGH_VOLUME_NATIVE_ID_RANGE_GAP'
+         WHEN diagnostic_count > 10000 THEN 'HIGH_VOLUME_PARSER_DIAGNOSTIC'
+         WHEN diagnostic_count > 0 THEN 'PARSER_DIAGNOSTIC_REVIEW'
+         ELSE 'INFO'
+       END AS diagnostic_severity,
+       CASE
+         WHEN diagnostic_source='native_decode_attempts' AND diagnostic_category='SUCCESS' THEN 'No action required for successful store decode attempts.'
+         WHEN LOWER(sample_min_message || ' ' || sample_max_message) LIKE '%inode id exceeds int64 range%' THEN 'Prioritize native V2 identifier decoding review. These rows likely represent unsupported/overflow identifier forms and can mask useful Spotlight records.'
+         WHEN diagnostic_source='partial_decode_error' THEN 'Use bounded diagnostic native DB mode on representative records to improve property/category decoding.'
+         ELSE 'Review representative rows in parser_diagnostics_detail_sample before treating absence of parsed values as absence of evidence.'
+       END AS recommended_action,
+       interpretation_note
+FROM vw_parser_diagnostics_summary;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_plaso_l2tcsv_timeline_sample;
+CREATE VIEW vw_ios_spotlight_plaso_l2tcsv_timeline_sample AS
+SELECT substr(event_time_utc,1,10) AS date,
+       substr(event_time_utc,12,8) AS time,
+       'UTC' AS timezone,
+       CASE WHEN event_type LIKE '%Created%' THEN '..CB' ELSE 'M...' END AS MACB,
+       'Spotlight' AS source,
+       'iOS CoreSpotlight' AS sourcetype,
+       event_type AS type,
+       '' AS user,
+       '' AS host,
+       substr(event_summary,1,80) AS short,
+       event_summary || ' | category=' || COALESCE(review_category,'') || ' | field=' || COALESCE(source_field,'') || ' | record=' || COALESCE(raw_record_id,'') AS desc,
+       '2' AS version,
+       COALESCE(contact_or_thread,'') AS filename,
+       COALESCE(spotlight_inode_or_object_id,'') AS inode,
+       'date_anomaly=' || COALESCE(date_anomaly_flag,'') || '; locator=' || COALESCE(validation_locator,'') AS notes,
+       'vestigant_spotlight_ios_normalized_timeline' AS format,
+       'bundle_id=' || COALESCE(bundle_id,'') || '; content_type=' || COALESCE(content_type,'') || '; store_guid=' || COALESCE(store_guid,'') AS extra
+FROM vw_ios_spotlight_normalized_timeline
+WHERE COALESCE(event_time_utc,'')<>''
+ORDER BY event_time_utc DESC, raw_record_id DESC
+LIMIT 5000;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_case_quality_dashboard;
+CREATE VIEW vw_ios_spotlight_case_quality_dashboard AS
+SELECT 'case_summary' AS quality_area, 'raw_records' AS metric, CAST(COUNT(*) AS TEXT) AS value, 'Number of compact Spotlight/CoreSpotlight raw records in the case database.' AS interpretation_note FROM raw_records
+UNION ALL SELECT 'case_summary','compact_raw_key_values',CAST(COUNT(*) AS TEXT),'Compact persisted key/value rows; not a full raw-property dump in normal iOS mode.' FROM raw_key_values
+UNION ALL SELECT 'case_summary','compact_date_candidates',CAST(COUNT(*) AS TEXT),'Compact persisted date candidates used for timeline/date provenance.' FROM raw_date_candidates
+UNION ALL SELECT 'diagnostics','parser_diagnostic_rows',CAST(COALESCE(SUM(diagnostic_count),0) AS TEXT),'Visible parser failures/partial decode diagnostics. Review parser_diagnostics_action_summary for priority.' FROM vw_parser_diagnostics_summary WHERE diagnostic_source<>'native_decode_attempts'
+UNION ALL SELECT 'investigator_review','user_focus_message_rows',CAST(COUNT(*) AS TEXT),'Rows in user-focus Spotlight message review with compact extracted message/thread text.' FROM vw_ios_spotlight_user_focus_message_review
+UNION ALL SELECT 'investigator_review','missing_from_ffs_candidates',CAST(COUNT(*) AS TEXT),'Spotlight path/reference candidates not matched in available FFS lookup.' FROM vw_ios_spotlight_missing_from_ffs_candidates;
+)VSQL31"}));
 
 }
 

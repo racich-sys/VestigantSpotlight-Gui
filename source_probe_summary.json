@@ -1,0 +1,17 @@
+{
+  "generated_utc": "2026-06-02T03:20:08Z",
+  "app_version": "0.9.31",
+  "source_id": "d01045cf686b4431",
+  "input_path": "F:/0446_0001-IT006/00008130-001A75AA1A21001C-2025-12-03-T224939/00008130-001A75AA1A21001C_files_full.zip",
+  "input_type": "ZIP_SPOTLIGHT_OR_FILESYSTEM_CONTAINER",
+  "file_size_bytes": 275720574292,
+  "bytes_scanned": 67108864,
+  "scan_truncated": true,
+  "signature_count": 2,
+  "filesystem_hints": "",
+  "spotlight_hints": "",
+  "partition_scheme": "NONE_DETECTED",
+  "mbr_signature_found": false,
+  "gpt_header_found": false,
+  "partition_entry_count": 0
+}
