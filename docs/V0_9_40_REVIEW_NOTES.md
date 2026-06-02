@@ -1,4 +1,4 @@
-# V0_9_40 Review Notes
+# V0_9_42 Review Notes
 
 ## Inputs reviewed
 
@@ -24,9 +24,9 @@ Observed V0_9_39 case metrics:
 
 No DB/WAL guardrail failure, export stall, or Windows build failure recurred in the V0_9_39 thin upload.
 
-## V0_9_40 implementation focus
+## V0_9_42 implementation focus
 
-V0_9_40 shifts from reuse-cache parser stability to V1-readiness performance work:
+V0_9_42 shifts from reuse-cache parser stability to V1-readiness performance work:
 
 1. Faster CSV export path using direct SQLite text pointers, on-the-fly CSV escaping, and a 1 MiB output stream buffer.
 2. Faster Windows evidence hashing reads by increasing the Win32 sequential-read buffer to 4 MiB.

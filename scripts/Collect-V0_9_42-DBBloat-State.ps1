@@ -1,16 +1,16 @@
 param(
-  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_40_ReusedCache",
-  [string]$OutZip = "D:\Downloads\Upload_State_V0_9_40_DB_Bloat_Stopped_Check.zip",
+  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache",
+  [string]$OutZip = "D:\Downloads\Upload_State_V0_9_42_DB_Bloat_Stopped_Check.zip",
   [switch]$StopVestigant
 )
 
 $ErrorActionPreference = "Continue"
-$work = Join-Path $env:TEMP ("Vestigant_V0_9_40_State_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+$work = Join-Path $env:TEMP ("Vestigant_V0_9_42_State_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $summary = Join-Path $work "00_summary.txt"
 @(
-  "Vestigant Spotlight V0_9_40 DB/WAL/no-writes state collection",
+  "Vestigant Spotlight V0_9_42 DB/WAL/no-writes state collection",
   "Timestamp: $(Get-Date -Format o)",
   "CaseRoot: $CaseRoot",
   "OutZip: $OutZip",

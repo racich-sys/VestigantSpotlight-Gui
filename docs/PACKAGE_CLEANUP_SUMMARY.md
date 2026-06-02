@@ -1,6 +1,6 @@
 # Package Cleanup / Documentation Consolidation Summary
 
-Current version: V0_9_40
+Current version: V0_9_42
 
 V0_9_34 removed stale scattered production-package fragments.  V0_9_37 corrects the resulting loss of historical detail by restoring historical V0_9 information into `docs/CONSOLIDATED_VERSION_HISTORY.md` rather than reintroducing many separate old note files.
 

@@ -1,5 +1,5 @@
 {
-  "version": "0.9.40",
+  "version": "0.9.42",
   "removed": [
     "Spotlight_V0_9_2_review_and_next_test.txt",
     "V0_9_11_1_CHANGE_VALIDATION_NOTE.txt",
@@ -169,6 +169,6 @@
     "scripts/Run-V0_9_33-iOS-ReuseCache-CLI-AndZip.ps1",
     "scripts/Run-V0_9_33-iOS-ReuseCache-GUI-Test.txt"
   ],
-  "current_version": "V0_9_40",
+  "current_version": "V0_9_42",
   "v0_9_35_note": "Historical version details restored into docs/CONSOLIDATED_VERSION_HISTORY.md; old separate fragments intentionally not reintroduced."
 }

@@ -82,7 +82,7 @@ void CaseDatabase::close() {
         sqlite3_wal_checkpoint_v2(db_, nullptr, SQLITE_CHECKPOINT_FULL, nullptr, nullptr);
         int rc = sqlite3_close(db_);
         if (rc == SQLITE_BUSY) {
-            // V0.9.40: prefer a deferred close over leaving callers with a live handle
+            // V0.9.42: prefer a deferred close over leaving callers with a live handle
             // when a read-only GUI statement is still unwinding.  sqlite3_close_v2()
             // arranges final cleanup after outstanding statements are finalized.
             sqlite3_close_v2(db_);

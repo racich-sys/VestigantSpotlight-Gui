@@ -1,6 +1,6 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.40
+Current version: 0.9.42
 
 ## V0_9_39
 
@@ -51,7 +51,7 @@ Windows/MSVC build validation remains required because only documentation/versio
 
 V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did not show recovered Spotlight text/content.  It adds row-level Missing From FFS text detail and text coverage exports, exposes the same views in the GUI, increases compact same-record text context retention for reference-bearing iOS records, and documents when text is unavailable or suppressed by compact mode.
 
-## V0_9_40
+## V0_9_42
 
 - Reviewed V0_9_39 build/thin results; Windows build and reuse-cache run completed successfully.
 - Optimized CSV export writing to reduce string allocation and small-write overhead.
@@ -59,3 +59,7 @@ V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did no
 - Improved generated 7-Zip FFS inventory parsing for future actual-ZIP testing.
 - Added a fresh-ZIP Stage B run script.
 - Preserved compact iOS Spotlight normal mode and current investigator views.
+
+## V0_9_42 - Native C++ 7-Zip inventory parser
+
+V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.

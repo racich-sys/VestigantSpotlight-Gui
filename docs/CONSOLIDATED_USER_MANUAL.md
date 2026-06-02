@@ -1,6 +1,6 @@
 # Vestigant Spotlight Consolidated User Manual
 
-Version: 0.9.40
+Version: 0.9.42
 
 ## Purpose
 
@@ -25,12 +25,12 @@ V0_9_37 restored historical version details from the uploaded V0_9_3 documentati
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_40.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_40" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_40.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_40\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_40_build.log"
-& "T:\VestigantSpotlightInv_V0_9_40\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_40\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_40\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_42.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_42" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_42.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_42\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_42_build.log"
+& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_42\build-msvc\selftest_out"
 ```
 
 ## Standard iOS reuse-cache test
@@ -38,11 +38,11 @@ Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_40.zip -DestinationPath
 Use this for fast parser/view/export iteration while the large source ZIP and known-good cache remain unchanged.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_40\scripts\Run-V0_9_40-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_42\scripts\Run-V0_9_42-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_40_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_40_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources during development iterations.  For final forensic reporting, run an explicit container/source hash workflow and preserve the hash with the case.
@@ -105,11 +105,11 @@ Thin upload ZIPs are for review/debugging and may contain samples of large CSVs.
 
 ## Troubleshooting
 
-If a run stalls or stops writing, use the matching `Collect-V0_9_40-DBBloat-State.ps1` script before stopping/rerunning:
+If a run stalls or stops writing, use the matching `Collect-V0_9_42-DBBloat-State.ps1` script before stopping/rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_40\scripts\Collect-V0_9_40-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_40_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_42\scripts\Collect-V0_9_42-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
@@ -120,8 +120,8 @@ If MSVC reports `C2026: string too big`, the likely source is an oversized SQL r
 
 Upload:
 
-- `D:\Downloads\V0_9_40_build.log`
-- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_40_ReusedCache_Check.zip`
+- `D:\Downloads\V0_9_42_build.log`
+- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip`
 - stopped-state ZIP/SHA256 only if the run stalls, DB/WAL grows unexpectedly, or no writes occur for a long period.
 
 
@@ -135,10 +135,14 @@ V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did no
 
 
 
-## V0_9_40 - Missing From FFS text visibility guardrail fix
+## V0_9_42 - Missing From FFS text visibility guardrail fix
 
-V0_9_37 improved Missing From FFS text visibility but over-expanded same-record text context and hit the SQLite 5 GiB guardrail during native parse.  V0_9_40 keeps the text-detail views/exports but restores a bounded normal-mode text-context budget and fixes fatal guardrail propagation so runs stop cleanly if a guardrail is ever hit.
+V0_9_37 improved Missing From FFS text visibility but over-expanded same-record text context and hit the SQLite 5 GiB guardrail during native parse.  V0_9_42 keeps the text-detail views/exports but restores a bounded normal-mode text-context budget and fixes fatal guardrail propagation so runs stop cleanly if a guardrail is ever hit.
 
-### V0_9_40 V1-readiness testing note
+### V0_9_42 V1-readiness testing note
 
-After V0_9_40 is validated with the standard reuse-cache script, run the new Stage B fresh-ZIP script against the same large iOS FFS ZIP. This tests actual ZIP enumeration/staging and the new non-regex 7-Zip inventory path without changing the parser's compact normal-mode assumptions. If Stage B succeeds, later cycles can selectively test support/correlation materialization under guardrails.
+After V0_9_42 is validated with the standard reuse-cache script, run the new Stage B fresh-ZIP script against the same large iOS FFS ZIP. This tests actual ZIP enumeration/staging and the new non-regex 7-Zip inventory path without changing the parser's compact normal-mode assumptions. If Stage B succeeds, later cycles can selectively test support/correlation materialization under guardrails.
+
+## V0_9_42 - Native C++ 7-Zip inventory parser
+
+V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.

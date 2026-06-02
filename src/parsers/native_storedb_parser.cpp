@@ -1282,7 +1282,7 @@ bool shouldPersistDefaultIosKeyValue(const std::string& field, const std::string
     // V0.9.20: default iOS CoreSpotlight mode is reference-only for raw_key_values.
     // Display names, generic titles, scores, and date parts are decoded for derived
     // investigator rows but are not materialized one-row-per-property in SQLite.
-    constexpr std::size_t MaxDefaultKeyValuesPerIosRecord = 2; // keep two reference rows; value bytes are tightly bounded in V0.9.40
+    constexpr std::size_t MaxDefaultKeyValuesPerIosRecord = 2; // keep two reference rows; value bytes are tightly bounded in V0.9.42
     const auto f = lowerAscii(field);
     if (field == "__decode_error") return true;
     if (persistedForRecord >= MaxDefaultKeyValuesPerIosRecord) return false;

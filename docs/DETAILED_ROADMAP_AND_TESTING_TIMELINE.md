@@ -1,6 +1,6 @@
 # Vestigant Spotlight / Spotlight2 Detailed Roadmap and Testing Timeline
 
-Current version: 0.9.40
+Current version: 0.9.42
 Last reviewed input: V0_9_32 Windows build log and V0_9_32 iOS reuse-cache thin upload.
 
 ## Current status from V0_9_32
@@ -234,7 +234,7 @@ Useful but not immediate:
 
 Implement these after iOS Spotlight review and core AFF4/APFS workflows are stable.
 
-## V0_9_40
+## V0_9_42
 
 - Reviewed V0_9_38 build/thin output and external V1-readiness suggestions.
 - Fixed the V0_9_38 SQLite guardrail failure by tightening compact-mode native/text value storage.
@@ -243,6 +243,6 @@ Implement these after iOS Spotlight review and core AFF4/APFS workflows are stab
 - Added safer SQLite close behavior using `sqlite3_close_v2()` fallback/usage.
 - Kept broad SQL relocation, Win32 global encapsulation, and app_runner monolith refactors on the roadmap rather than destabilizing V1 readiness.
 
-### V0_9_40 V1-readiness testing note
+### V0_9_42 V1-readiness testing note
 
-After V0_9_40 is validated with the standard reuse-cache script, run the new Stage B fresh-ZIP script against the same large iOS FFS ZIP. This tests actual ZIP enumeration/staging and the new non-regex 7-Zip inventory path without changing the parser's compact normal-mode assumptions. If Stage B succeeds, later cycles can selectively test support/correlation materialization under guardrails.
+After V0_9_42 is validated with the standard reuse-cache script, run the new Stage B fresh-ZIP script against the same large iOS FFS ZIP. This tests actual ZIP enumeration/staging and the new non-regex 7-Zip inventory path without changing the parser's compact normal-mode assumptions. If Stage B succeeds, later cycles can selectively test support/correlation materialization under guardrails.

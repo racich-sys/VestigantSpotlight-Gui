@@ -1,6 +1,6 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.40
+Current version: 0.9.42
 
 This is the maintained version history for the production package.  It intentionally replaces many separate per-version note fragments with one chronological history, while preserving the important historical development process.  V0_9_37 restored and summarized historical details from the uploaded V0_9_3 documentation archive (`Docs.zip`) after V0_9_34 cleanup removed too much detail from the consolidated history.
 
@@ -42,13 +42,13 @@ V0_9_33 added a detailed roadmap and testing-source timeline.  V0_9_34 performed
 
 ## Chronological version history
 
-### V0_9_40
+### V0_9_42
 
 - Reviewed V0_9_39 build/thin results. Windows/MSVC build succeeded and the iOS reuse-cache run reached `complete_success` with stable compact-mode counts.
 - Added CSV export performance improvements using direct SQLite text pointers, streaming CSV escaping, and a 1 MiB output buffer to reduce allocations and small writes during large exports.
 - Increased Windows sequential SHA256 file-read buffer to 4 MiB and non-Windows hashing buffer to 1 MiB.
 - Improved the generated iOS FFS ZIP inventory workflow by dumping `7z l -slt` output to a raw text file and parsing it without an external-process PowerShell pipeline or per-line regex matching.
-- Added `Run-V0_9_40-iOS-FreshZip-CLI-AndZip.ps1` for Stage B actual-source ZIP testing after the reuse-cache path validates.
+- Added `Run-V0_9_42-iOS-FreshZip-CLI-AndZip.ps1` for Stage B actual-source ZIP testing after the reuse-cache path validates.
 - Preserved compact iOS Spotlight normal mode and deferred broad GUI/parser refactors that are not required for V1 usability.
 
 ### V0_9_39
@@ -331,3 +331,7 @@ The earlier V0_7 and V0_8 work established the macOS Store-V2 parser, AFF4/APFS 
 - resume AFF4/APFS image enumeration/extraction after iOS investigator views remain stable;
 - compare extracted Store-V2 folders against external reference extractions where available;
 - keep active-file comparison secondary to the main Spotlight/CoreSpotlight evidence review goal.
+
+## V0_9_42 - Native C++ 7-Zip inventory parser
+
+V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.

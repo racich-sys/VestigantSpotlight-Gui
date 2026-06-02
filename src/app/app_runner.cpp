@@ -2673,27 +2673,7 @@ function New-ZipEntryObject([string]$fullName,[string]$sizeValue,[string]$modifi
   }
   [pscustomobject]@{ FullName = $fullName; Name = $leaf; Length = $len; ModifiedUtc = $mtime }
 }
-function Get-ZipEntriesViaSevenZip([string]$SevenZipPath) {
-  $entries = New-Object System.Collections.ArrayList
-  $rec = @{}
-  function Flush-Rec {
-    if ($script:rec -and $script:rec.ContainsKey('Path')) {
-      $obj = New-ZipEntryObject ([string]$script:rec['Path']) ([string]$script:rec['Size']) ([string]$script:rec['Modified']) ([string]$script:rec['Folder'])
-      if ($null -ne $obj) { [void]$script:entries.Add($obj) }
-    }
-    $script:rec = @{}
-  }
-  $script:entries = $entries
-  $script:rec = @{}
-  & $SevenZipPath l $ZipPath -slt 2>$null | ForEach-Object {
-    $line = [string]$_
-    if ([string]::IsNullOrWhiteSpace($line)) { Flush-Rec; return }
-    $m = [regex]::Match($line, '^([^=]+?)\s=\s(.*)$')
-    if ($m.Success) { $script:rec[$m.Groups[1].Value.Trim()] = $m.Groups[2].Value }
-  }
-  Flush-Rec
-  return $entries
-}
+# V0.9.42: The old 7z pipeline/Regex inventory parser was removed. The active 7z inventory path dumps -slt output to raw text and parses the file line-by-line without an external process pipeline.
 function Get-ZipEntriesViaDotNet {
   $entries = New-Object System.Collections.ArrayList
   Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -2786,40 +2766,22 @@ function Write-InventoryRowsForEntry([object]$entry, [System.IO.StreamWriter]$ff
   }
 }
 function Write-FfsZipInventoryFromSevenZipStreaming([string]$SevenZipPath, [System.IO.StreamWriter]$ffsWriter, [System.IO.StreamWriter]$dbWriter) {
-  Write-ZipStageHeartbeat "starting fast 7z ZIP entry inventory dump"
-  Write-ZipInventoryProgress 'ffs_inventory_7z_dump_start' 0 'dumping 7z l -slt output to raw text for non-regex parser'
+  Write-ZipStageHeartbeat "starting fast 7z ZIP entry inventory dump for C++ parser"
+  Write-ZipInventoryProgress 'ffs_inventory_7z_dump_start' 0 'dumping 7z l -slt output to raw text; native C++ parser will build inventory CSVs after script returns'
   $script:zipInventoryFileCount = 0
   $script:zipInventoryDbCount = 0
-  $script:vstZipRec = @{}
   $rawListing = Join-Path (Split-Path $InventoryPath -Parent) "logs\ios_ffs_7z_inventory_raw_slt.txt"
   New-Item -ItemType Directory -Force -Path (Split-Path $rawListing -Parent) | Out-Null
   & $SevenZipPath l $ZipPath -slt > $rawListing 2>$null
   $sevenZipExit = $LASTEXITCODE
   Write-ZipInventoryProgress 'ffs_inventory_7z_dump_complete' 0 ("exit=" + $sevenZipExit + " raw=" + $rawListing)
   if ($sevenZipExit -ne 0 -and -not (Test-Path -LiteralPath $rawListing)) { throw "7z inventory listing failed exit=$sevenZipExit" }
-  function Flush-VestigantZipRec {
-    if ($script:vstZipRec -and $script:vstZipRec.ContainsKey('Path')) {
-      $obj = New-ZipEntryObject ([string]$script:vstZipRec['Path']) ([string]$script:vstZipRec['Size']) ([string]$script:vstZipRec['Modified']) ([string]$script:vstZipRec['Folder'])
-      if ($null -ne $obj) { Write-InventoryRowsForEntry $obj $ffsWriter $dbWriter }
-    }
-    $script:vstZipRec = @{}
-  }
-  foreach ($lineRaw in [System.IO.File]::ReadLines($rawListing)) {
-    $line = [string]$lineRaw
-    if ([string]::IsNullOrWhiteSpace($line)) { Flush-VestigantZipRec; continue }
-    $idx = $line.IndexOf(' = ')
-    if ($idx -gt 0) {
-      $key = $line.Substring(0, $idx).Trim()
-      $val = $line.Substring($idx + 3)
-      if ($key.Length -gt 0) { $script:vstZipRec[$key] = $val }
-    }
-  }
-  Flush-VestigantZipRec
   try { $ffsWriter.Flush(); $dbWriter.Flush() } catch {}
-  Write-ZipInventoryProgress 'ffs_inventory_streaming_complete' $script:zipInventoryFileCount ("db_rows=" + $script:zipInventoryDbCount)
-  Write-ZipStageHeartbeat ("completed fast 7z ZIP entry inventory entries=" + $script:zipInventoryFileCount + " db_rows=" + $script:zipInventoryDbCount)
-  "ios_ffs_inventory_file_rows=$script:zipInventoryFileCount" | Write-Output
-  "ios_app_database_inventory_rows=$script:zipInventoryDbCount" | Write-Output
+  Write-ZipInventoryProgress 'ffs_inventory_raw_ready_for_cpp' 0 ("raw=" + $rawListing)
+  Write-ZipStageHeartbeat ("7z ZIP entry inventory raw listing ready for native C++ parser: " + $rawListing)
+  "ios_ffs_inventory_raw_slt=$rawListing" | Write-Output
+  "ios_ffs_inventory_file_rows=0" | Write-Output
+  "ios_app_database_inventory_rows=0" | Write-Output
 }
 function Write-FfsZipInventory {
   New-Item -ItemType Directory -Force -Path (Split-Path $FfsInventoryPath -Parent) | Out-Null
@@ -3112,6 +3074,185 @@ std::size_t countCsvDataRows(const fs::path& csvPath) {
     return rows;
 }
 
+bool endsWithCpp(const std::string& value, const std::string& suffix) {
+    return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string normalizeIosPathFromZipEntryCpp(const std::string& fullName) {
+    if (trim(fullName).empty()) return "";
+    std::string p = fullName;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    const std::string low = toLower(p);
+    auto pos = low.find("/private/var/");
+    if (pos != std::string::npos) return toLower(p.substr(pos));
+    pos = low.find("/var/");
+    if (pos != std::string::npos) return "/private" + toLower(p.substr(pos));
+    while (!p.empty() && p.front() == '/') p.erase(p.begin());
+    return "/" + toLower(p);
+}
+
+std::string basenameFromZipEntryCpp(std::string p) {
+    std::replace(p.begin(), p.end(), '\\', '/');
+    while (!p.empty() && p.back() == '/') p.pop_back();
+    auto pos = p.find_last_of('/');
+    return pos == std::string::npos ? p : p.substr(pos + 1);
+}
+
+std::string extensionFromNameCpp(const std::string& name) {
+    const auto pos = name.find_last_of('.');
+    if (pos == std::string::npos || pos + 1 >= name.size()) return "";
+    return toLower(name.substr(pos));
+}
+
+std::string protectionClassHintCpp(const std::string& path) {
+    const std::string p = toLower(path);
+    if (p.find("nsfileprotectioncompleteuntilfirstuserauthentication") != std::string::npos) return "NSFileProtectionCompleteUntilFirstUserAuthentication";
+    if (p.find("nsfileprotectioncompleteunlessopen") != std::string::npos) return "NSFileProtectionCompleteUnlessOpen";
+    if (p.find("nsfileprotectioncompletewhenuserinactive") != std::string::npos) return "NSFileProtectionCompleteWhenUserInactive";
+    if (p.find("nsfileprotectioncomplete") != std::string::npos) return "NSFileProtectionComplete";
+    if (p.find("/priority/") != std::string::npos) return "Priority";
+    return "Unknown";
+}
+
+std::string domainHintCpp(const std::string& path) {
+    const std::string p = toLower(path);
+    if (p.find("/library/sms/") != std::string::npos || endsWithCpp(p, "/sms.db")) return "Messages";
+    if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos) return "Keychain";
+    if (p.find("callhistory") != std::string::npos) return "CallHistory";
+    if (p.find("whatsapp") != std::string::npos) return "WhatsApp";
+    if (p.find("signal") != std::string::npos) return "Signal";
+    if (p.find("telegram") != std::string::npos) return "Telegram";
+    if (p.find("safari") != std::string::npos) return "Safari";
+    if (p.find("chrome") != std::string::npos || p.find("google") != std::string::npos) return "GoogleOrChrome";
+    if (p.find("/mail/") != std::string::npos) return "Mail";
+    if (p.find("/calendar/") != std::string::npos) return "Calendar";
+    if (p.find("/addressbook/") != std::string::npos || p.find("contacts") != std::string::npos) return "Contacts";
+    if (p.find("fileprovider") != std::string::npos || p.find("clouddocs") != std::string::npos || p.find("mobile documents") != std::string::npos) return "FileProviderOrCloudDocs";
+    return "Other";
+}
+
+std::string appContainerHintCpp(const std::string& path) {
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    const std::string low = toLower(p);
+    const std::string appNeedle1 = "/containers/data/application/";
+    const std::string appNeedle2 = "/containers/application/";
+    const std::string groupNeedle = "/containers/shared/appgroup/";
+    auto extractSeg = [&](std::size_t pos, std::size_t n) -> std::string {
+        std::size_t start = pos + n;
+        std::size_t end = p.find('/', start);
+        return p.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    };
+    auto pos = low.find(appNeedle1);
+    if (pos != std::string::npos) return "ApplicationContainer:" + extractSeg(pos, appNeedle1.size());
+    pos = low.find(appNeedle2);
+    if (pos != std::string::npos) return "ApplicationContainer:" + extractSeg(pos, appNeedle2.size());
+    pos = low.find(groupNeedle);
+    if (pos != std::string::npos) return "AppGroup:" + extractSeg(pos, groupNeedle.size());
+    return "";
+}
+
+std::pair<std::string, std::string> databaseCategoryAndAppHintCpp(const std::string& path, const std::string& name) {
+    const std::string p = toLower(path);
+    const std::string n = toLower(name);
+    const bool dbLike = endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".sqlitedb") || endsWithCpp(n, ".storedata") || n == "chatstorage.sqlite" || n == "contactsv2.sqlite" || n == "callhistory.sqlite";
+    if (n == "sms.db" || p.find("/library/sms/") != std::string::npos) return {"APPLE_MESSAGES", "Messages"};
+    if (dbLike && (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos || n == "keychain-2.db" || n == "keychain-2-debug.db")) return {"KEYCHAIN", "Keychain"};
+    if (p.find("callhistory") != std::string::npos || n.rfind("callhistory", 0) == 0) return {"CALL_HISTORY", "PhoneFaceTime"};
+    if (dbLike && ((p.find("group.net.whatsapp") != std::string::npos || p.find("/whatsapp/") != std::string::npos || p.find("whatsapp.shared") != std::string::npos) || n == "chatstorage.sqlite" || n == "contactsv2.sqlite")) return {"WHATSAPP", "WhatsApp"};
+    if (p.find("signal") != std::string::npos) return {"SIGNAL", "Signal"};
+    if (p.find("telegram") != std::string::npos) return {"TELEGRAM", "Telegram"};
+    if (p.find("safari") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"SAFARI_WEB", "Safari"};
+    if ((p.find("chrome") != std::string::npos || p.find("google") != std::string::npos) && (n.find("history") != std::string::npos || endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CHROME_WEB", "ChromeGoogle"};
+    if (p.find("webkit") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"WEBKIT", "WebKit"};
+    if (p.find("/mail/") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"MAIL", "Mail"};
+    if ((p.find("/calendar/") != std::string::npos || n.find("calendar") != std::string::npos) && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CALENDAR", "Calendar"};
+    if ((p.find("addressbook") != std::string::npos || p.find("contacts") != std::string::npos) && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CONTACTS", "Contacts"};
+    if (endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".storedata")) return {"OTHER_SQLITE_OR_STORE_DATABASE", "Other"};
+    return {"", ""};
+}
+
+struct IosZipInventoryParseResult {
+    std::size_t ffsRows = 0;
+    std::size_t appDbRows = 0;
+    std::size_t rawRecords = 0;
+    std::string status = "NOT_RUN";
+};
+
+IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& caseDir, const fs::path& zipPath, Logger& log) {
+    IosZipInventoryParseResult result;
+    const fs::path rawListing = caseDir / "logs" / "ios_ffs_7z_inventory_raw_slt.txt";
+    const fs::path ffsInventoryPath = caseDir / "ios_ffs_file_inventory.csv";
+    const fs::path dbInventoryPath = caseDir / "ios_app_database_inventory.csv";
+    if (!fs::is_regular_file(rawListing)) {
+        result.status = "RAW_LISTING_NOT_FOUND";
+        return result;
+    }
+    std::ifstream in(rawListing, std::ios::binary);
+    if (!in) {
+        result.status = "RAW_LISTING_OPEN_FAILED";
+        return result;
+    }
+    fs::create_directories(ffsInventoryPath.parent_path());
+    std::ofstream ffsOut(ffsInventoryPath, std::ios::binary);
+    std::ofstream dbOut(dbInventoryPath, std::ios::binary);
+    if (!ffsOut || !dbOut) throw std::runtime_error("Unable to write native C++ iOS ZIP inventory CSVs");
+    ffsOut << "normalized_path,original_zip_entry,file_name,extension,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,sha256_status,inventory_notes\n";
+    dbOut << "normalized_path,original_zip_entry,database_name,database_category,app_hint,protection_class_hint,size_bytes,zip_modified_utc,parse_status,record_inventory_status,notes,extracted_path\n";
+    std::map<std::string, std::string> rec;
+    const std::string zipPathNorm = toLower(pathString(zipPath));
+    auto flush = [&]() {
+        auto it = rec.find("Path");
+        if (it == rec.end() || trim(it->second).empty()) { rec.clear(); return; }
+        const std::string fullName = it->second;
+        const std::string fullLow = toLower(fullName);
+        if ((fullLow.find(":/") != std::string::npos || fullLow.find(":\\") != std::string::npos) && endsWithCpp(fullLow, ".zip")) { rec.clear(); return; }
+        if (!zipPathNorm.empty() && toLower(fullName) == zipPathNorm) { rec.clear(); return; }
+        const std::string norm = normalizeIosPathFromZipEntryCpp(fullName);
+        const std::string name = basenameFromZipEntryCpp(fullName);
+        const std::string ext = extensionFromNameCpp(name);
+        const std::string size = rec.count("Size") ? rec["Size"] : "";
+        const std::string modified = rec.count("Modified") ? rec["Modified"] : "";
+        const std::string folder = rec.count("Folder") ? toLower(trim(rec["Folder"])) : "";
+        const bool isDir = (folder == "+" || folder == "true" || folder == "1" || folder == "yes");
+        const std::string prot = protectionClassHintCpp(norm);
+        const std::string app = appContainerHintCpp(fullName);
+        const std::string domain = domainHintCpp(norm);
+        const std::string note = "native_cpp_7z_slt_inventory_parser";
+        ffsOut << csvEscape(norm) << ',' << csvEscape(fullName) << ',' << csvEscape(name) << ',' << csvEscape(ext) << ','
+               << csvEscape(size) << ',' << csvEscape(modified) << ',' << csvEscape(prot) << ',' << csvEscape(app) << ','
+               << csvEscape(domain) << ',' << (isDir ? "1" : "0") << ",not_hashed_zip_entry_inventory," << csvEscape(note) << "\n";
+        ++result.ffsRows;
+        auto cat = databaseCategoryAndAppHintCpp(norm, name);
+        if (!cat.first.empty()) {
+            dbOut << csvEscape(norm) << ',' << csvEscape(fullName) << ',' << csvEscape(name) << ',' << csvEscape(cat.first) << ','
+                  << csvEscape(cat.second) << ',' << csvEscape(prot) << ',' << csvEscape(size) << ',' << csvEscape(modified) << ','
+                  << "not_parsed,inventory_only," << csvEscape("native_cpp_7z_slt_inventory_parser") << ',' << csvEscape("") << "\n";
+            ++result.appDbRows;
+        }
+        ++result.rawRecords;
+        if ((result.ffsRows % 100000) == 0) {
+            appendRunStatus(caseDir, "ios_ffs_inventory_cpp_parser_progress", "files=" + std::to_string(result.ffsRows) + " app_databases=" + std::to_string(result.appDbRows));
+        }
+        rec.clear();
+    };
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (trim(line).empty()) { flush(); continue; }
+        const std::string sep = " = ";
+        const auto pos = line.find(sep);
+        if (pos != std::string::npos) {
+            rec[trim(line.substr(0, pos))] = line.substr(pos + sep.size());
+        }
+    }
+    flush();
+    result.status = "NATIVE_CPP_7Z_RAW_INVENTORY_PARSED";
+    appendRunStatus(caseDir, "ios_ffs_inventory_cpp_parser_complete", "files=" + std::to_string(result.ffsRows) + " app_databases=" + std::to_string(result.appDbRows) + " raw_records=" + std::to_string(result.rawRecords));
+    log.info("Native C++ parsed 7z raw iOS ZIP inventory. files=" + std::to_string(result.ffsRows) + " app_databases=" + std::to_string(result.appDbRows) + " raw=" + pathString(rawListing));
+    return result;
+}
+
 fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir, SourceProfileKind profile, Logger& log, bool* iosFocusedUsed = nullptr) {
     const fs::path stageRoot = caseDir / "EvidenceStaging" / "zip_source" / "extracted";
     std::error_code ec;
@@ -3132,6 +3273,19 @@ fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir
                  ". Extracting CoreSpotlight/BundleInfo entries to controlled staging folder before discovery: " + pathString(stageRoot));
         log.info("iOS focused ZIP extraction inventory will be written: " + pathString(inventoryPath));
         const int rc = runShellCommandNoWindow(cmd);
+        IosZipInventoryParseResult cppInventoryParse;
+        try {
+            cppInventoryParse = parseIosSevenZipRawInventoryToCsv(caseDir, zipPath, log);
+            if (cppInventoryParse.status == "NATIVE_CPP_7Z_RAW_INVENTORY_PARSED") {
+                appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_ready", "files=" + std::to_string(cppInventoryParse.ffsRows) + " app_databases=" + std::to_string(cppInventoryParse.appDbRows));
+            }
+        } catch (const std::exception& ex) {
+            appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_warning", ex.what());
+            log.warn(std::string("Native C++ iOS ZIP inventory parser did not complete; using script inventory output if present: ") + ex.what());
+        } catch (...) {
+            appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_warning", "unknown error");
+            log.warn("Native C++ iOS ZIP inventory parser did not complete; using script inventory output if present: unknown error");
+        }
         if (rc != 0) {
             if (profile == SourceProfileKind::IOS && rc != 3) {
                 throw std::runtime_error("iOS focused ZIP extraction failed. See log: " + pathString(logPath));
@@ -3273,15 +3427,27 @@ bool importIosInventoryFromCacheDatabase(CaseDatabase& db,
             ins.stepDone();
             if (fileRowsOut) *fileRowsOut = static_cast<std::size_t>(std::max<long long>(0, sqliteChangesNoThrow(db)));
         } else {
-            auto insLookup = db.prepare(
-                "INSERT INTO ios_ffs_path_lookup(source_id,normalized_path,file_name,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,lookup_source,created_utc) "
-                "SELECT ?,normalized_path,file_name,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,'reuse_cache_sqlite_slim_lookup',? "
-                "FROM cache.ios_ffs_file_inventory WHERE COALESCE(normalized_path,'')<>''");
-            insLookup.bind(1, sourceId);
-            insLookup.bind(2, created);
-            insLookup.stepDone();
-            if (fileRowsOut) *fileRowsOut = static_cast<std::size_t>(std::max<long long>(0, sqliteChangesNoThrow(db)));
-            appendRunStatus(caseDir, "ios_ffs_inventory_cache_slim_lookup_imported", "full FFS inventory rows not materialized; slim_lookup_rows=" + std::to_string(fileRowsOut ? *fileRowsOut : 0));
+            // V0.9.42: do not copy the entire 1M+ row FFS inventory into the active case DB during
+            // normal Spotlight-first reuse-cache runs. Insert a one-row sentinel so Missing From FFS
+            // views know an FFS lookup source exists, then import only exact referenced-path hits after
+            // native Spotlight parsing has produced vw_ios_spotlight_referenced_paths.
+            const std::size_t cacheFfsRows = cacheTableCountNoThrow(db, "ios_ffs_file_inventory");
+            auto insLookupSentinel = db.prepare(
+                "INSERT INTO ios_ffs_path_lookup(source_id,normalized_path,file_name,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,lookup_source,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
+            insLookupSentinel.bind(1, sourceId);
+            insLookupSentinel.bind(2, "__vestigant_lookup_available__");
+            insLookupSentinel.bind(3, "__vestigant_lookup_available__");
+            insLookupSentinel.bind(4, 0LL);
+            insLookupSentinel.bind(5, "");
+            insLookupSentinel.bind(6, "");
+            insLookupSentinel.bind(7, "");
+            insLookupSentinel.bind(8, "");
+            insLookupSentinel.bind(9, 1LL);
+            insLookupSentinel.bind(10, "reuse_cache_sqlite_referenced_path_lookup_pending");
+            insLookupSentinel.bind(11, created);
+            insLookupSentinel.stepDone();
+            if (fileRowsOut) *fileRowsOut = cacheFfsRows;
+            appendRunStatus(caseDir, "ios_ffs_inventory_cache_slim_lookup_deferred", "full FFS inventory rows not materialized; cache_rows=" + std::to_string(cacheFfsRows) + " referenced-path lookup will be imported after native parse");
         }
         {
             auto ins = db.prepare(
@@ -3334,6 +3500,73 @@ std::vector<std::string> readCsvHeaders(std::ifstream& in) {
         headers[0].erase(0, 3);
     }
     return headers;
+}
+
+
+std::size_t importReferencedIosPathLookupFromReuseCache(CaseDatabase& db,
+                                                        const fs::path& caseDir,
+                                                        const std::string& sourceId,
+                                                        Logger& log,
+                                                        const fs::path& reuseCacheDir) {
+    if (reuseCacheDir.empty()) return 0;
+    std::error_code ec;
+    fs::path cacheDb = reuseCacheDir / "VestigantSpotlight.case.sqlite";
+    if (!fs::is_regular_file(cacheDb, ec)) cacheDb = reuseCacheDir / "spotlight_case.db";
+    if (!fs::is_regular_file(cacheDb, ec)) {
+        appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_cache_missing", "reuse cache SQLite not available");
+        return 0;
+    }
+    bool attached = false;
+    try {
+        appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_start", "cache_db=" + pathString(cacheDb));
+        {
+            auto attach = db.prepare("ATTACH DATABASE ? AS cache");
+            attach.bind(1, pathString(cacheDb));
+            attach.stepDone();
+            attached = true;
+        }
+        if (!attachedCacheTableExists(db, "ios_ffs_file_inventory")) {
+            appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_unavailable", "cache.ios_ffs_file_inventory missing");
+            detachCacheDbNoThrow(db);
+            return 0;
+        }
+        const std::string created = nowUtc();
+        db.begin();
+        {
+            auto upd = db.prepare("UPDATE ios_ffs_path_lookup SET lookup_source='reuse_cache_sqlite_referenced_path_lookup_available' WHERE source_id=? AND normalized_path='__vestigant_lookup_available__'");
+            upd.bind(1, sourceId);
+            upd.stepDone();
+        }
+        auto ins = db.prepare(
+            "INSERT INTO ios_ffs_path_lookup(source_id,normalized_path,file_name,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,lookup_source,created_utc) "
+            "SELECT ?,c.normalized_path,c.file_name,c.size_bytes,c.zip_modified_utc,c.protection_class_hint,c.app_container_hint,c.domain_hint,c.is_directory,'reuse_cache_sqlite_referenced_path_hit',? "
+            "FROM cache.ios_ffs_file_inventory c "
+            "JOIN (SELECT DISTINCT normalized_ios_path AS normalized_path FROM vw_ios_spotlight_referenced_paths WHERE source_id=? AND COALESCE(normalized_ios_path,'')<>'' AND normalized_ios_path<>'__vestigant_lookup_available__') r "
+            "ON c.normalized_path=r.normalized_path "
+            "WHERE COALESCE(c.normalized_path,'')<>''");
+        ins.bind(1, sourceId);
+        ins.bind(2, created);
+        ins.bind(3, sourceId);
+        ins.stepDone();
+        const std::size_t rows = static_cast<std::size_t>(std::max<long long>(0, sqliteChangesNoThrow(db)));
+        db.commit();
+        detachCacheDbNoThrow(db);
+        appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_complete", "referenced_path_hits=" + std::to_string(rows));
+        log.info("Imported referenced-only iOS FFS path lookup rows from reuse cache: " + std::to_string(rows));
+        return rows;
+    } catch (const std::exception& ex) {
+        db.rollbackNoThrow();
+        if (attached) detachCacheDbNoThrow(db);
+        appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_warning", ex.what());
+        log.warn(std::string("Referenced-only iOS FFS lookup import failed: ") + ex.what());
+        return 0;
+    } catch (...) {
+        db.rollbackNoThrow();
+        if (attached) detachCacheDbNoThrow(db);
+        appendRunStatus(caseDir, "ios_ffs_referenced_path_lookup_warning", "unknown error");
+        log.warn("Referenced-only iOS FFS lookup import failed: unknown error");
+        return 0;
+    }
 }
 
 } // namespace
@@ -14322,6 +14555,10 @@ RunResult runApplication(const RunOptions& opt) {
         }
         if (parseCounts.rawRecords == 0) {
             log.warn("Native parser completed but produced zero raw_records. Review raw_failures in the SQLite case database and processing log.");
+        }
+        if (zipInputSource && profile == SourceProfileKind::IOS && !opt.materializeIosFfsInventory && !opt.reuseIosCache.empty()) {
+            const std::size_t referencedHits = importReferencedIosPathLookupFromReuseCache(db, caseDir, source.sourceId, log, opt.reuseIosCache);
+            result.messages.push_back("referenced_ios_ffs_lookup_hits=" + std::to_string(referencedHits));
         }
 
         if (!opt.v7OutputPath.empty() && opt.legacyV7Compare) {
