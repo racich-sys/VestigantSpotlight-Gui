@@ -1,20 +1,31 @@
 # Vestigant Spotlight Validation Status
 
-Current version: 0.9.36
+Current version: 0.9.38
 
-V0_9_36 is a documentation-history repair release.  No parser, schema, GUI, export, or forensic interpretation behavior was intentionally changed from V0_9_34.
+V0_9_38 is a parser stability and Missing From FFS text-visibility guardrail fix.  It is based on the V0_9_37 source and keeps the consolidated documentation/history model.
 
 Validation performed during packaging:
 
-- Reviewed uploaded V0_9_3 `Docs.zip` documentation archive.
-- Restored historical V0_9 details into `docs/CONSOLIDATED_VERSION_HISTORY.md`.
-- Confirmed version metadata updated to 0.9.36.
-- Confirmed no root-level historical `V0_*_CHANGE_VALIDATION_NOTE.txt` fragments were reintroduced.
-- Confirmed package/patch ZIP integrity and SHA256 files.
+- Reviewed `V0_9_37_build.log` and `Upload_Thin_iOS_GUI_V0_9_37_ReusedCache_Check.zip`.
+- Confirmed V0_9_37 Windows/MSVC build succeeded.
+- Confirmed the V0_9_37 run failed at the SQLite DB-size guardrail during native parsing after text-context expansion.
+- Reduced normal-mode text context budget while preserving Missing From FFS text-detail views.
+- Fixed fatal native guardrail exception propagation.
+- Confirmed syntax/static validation in this environment.
 
 Required external validation:
 
 1. Run Windows/MSVC build.
-2. Confirm CLI reports `Vestigant Spotlight v0.9.36`.
+2. Confirm CLI reports `Vestigant Spotlight v0.9.38`.
 3. Run self-test.
-4. Run the standard iOS reuse-cache script only if you want a fresh runtime confirmation; behavior should match V0_9_34 because no parser/export behavior changed.
+4. Run the standard iOS reuse-cache script and confirm it reaches `complete_success` without DB/WAL guardrail failure.
+
+## V0_9_37 - Missing From FFS text visibility
+
+V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did not show recovered Spotlight text/content.  It adds row-level Missing From FFS text detail and text coverage exports, exposes the same views in the GUI, increases compact same-record text context retention for reference-bearing iOS records, and documents when text is unavailable or suppressed by compact mode.
+
+
+
+## V0_9_38 - Missing From FFS text visibility guardrail fix
+
+V0_9_37 improved Missing From FFS text visibility but over-expanded same-record text context and hit the SQLite 5 GiB guardrail during native parse.  V0_9_38 keeps the text-detail views/exports but restores a bounded normal-mode text-context budget and fixes fatal guardrail propagation so runs stop cleanly if a guardrail is ever hit.

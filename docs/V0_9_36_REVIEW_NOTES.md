@@ -1,4 +1,4 @@
-# V0_9_36 Review Notes
+# V0_9_37 Review Notes
 
 ## Inputs reviewed
 
@@ -19,14 +19,14 @@ Observed V0_9_34 run metrics:
 - full FFS inventory materialized: false
 - app DB records materialized: false
 
-## Implemented in V0_9_36
+## Implemented in V0_9_37
 
 - Carried forward the V0_9_35 consolidated documentation/history repair.
 - Fixed Missing From FFS export ordering so normal export no longer depends on a potentially stale summary-view sort column.
 - Synchronized the GUI fallback Missing From FFS candidate/summary SQL so it exposes `missing_candidate_category`, `investigative_priority`, `investigative_priority_sort`, and `investigative_reason`.
 - Added/kept high-value Missing From FFS fallback views in the GUI schema path.
-- Updated version metadata and scripts to V0_9_36.
+- Updated version metadata and scripts to V0_9_37.
 
 ## Validation focus
 
-V0_9_36 should be validated by Windows/MSVC build and the standard iOS reuse-cache run. The primary pass/fail item is whether the run completes past `ios_spotlight_missing_from_ffs_summary.csv` export and produces the thin upload.
+V0_9_37 should be validated by Windows/MSVC build and the standard iOS reuse-cache run. The primary pass/fail item is whether the run completes past `ios_spotlight_missing_from_ffs_summary.csv` export and produces the thin upload.

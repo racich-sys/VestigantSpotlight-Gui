@@ -1897,7 +1897,7 @@ WITH refs AS (
   GROUP BY source_id
 ), ctx AS (
   SELECT source_id,store_guid,source_db,inode_num,store_id,
-         substr(MAX(field_value),1,1800) AS spotlight_text_context_sample
+         substr(MAX(field_value),1,4000) AS spotlight_text_context_sample
   FROM raw_key_values
   WHERE field_name='__spotlight_investigator_text_context'
   GROUP BY source_id,store_guid,source_db,inode_num,store_id
@@ -1965,7 +1965,7 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
        MIN(normalized_ios_path) AS min_missing_path_sample,
        MAX(normalized_ios_path) AS max_missing_path_sample,
-       substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,4000) AS spotlight_text_context_sample,
        MAX(investigative_reason) AS investigative_reason,
        'Compact normal-mode Missing From FFS summary. V0_9_25 adds priority/category fields so likely app thumbnail/cache noise does not dominate investigator review.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_candidates
@@ -1986,12 +1986,82 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
        MIN(normalized_ios_path) AS min_missing_path_sample,
        MAX(normalized_ios_path) AS max_missing_path_sample,
-       substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,4000) AS spotlight_text_context_sample,
        MAX(investigative_reason) AS investigative_reason,
        'High/medium-priority subset of Missing From FFS candidates, excluding likely thumbnail/brand/cache-only references. Use this as the first investigator review surface before the full candidate view.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates
 )VSQLFIX",
 R"VSQLFIX(GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_text_detail;
+CREATE VIEW vw_ios_spotlight_missing_from_ffs_text_detail AS
+WITH rr AS (
+  SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,display_name,content_type,content_type_tree,last_updated_utc,record_state,full_path
+  FROM raw_records
+), ctx AS (
+  SELECT source_id,store_guid,source_db,inode_num,store_id,
+         substr(MAX(field_value),1,4000) AS spotlight_text_full_or_sample,
+         MAX(LENGTH(field_value)) AS spotlight_text_length,
+         COUNT(*) AS spotlight_text_context_row_count
+  FROM raw_key_values
+  WHERE field_name='__spotlight_investigator_text_context'
+  GROUP BY source_id,store_guid,source_db,inode_num,store_id
+)
+SELECT c.reference_id,
+       COALESCE(rr.raw_record_id,0) AS raw_record_id,
+       c.source_id,c.store_guid,c.source_db,c.inode_num,c.store_id,c.parent_inode_num,
+       COALESCE(rr.file_name,'') AS spotlight_file_name,
+       COALESCE(rr.display_name,'') AS spotlight_display_name,
+       COALESCE(rr.content_type,'') AS spotlight_content_type,
+       COALESCE(rr.content_type_tree,'') AS spotlight_content_type_tree,
+       COALESCE(rr.last_updated_utc,'') AS spotlight_last_updated_utc,
+       c.field_name AS missing_reference_source_field,
+       c.reference_type,
+       c.raw_reference_value,
+       c.normalized_ios_path,
+       c.missing_candidate_category,
+       c.investigative_priority,
+       c.investigative_priority_sort,
+       c.investigative_reason,
+       COALESCE(ctx.spotlight_text_full_or_sample,c.spotlight_text_context_sample,'') AS spotlight_text_preview,
+       COALESCE(ctx.spotlight_text_full_or_sample,c.spotlight_text_context_sample,'') AS spotlight_text_full_or_sample,
+       COALESCE(ctx.spotlight_text_length,LENGTH(COALESCE(c.spotlight_text_context_sample,''))) AS spotlight_text_length,
+       '__spotlight_investigator_text_context' AS spotlight_text_source_field,
+       CASE
+         WHEN COALESCE(ctx.spotlight_text_full_or_sample,c.spotlight_text_context_sample,'')<>'' THEN 'TEXT_VISIBLE_IN_THIS_REPORT'
+         WHEN c.spotlight_text_context_status LIKE 'TEXT_CONTEXT_RECOVERED%' THEN 'TEXT_CONTEXT_STATUS_INDICATES_TEXT_BUT_VALUE_EMPTY_REVIEW_SQLITE'
+         ELSE 'NO_SAME_RECORD_TEXT_RECOVERED_IN_COMPACT_MODE'
+       END AS spotlight_text_visibility_status,
+       c.spotlight_text_context_status,
+       COALESCE(ctx.spotlight_text_context_row_count,0) AS spotlight_text_context_row_count,
+       c.ffs_lookup_source,c.ffs_lookup_status,c.residency_status,c.confidence,
+       c.matched_file_name,c.matched_size_bytes,c.matched_zip_modified_utc,c.matched_protection_class,c.matched_app_container,c.matched_domain,
+       'raw_key_values.raw_kv_id=' || COALESCE(CAST(c.reference_id AS TEXT),'') || '; field_name=' || COALESCE(c.field_name,'') || '; normalized_ios_path=' || COALESCE(c.normalized_ios_path,'') AS missing_reference_validation_locator,
+       'raw_records.raw_record_id=' || COALESCE(CAST(rr.raw_record_id AS TEXT),'') || '; source_db=' || COALESCE(c.source_db,'') || '; store_guid=' || COALESCE(c.store_guid,'') || '; inode_or_object_id=' || COALESCE(c.inode_num,'') || '; store_id=' || COALESCE(c.store_id,'') AS spotlight_record_locator,
+       CASE
+         WHEN COALESCE(ctx.spotlight_text_full_or_sample,c.spotlight_text_context_sample,'')<>'' THEN 'Same-record Spotlight text/content context is included here so Missing From FFS can be reviewed without manual SQLite searching. Values remain compact samples; rerun diagnostic full-native mode only if complete raw property values are required.'
+         ELSE 'No same-record text context was recovered in compact mode for this missing reference. This may mean the Spotlight record primarily held paths/identifiers, or the text is in fields not yet decoded by the native parser.'
+       END AS content_visibility_note,
+       c.interpretation_note
+FROM vw_ios_spotlight_missing_from_ffs_candidates c
+LEFT JOIN rr ON rr.source_id=c.source_id AND rr.store_guid=c.store_guid AND rr.source_db=c.source_db AND rr.inode_num=c.inode_num AND COALESCE(rr.store_id,'')=COALESCE(c.store_id,'')
+LEFT JOIN ctx ON ctx.source_id=c.source_id AND ctx.store_guid=c.store_guid AND ctx.source_db=c.source_db AND ctx.inode_num=c.inode_num AND COALESCE(ctx.store_id,'')=COALESCE(c.store_id,'');
+
+DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_text_coverage_summary;
+CREATE VIEW vw_ios_spotlight_missing_from_ffs_text_coverage_summary AS
+SELECT source_id,store_guid,source_db,missing_candidate_category,investigative_priority,spotlight_text_visibility_status,
+       COUNT(*) AS missing_candidate_count,
+       COUNT(DISTINCT COALESCE(inode_num,'') || ':' || COALESCE(store_id,'')) AS distinct_spotlight_object_count,
+       SUM(CASE WHEN spotlight_text_visibility_status='TEXT_VISIBLE_IN_THIS_REPORT' THEN 1 ELSE 0 END) AS candidates_with_visible_text,
+       SUM(CASE WHEN spotlight_text_visibility_status<>'TEXT_VISIBLE_IN_THIS_REPORT' THEN 1 ELSE 0 END) AS candidates_without_visible_text,
+       MIN(NULLIF(spotlight_last_updated_utc,'')) AS earliest_spotlight_last_updated_utc,
+       MAX(NULLIF(spotlight_last_updated_utc,'')) AS latest_spotlight_last_updated_utc,
+       MIN(substr(normalized_ios_path,1,500)) AS min_missing_path_sample,
+       MAX(substr(normalized_ios_path,1,500)) AS max_missing_path_sample,
+       MAX(substr(spotlight_text_preview,1,1000)) AS spotlight_text_sample,
+       'Shows whether Missing From FFS candidates have same-record Spotlight text visible in the normal investigator exports. Use ios_spotlight_missing_from_ffs_text_detail.csv for row-level content.' AS interpretation_note
+FROM vw_ios_spotlight_missing_from_ffs_text_detail
+GROUP BY source_id,store_guid,source_db,missing_candidate_category,investigative_priority,spotlight_text_visibility_status;
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_text_context_review;

@@ -1180,7 +1180,7 @@ bool isLikelyUsefulSpotlightTextContext(const std::string& field, const std::str
 
     auto v = compactContextText(value);
     if (v.size() < 4) return false;
-    if (v.size() > 3000) v.resize(3000);
+    if (v.size() > 4096) v.resize(4096);
     const auto vl = lowerAscii(v);
     if (vl == "true" || vl == "false" || vl == "null" || vl == "invalid") return false;
 
@@ -1197,7 +1197,7 @@ bool isLikelyUsefulSpotlightTextContext(const std::string& field, const std::str
 
 std::string buildIosSpotlightInvestigatorTextContext(const std::map<std::string, std::string, std::less<>>& metadata) {
     constexpr std::size_t MaxContextBytes = 1800;
-    constexpr std::size_t MaxContextPieces = 5;
+    constexpr std::size_t MaxContextPieces = 8;
     std::vector<std::pair<int, std::string>> ranked;
     ranked.reserve(metadata.size());
     for (const auto& kv : metadata) {
@@ -1224,7 +1224,7 @@ std::string buildIosSpotlightInvestigatorTextContext(const std::map<std::string,
         if (it == metadata.end()) continue;
         std::string v = compactContextText(it->second);
         if (v.empty()) continue;
-        if (v.size() > 500) v = v.substr(0, 500) + "...[truncated]";
+        if (v.size() > 320) v = v.substr(0, 320) + "...[truncated]";
         if (std::find(seenValues.begin(), seenValues.end(), v) != seenValues.end()) continue;
         seenValues.push_back(v);
         std::string piece = rf.second + "=" + v;
@@ -2133,7 +2133,11 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                                 break;
                             }
                         }
-                    } catch (const std::exception& ex) { ++counts.failures; insertFailure(db, source, store, "metadata_parse", ex.what()); }
+                    } catch (const std::exception& ex) {
+                        if (isFatalNativeAbort(ex)) throw;
+                        ++counts.failures;
+                        insertFailure(db, source, store, "metadata_parse", ex.what());
+                    }
                     if (stopDueToNativeRecordLimit) break;
                     if ((counts.parsedItems % 50000) == 0 && counts.parsedItems != 0) log.info("Native parser progress: parsed_items=" + std::to_string(counts.parsedItems));
                 }
