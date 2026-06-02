@@ -51,7 +51,7 @@ struct RunOptions {
     std::size_t maxNativeRecords = 0;  // 0 = unlimited; diagnostics+full-native defaults to a bounded sample
     bool maxNativeRecordsExplicit = false;
     std::size_t maxNativeBlocks = 0;   // 0 = unlimited; diagnostic safety valve for metadata blocks
-    std::uintmax_t dbSizeGuardrailBytes = 5ull * 1024ull * 1024ull * 1024ull; // default 5 GiB DB/WAL guardrail for investigator/dev runs; 0 disables
+    std::uintmax_t dbSizeGuardrailBytes = 6ull * 1024ull * 1024ull * 1024ull; // default 6 GiB DB/WAL guardrail for investigator/dev runs; 0 disables
     bool parseDotStoreCopies = false;
     std::size_t dbBatchRows = 50000;
     fs::path sevenZipPath;

@@ -2786,11 +2786,17 @@ function Write-InventoryRowsForEntry([object]$entry, [System.IO.StreamWriter]$ff
   }
 }
 function Write-FfsZipInventoryFromSevenZipStreaming([string]$SevenZipPath, [System.IO.StreamWriter]$ffsWriter, [System.IO.StreamWriter]$dbWriter) {
-  Write-ZipStageHeartbeat "starting streaming 7z ZIP entry inventory"
-  Write-ZipInventoryProgress 'ffs_inventory_streaming_start' 0 'starting 7z l -slt stream parser'
+  Write-ZipStageHeartbeat "starting fast 7z ZIP entry inventory dump"
+  Write-ZipInventoryProgress 'ffs_inventory_7z_dump_start' 0 'dumping 7z l -slt output to raw text for non-regex parser'
   $script:zipInventoryFileCount = 0
   $script:zipInventoryDbCount = 0
   $script:vstZipRec = @{}
+  $rawListing = Join-Path (Split-Path $InventoryPath -Parent) "logs\ios_ffs_7z_inventory_raw_slt.txt"
+  New-Item -ItemType Directory -Force -Path (Split-Path $rawListing -Parent) | Out-Null
+  & $SevenZipPath l $ZipPath -slt > $rawListing 2>$null
+  $sevenZipExit = $LASTEXITCODE
+  Write-ZipInventoryProgress 'ffs_inventory_7z_dump_complete' 0 ("exit=" + $sevenZipExit + " raw=" + $rawListing)
+  if ($sevenZipExit -ne 0 -and -not (Test-Path -LiteralPath $rawListing)) { throw "7z inventory listing failed exit=$sevenZipExit" }
   function Flush-VestigantZipRec {
     if ($script:vstZipRec -and $script:vstZipRec.ContainsKey('Path')) {
       $obj = New-ZipEntryObject ([string]$script:vstZipRec['Path']) ([string]$script:vstZipRec['Size']) ([string]$script:vstZipRec['Modified']) ([string]$script:vstZipRec['Folder'])
@@ -2798,16 +2804,20 @@ function Write-FfsZipInventoryFromSevenZipStreaming([string]$SevenZipPath, [Syst
     }
     $script:vstZipRec = @{}
   }
-  & $SevenZipPath l $ZipPath -slt 2>$null | ForEach-Object {
-    $line = [string]$_
-    if ([string]::IsNullOrWhiteSpace($line)) { Flush-VestigantZipRec; return }
-    $m = [regex]::Match($line, '^([^=]+?)	?\s=\s(.*)$')
-    if ($m.Success) { $script:vstZipRec[$m.Groups[1].Value.Trim()] = $m.Groups[2].Value }
+  foreach ($lineRaw in [System.IO.File]::ReadLines($rawListing)) {
+    $line = [string]$lineRaw
+    if ([string]::IsNullOrWhiteSpace($line)) { Flush-VestigantZipRec; continue }
+    $idx = $line.IndexOf(' = ')
+    if ($idx -gt 0) {
+      $key = $line.Substring(0, $idx).Trim()
+      $val = $line.Substring($idx + 3)
+      if ($key.Length -gt 0) { $script:vstZipRec[$key] = $val }
+    }
   }
   Flush-VestigantZipRec
   try { $ffsWriter.Flush(); $dbWriter.Flush() } catch {}
   Write-ZipInventoryProgress 'ffs_inventory_streaming_complete' $script:zipInventoryFileCount ("db_rows=" + $script:zipInventoryDbCount)
-  Write-ZipStageHeartbeat ("completed streaming 7z ZIP entry inventory entries=" + $script:zipInventoryFileCount + " db_rows=" + $script:zipInventoryDbCount)
+  Write-ZipStageHeartbeat ("completed fast 7z ZIP entry inventory entries=" + $script:zipInventoryFileCount + " db_rows=" + $script:zipInventoryDbCount)
   "ios_ffs_inventory_file_rows=$script:zipInventoryFileCount" | Write-Output
   "ios_app_database_inventory_rows=$script:zipInventoryDbCount" | Write-Output
 }

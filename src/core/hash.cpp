@@ -133,7 +133,7 @@ private:
 
 std::string sha256Stream(std::istream& in) {
     Sha256Context ctx;
-    std::vector<unsigned char> buffer(256 * 1024);
+    std::vector<unsigned char> buffer(1024 * 1024);
     while (in) {
         in.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
         const std::streamsize got = in.gcount();
@@ -177,7 +177,7 @@ std::string sha256FileWindows(const fs::path& file) {
     }
     try {
         Sha256Context ctx;
-        std::vector<unsigned char> buffer(256 * 1024);
+        std::vector<unsigned char> buffer(4 * 1024 * 1024);
         for (;;) {
             DWORD got = 0;
             if (!ReadFile(h, buffer.data(), static_cast<DWORD>(buffer.size()), &got, nullptr)) {

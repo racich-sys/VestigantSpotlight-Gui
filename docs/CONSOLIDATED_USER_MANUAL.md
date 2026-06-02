@@ -1,6 +1,6 @@
 # Vestigant Spotlight Consolidated User Manual
 
-Version: 0.9.36
+Version: 0.9.40
 
 ## Purpose
 
@@ -19,18 +19,18 @@ The production package now keeps historical information in a small maintained do
 - `docs/THIN_UPLOAD_REVIEW_WORKFLOW.md` - repeatable review workflow for build logs/thin uploads.
 - `HELP.md`, `RELEASE_NOTES.md`, and `VERSION_HISTORY.md` - top-level entry points that point back to the consolidated documents.
 
-V0_9_36 restored historical version details from the uploaded V0_9_3 documentation archive into the consolidated version history without reintroducing dozens of stale root-level note files.
+V0_9_37 restored historical version details from the uploaded V0_9_3 documentation archive into the consolidated version history without reintroducing dozens of stale root-level note files.
 
 ## Standard Windows build
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_36.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_36" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_36.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_36\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_36_build.log"
-& "T:\VestigantSpotlightInv_V0_9_36\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_36\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_36\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_40.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_40" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_40.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_40\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_40_build.log"
+& "T:\VestigantSpotlightInv_V0_9_40\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_40\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_40\build-msvc\selftest_out"
 ```
 
 ## Standard iOS reuse-cache test
@@ -38,11 +38,11 @@ Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_36.zip -DestinationPath
 Use this for fast parser/view/export iteration while the large source ZIP and known-good cache remain unchanged.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_36\scripts\Run-V0_9_36-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_40\scripts\Run-V0_9_40-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_36_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_40_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_40_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources during development iterations.  For final forensic reporting, run an explicit container/source hash workflow and preserve the hash with the case.
@@ -105,12 +105,12 @@ Thin upload ZIPs are for review/debugging and may contain samples of large CSVs.
 
 ## Troubleshooting
 
-If a run stalls or stops writing, use the matching `Collect-V0_9_36-DBBloat-State.ps1` script before stopping/rerunning:
+If a run stalls or stops writing, use the matching `Collect-V0_9_40-DBBloat-State.ps1` script before stopping/rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_36\scripts\Collect-V0_9_36-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_36_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_State_V0_9_36_NoWrites_Stopped_Check.zip" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_40\scripts\Collect-V0_9_40-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_40_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
 
@@ -120,11 +120,25 @@ If MSVC reports `C2026: string too big`, the likely source is an oversized SQL r
 
 Upload:
 
-- `D:\Downloads\V0_9_36_build.log`
-- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_ReusedCache_Check.zip`
+- `D:\Downloads\V0_9_40_build.log`
+- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_40_ReusedCache_Check.zip`
 - stopped-state ZIP/SHA256 only if the run stalls, DB/WAL grows unexpectedly, or no writes occur for a long period.
 
 
-## V0_9_36 note
+## V0_9_37 note
 
-V0_9_36 carries forward the V0_9_35 consolidated documentation/history repair and fixes the V0_9_34 Missing From FFS summary export failure.
+V0_9_37 carries forward the V0_9_35 consolidated documentation/history repair and fixes the V0_9_34 Missing From FFS summary export failure.
+
+## V0_9_37 - Missing From FFS text visibility
+
+V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did not show recovered Spotlight text/content.  It adds row-level Missing From FFS text detail and text coverage exports, exposes the same views in the GUI, increases compact same-record text context retention for reference-bearing iOS records, and documents when text is unavailable or suppressed by compact mode.
+
+
+
+## V0_9_40 - Missing From FFS text visibility guardrail fix
+
+V0_9_37 improved Missing From FFS text visibility but over-expanded same-record text context and hit the SQLite 5 GiB guardrail during native parse.  V0_9_40 keeps the text-detail views/exports but restores a bounded normal-mode text-context budget and fixes fatal guardrail propagation so runs stop cleanly if a guardrail is ever hit.
+
+### V0_9_40 V1-readiness testing note
+
+After V0_9_40 is validated with the standard reuse-cache script, run the new Stage B fresh-ZIP script against the same large iOS FFS ZIP. This tests actual ZIP enumeration/staging and the new non-regex 7-Zip inventory path without changing the parser's compact normal-mode assumptions. If Stage B succeeds, later cycles can selectively test support/correlation materialization under guardrails.

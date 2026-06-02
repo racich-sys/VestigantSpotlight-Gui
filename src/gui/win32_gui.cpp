@@ -68,6 +68,8 @@ std::set<long long> gCheckedArtifactIds;
 bool gBulkCheckUpdate = false;
 std::vector<std::string> gCurrentRowArtifactIds;
 std::atomic<unsigned long long> gReviewRequestSeq{0};
+std::atomic_bool gShuttingDown{false};
+std::thread gReviewThread;
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
 bool gIosReviewMode = false;
@@ -76,6 +78,25 @@ std::wstring gReviewViewTooltipText;
 int gReviewViewHoverListIndex = -1;
 struct ContextTagCommand { UINT commandId; long long tagId; int operation; };
 std::vector<ContextTagCommand> gContextTagCommands;
+
+struct ReviewCancelContext {
+    unsigned long long requestId = 0;
+};
+
+int sqliteReviewProgressCancel(void* userData) {
+    auto* ctx = reinterpret_cast<ReviewCancelContext*>(userData);
+    if (!ctx) return 0;
+    return (gShuttingDown.load() || ctx->requestId != gReviewRequestSeq.load()) ? 1 : 0;
+}
+
+void cancelAndJoinReviewThreadNoThrow() {
+    try {
+        ++gReviewRequestSeq;
+        if (gReviewThread.joinable()) gReviewThread.join();
+    } catch (...) {
+    }
+}
+
 constexpr int ID_RUN = 1001, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006;
 constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112;
@@ -174,6 +195,8 @@ const std::vector<ViewSpec>& views() {
         {L"iOS - FFS File Inventory", "vw_ios_ffs_file_inventory", {"ios_file_id","source_id","normalized_path","original_zip_entry","file_name","extension","size_bytes","zip_modified_utc","protection_class_hint","app_container_hint","domain_hint","sha256_status","inventory_notes"}, {"normalized_path","original_zip_entry","file_name","extension","protection_class_hint","app_container_hint","domain_hint","inventory_notes"}, "normalized_path"},
         {L"iOS - App Database Inventory", "vw_ios_database_artifact_inventory", {"ios_db_id","source_id","normalized_path","original_zip_entry","database_name","database_category","app_hint","protection_class_hint","size_bytes","zip_modified_utc","parse_status","record_inventory_status","notes"}, {"normalized_path","original_zip_entry","database_name","database_category","app_hint","protection_class_hint","parse_status","record_inventory_status","notes"}, "database_category, app_hint, normalized_path"},
         {L"iOS - Spotlight Referenced Paths", "vw_ios_spotlight_referenced_paths", {"reference_id","source_id","store_guid","source_db","inode_num","store_id","parent_inode_num","field_name","reference_type","normalized_ios_path","confidence","raw_reference_value","notes"}, {"store_guid","source_db","inode_num","field_name","reference_type","normalized_ios_path","confidence","raw_reference_value","notes"}, "reference_type, normalized_ios_path, reference_id"},
+        {L"iOS - Missing From FFS Text Detail", "vw_ios_spotlight_missing_from_ffs_text_detail", {"reference_id","raw_record_id","source_id","store_guid","source_db","inode_num","store_id","parent_inode_num","spotlight_file_name","spotlight_display_name","spotlight_content_type","spotlight_last_updated_utc","missing_reference_source_field","reference_type","raw_reference_value","normalized_ios_path","missing_candidate_category","investigative_priority","investigative_reason","spotlight_text_preview","spotlight_text_full_or_sample","spotlight_text_length","spotlight_text_source_field","spotlight_text_visibility_status","spotlight_text_context_status","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","missing_reference_validation_locator","spotlight_record_locator","content_visibility_note","interpretation_note"}, {"store_guid","source_db","spotlight_last_updated_utc","missing_reference_source_field","normalized_ios_path","missing_candidate_category","investigative_priority","spotlight_text_preview","spotlight_text_visibility_status","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","raw_reference_value","missing_reference_validation_locator","spotlight_record_locator","content_visibility_note"}, "investigative_priority_sort, spotlight_text_visibility_status DESC, residency_status, confidence, normalized_ios_path, reference_id"},
+        {L"iOS - Missing From FFS Text Coverage", "vw_ios_spotlight_missing_from_ffs_text_coverage_summary", {"source_id","store_guid","source_db","missing_candidate_category","investigative_priority","spotlight_text_visibility_status","missing_candidate_count","distinct_spotlight_object_count","candidates_with_visible_text","candidates_without_visible_text","earliest_spotlight_last_updated_utc","latest_spotlight_last_updated_utc","min_missing_path_sample","max_missing_path_sample","spotlight_text_sample","interpretation_note"}, {"store_guid","source_db","missing_candidate_category","investigative_priority","spotlight_text_visibility_status","missing_candidate_count","candidates_with_visible_text","candidates_without_visible_text","spotlight_text_sample","interpretation_note"}, "investigative_priority, missing_candidate_count DESC, store_guid, missing_candidate_category"},
         {L"iOS - Missing From FFS Candidates", "vw_ios_spotlight_missing_from_ffs_candidates", {"reference_id","source_id","store_guid","source_db","inode_num","store_id","parent_inode_num","field_name","raw_reference_value","reference_type","normalized_ios_path","missing_candidate_category","investigative_priority","investigative_reason","spotlight_text_context_sample","spotlight_text_context_status","matched_file_name","matched_size_bytes","matched_zip_modified_utc","matched_protection_class","matched_app_container","matched_domain","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","interpretation_note"}, {"store_guid","source_db","inode_num","field_name","reference_type","normalized_ios_path","missing_candidate_category","investigative_priority","investigative_reason","spotlight_text_context_sample","spotlight_text_context_status","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","matched_file_name","matched_app_container","matched_domain","raw_reference_value","interpretation_note"}, "investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id"},
         {L"iOS - High-Value Missing From FFS", "vw_ios_spotlight_missing_from_ffs_high_value_candidates", {"reference_id","source_id","store_guid","source_db","inode_num","store_id","parent_inode_num","field_name","raw_reference_value","reference_type","normalized_ios_path","missing_candidate_category","investigative_priority","investigative_reason","spotlight_text_context_sample","spotlight_text_context_status","matched_file_name","matched_size_bytes","matched_zip_modified_utc","matched_protection_class","matched_app_container","matched_domain","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","interpretation_note"}, {"store_guid","source_db","inode_num","field_name","reference_type","normalized_ios_path","missing_candidate_category","investigative_priority","investigative_reason","spotlight_text_context_sample","spotlight_text_context_status","ffs_lookup_source","ffs_lookup_status","residency_status","confidence","matched_file_name","matched_app_container","matched_domain","raw_reference_value","interpretation_note"}, "investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id"},
         {L"iOS - Missing From FFS Summary", "vw_ios_spotlight_missing_from_ffs_summary", {"source_id","store_guid","source_db","field_name","reference_type","missing_candidate_category","investigative_priority","spotlight_text_context_status","ffs_lookup_status","missing_candidate_count","distinct_spotlight_object_count","distinct_missing_path_count","min_missing_path_sample","max_missing_path_sample","spotlight_text_context_sample","investigative_reason","interpretation_note"}, {"store_guid","source_db","field_name","reference_type","missing_candidate_category","investigative_priority","spotlight_text_context_status","ffs_lookup_status","missing_candidate_count","distinct_missing_path_count","min_missing_path_sample","max_missing_path_sample","spotlight_text_context_sample","investigative_reason","interpretation_note"}, "investigative_priority_sort, missing_candidate_count DESC, store_guid, field_name, reference_type"},
@@ -1077,7 +1100,7 @@ WITH refs AS (
   SELECT DISTINCT source_id FROM files
 ), ctx AS (
   SELECT source_id,store_guid,source_db,inode_num,store_id,
-         substr(MAX(field_value),1,1800) AS spotlight_text_context_sample
+         substr(MAX(field_value),1,4000) AS spotlight_text_context_sample
   FROM raw_key_values
   WHERE field_name='__spotlight_investigator_text_context'
   GROUP BY source_id,store_guid,source_db,inode_num,store_id
@@ -1138,7 +1161,7 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
        MIN(normalized_ios_path) AS min_missing_path_sample,
        MAX(normalized_ios_path) AS max_missing_path_sample,
-       substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,4000) AS spotlight_text_context_sample,
        MAX(investigative_reason) AS investigative_reason,
        'Compact normal-mode Missing From FFS summary. Priority/category fields keep likely app thumbnail/cache noise from dominating investigator review.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_candidates
@@ -1159,7 +1182,7 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
        MIN(normalized_ios_path) AS min_missing_path_sample,
        MAX(normalized_ios_path) AS max_missing_path_sample,
-       substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,4000) AS spotlight_text_context_sample,
        MAX(investigative_reason) AS investigative_reason,
        'High/medium-priority subset of Missing From FFS candidates, excluding likely thumbnail/brand/cache-only references. Use this first before the full candidate view.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates
@@ -4115,17 +4138,17 @@ public:
             ensureGuiReviewViews(db_);
             return;
         }
-        if (db_) { sqlite3_close(db_); db_ = nullptr; }
+        if (db_) { sqlite3_close_v2(db_); db_ = nullptr; }
         if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
             std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown";
-            if (db_) sqlite3_close(db_);
+            if (db_) sqlite3_close_v2(db_);
             db_ = nullptr;
             throw std::runtime_error("Unable to open case database: " + msg);
         }
         sqlite3_busy_timeout(db_, 30000);
         sqlite3_exec(db_, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
     }
-    ~ReadOnlyDb() { if (db_) sqlite3_close(db_); }
+    ~ReadOnlyDb() { if (db_) sqlite3_close_v2(db_); }
     sqlite3* get() const { return db_; }
 private:
     sqlite3* db_ = nullptr;
@@ -5211,6 +5234,10 @@ void loadReviewPage() {
         return;
     }
 
+    if (gReviewThread.joinable()) {
+        ++gReviewRequestSeq;
+        gReviewThread.join();
+    }
     const unsigned long long requestId = ++gReviewRequestSeq;
     const std::wstring dbPath = gOpenedCaseDb;
     const HWND owner = GetParent(gList);
@@ -5247,7 +5274,7 @@ void loadReviewPage() {
     UpdateWindow(gReviewSummary);
     UpdateWindow(gList);
 
-    std::thread([requestId, owner, dbPath, v, viewIndex, requestedPage, ps, search, capturedFilterValue, sql, bindPatterns, checkedCountAtRequest]() {
+    gReviewThread = std::thread([requestId, owner, dbPath, v, viewIndex, requestedPage, ps, search, capturedFilterValue, sql, bindPatterns, checkedCountAtRequest]() {
         auto* result = new ReviewPageResult();
         result->requestId = requestId;
         result->viewIndex = viewIndex;
@@ -5256,6 +5283,8 @@ void loadReviewPage() {
         const ULONGLONG startedMs = GetTickCount64();
         try {
             ReadOnlyDb db(dbPath);
+            ReviewCancelContext cancelCtx{requestId};
+            sqlite3_progress_handler(db.get(), 1000, sqliteReviewProgressCancel, &cancelCtx);
             sqlite3_stmt* st = nullptr;
             if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
             int bind = 1;
@@ -5265,7 +5294,7 @@ void loadReviewPage() {
 
             int row = 0;
             while (true) {
-                if (requestId != gReviewRequestSeq.load()) { sqlite3_finalize(st); delete result; return; }
+                if (requestId != gReviewRequestSeq.load() || gShuttingDown.load()) { sqlite3_finalize(st); sqlite3_progress_handler(db.get(), 0, nullptr, nullptr); delete result; return; }
                 int rc = sqlite3_step(st);
                 if (rc == SQLITE_DONE) break;
                 if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
@@ -5281,7 +5310,8 @@ void loadReviewPage() {
                 ++row;
             }
             sqlite3_finalize(st);
-            if (requestId != gReviewRequestSeq.load()) { delete result; return; }
+            sqlite3_progress_handler(db.get(), 0, nullptr, nullptr);
+            if (requestId != gReviewRequestSeq.load() || gShuttingDown.load()) { delete result; return; }
             result->visibleTags = tagsForArtifacts(db.get(), result->artifactIds);
             result->elapsedMs = GetTickCount64() - startedMs;
             const long long firstRow = row == 0 ? 0 : (static_cast<long long>(requestedPage) * ps + 1);
@@ -5300,7 +5330,7 @@ void loadReviewPage() {
             result->error = widen(ex.what());
         }
         PostMessageW(owner, WM_REVIEW_PAGE_RESULT, 0, reinterpret_cast<LPARAM>(result));
-    }).detach();
+    });
 }
 
 void exportCurrentPage(HWND owner) {
@@ -6324,7 +6354,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_OPEN_LOGS_FOLDER: { openLogsFolderAction(hwnd); return 0; }
         case ID_REVIEW_VIEW: { if (HIWORD(wp) == LBN_SELCHANGE) { gCurrentPage = 0; gSortColumn = -1; gFilterColumn = -1; gFilterValue.clear(); loadReviewPage(); } return 0; }
         case ID_REVIEW_REFRESH: { gCurrentPage = 0; loadReviewPage(); return 0; }
-        case ID_REVIEW_CANCEL_LOAD: { ++gReviewRequestSeq; gReviewLoadInProgress = false; setReviewLoadingState(false); setReviewSummary(L"Cancelled current review-page load. Start another view/search when ready."); return 0; }
+        case ID_REVIEW_CANCEL_LOAD: { cancelAndJoinReviewThreadNoThrow(); gReviewLoadInProgress = false; setReviewLoadingState(false); setReviewSummary(L"Cancelled current review-page load. Start another view/search when ready."); return 0; }
         case ID_CTX_SORT_ASC: { if (gContextColumn >= 0) { gSortColumn = gContextColumn; gSortDescending = false; gCurrentPage = 0; loadReviewPage(); } return 0; }
         case ID_CTX_SORT_DESC: { if (gContextColumn >= 0) { gSortColumn = gContextColumn; gSortDescending = true; gCurrentPage = 0; loadReviewPage(); } return 0; }
         case ID_CTX_FILTER_SEARCH: { if (gContextColumn >= 0) { gFilterColumn = gContextColumn; gFilterValue = narrow(getText(gSearch)); gCurrentPage = 0; loadReviewPage(); } return 0; }
@@ -6385,7 +6415,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 780; }
         return 0;
     }
-    case WM_DESTROY: { KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

@@ -1,8 +1,8 @@
 # Package Cleanup / Documentation Consolidation Summary
 
-Current version: V0_9_36
+Current version: V0_9_40
 
-V0_9_34 removed stale scattered production-package fragments.  V0_9_36 corrects the resulting loss of historical detail by restoring historical V0_9 information into `docs/CONSOLIDATED_VERSION_HISTORY.md` rather than reintroducing many separate old note files.
+V0_9_34 removed stale scattered production-package fragments.  V0_9_37 corrects the resulting loss of historical detail by restoring historical V0_9 information into `docs/CONSOLIDATED_VERSION_HISTORY.md` rather than reintroducing many separate old note files.
 
 Policy:
 
@@ -11,7 +11,7 @@ Policy:
 - Preserve historical substance in the consolidated version history.
 - Keep one primary manual and one primary version history.
 
-# V0_9_36 Package Cleanup Summary
+# V0_9_37 Package Cleanup Summary
 
 ## Removed from the production ZIP
 
@@ -187,7 +187,7 @@ Policy:
 
 - Source code under `src/`.
 - Build files: `CMakeLists.txt`, `build_windows_msvc.bat`, `build_linux_test.sh`, and related build helpers.
-- Current V0_9_36 PowerShell build/run/package/collect scripts.
+- Current V0_9_37 PowerShell build/run/package/collect scripts.
 - Generic utility/GitHub scripts.
 - Consolidated documentation under `docs/`.
 - `HELP.md`, `RELEASE_NOTES.md`, `VERSION_HISTORY.md`, `KNOWN_ISSUES.md`, and `BUILD_INSTRUCTIONS.md`.
