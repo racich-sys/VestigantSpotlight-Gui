@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V0_9_31.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_31",
-  [string]$BuildLog = "D:\Downloads\V0_9_31_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V0_9_32.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_32",
+  [string]$BuildLog = "D:\Downloads\V0_9_32_build.log",
   [switch]$CleanExtract
 )
 

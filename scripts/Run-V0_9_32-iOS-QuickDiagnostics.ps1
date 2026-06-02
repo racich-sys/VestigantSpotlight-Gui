@@ -1,14 +1,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$SourceRoot = "T:\VestigantSpotlightInv_V0_9_27"
+$SourceRoot = "T:\VestigantSpotlightInv_V0_9_32"
 $Tool = "$SourceRoot\tools\Collect-iOSCoreSpotlightQuickDiagnostics.ps1"
 $InputZip = "T:\0202_0024-IT002\00008132-000269523699001C_files_full.zip"
 
-$ReportRoot = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V0_9_27"
-$ReportZip = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V0_9_27.zip"
-$EvidenceRoot = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V0_9_27"
-$EvidenceZip = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V0_9_27.zip"
+$ReportRoot = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V0_9_32"
+$ReportZip = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V0_9_32.zip"
+$EvidenceRoot = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V0_9_32"
+$EvidenceZip = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V0_9_32.zip"
 
 if (!(Test-Path -LiteralPath $Tool)) { throw "Quick diagnostic tool not found: $Tool" }
 

@@ -1,3 +1,0 @@
-signature_name,category,offset_bytes,confidence,notes
-ZIP_LOCAL_FILE_HEADER,container,0,HIGH,File begins with ZIP local-file header. AFF4 containers are commonly ZIP-structured containers.
-AFF4_STRING,container,31455635,LOW,AFF4 string found during bounded scan. Use with extension/header evidence; not a complete AFF4 validation.

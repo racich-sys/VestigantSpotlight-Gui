@@ -1,8 +1,8 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.31
+Current version: 0.9.33
 
-## V0_9_31
+## V0_9_33
 
 - Reviewed V0_9_30 build/thin output; V0_9_30 built successfully and completed the iOS reuse-cache workflow.
 - Replaced the overly granular `ios_spotlight_message_contact_summary.csv` with a compact bucketed contact/thread summary so normal investigator exports stay usable.
@@ -10,7 +10,7 @@ Current version: 0.9.31
 - Added message body focus summary, parser diagnostics action summary, Plaso/L2T timeline sample, and case quality dashboard views/exports.
 - Preserved compact normal iOS mode: no full FFS inventory, broad app DB records, or full native property DB materialization by default.
 
-## V0_9_31
+## V0_9_33
 
 - Reviewed V0_9_29 build/thin output before changing code. The Windows/MSVC build completed, GUI linked, and the iOS reuse-cache run reached `complete_success` with stable compact counts.
 - Consolidated stalled/scattered help into `docs/CONSOLIDATED_USER_MANUAL.md`.

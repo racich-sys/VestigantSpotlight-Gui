@@ -1,4 +1,4 @@
-V0_9_31 change / validation note
+V0_9_32 change / validation note
 
 Focus:
 - Consolidate stalled/scattered help and version documentation into one current user-facing manual and one consolidated changelog.
