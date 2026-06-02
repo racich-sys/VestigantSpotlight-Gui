@@ -1,4 +1,5 @@
 #include "app/app_runner.h"
+#include "db/case_db.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -21,6 +22,39 @@ fs::path testIoPath(const fs::path& p) {
 #endif
 }
 
+
+bool runSchemaSmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "schema_smoke" / "schema_smoke.case.sqlite";
+    std::error_code ec;
+    fs::remove(dbPath, ec);
+    CaseDatabase db;
+    db.open(dbPath);
+    db.initializeSchema();
+    const char* views[] = {
+        "vw_ios_spotlight_message_body_review",
+        "vw_ios_spotlight_user_focus_message_review",
+        "vw_ios_spotlight_message_contact_summary",
+        "vw_ios_spotlight_normalized_timeline",
+        "vw_ios_spotlight_timeline_anomaly_summary",
+        "vw_parser_diagnostics_summary",
+        "vw_parser_diagnostics_detail_sample",
+        "vw_case_provenance_summary",
+        "vw_ios_spotlight_noise_reduction_summary",
+        "vw_ios_spotlight_message_text_review",
+        "vw_ios_spotlight_communication_record_review"
+    };
+    try {
+        for (const char* view : views) {
+            auto stmt = db.prepare(std::string("SELECT * FROM ") + view + " LIMIT 1");
+            while (stmt.stepRow()) {}
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "Schema smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 bool testExists(const fs::path& p) {
     std::error_code ec;
     if (fs::exists(p, ec)) return true;
@@ -39,7 +73,8 @@ int main(int argc, char** argv) {
         && testExists(out / "case" / "exports" / "usage_evidence.csv")
         && testExists(out / "case" / "exports" / "object_usage_summary.csv")
         && testExists(out / "case" / "exports" / "upload_samples" / "object_usage_summary_focus.csv")
-        && testExists(out / "case" / "investigator_dashboard.html");
+        && testExists(out / "case" / "investigator_dashboard.html")
+        && runSchemaSmokeTest(out);
     if (!ok) {
         std::cerr << "Self-test failed. artifacts=" << rr.artifactCount << " usage=" << rr.usageCount << " orphan=" << rr.orphanCandidateCount << " exit=" << rr.exitCode << "\n";
         return 1;

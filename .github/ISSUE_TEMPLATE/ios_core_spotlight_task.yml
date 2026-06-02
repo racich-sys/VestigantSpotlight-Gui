@@ -1,0 +1,43 @@
+name: iOS CoreSpotlight parser task
+description: Track iOS CoreSpotlight parsing, views, exports, or correlation work.
+title: "iOS CoreSpotlight: "
+labels: ["ios", "corespotlight"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What investigator-facing result should this produce?
+      placeholder: "Example: Decode dbStr property maps and map string probes to CoreSpotlight field names."
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - FFS/app inventory
+        - CoreSpotlight field/property decoding
+        - App database record parsing
+        - Missing-from-FFS correlation
+        - GUI view/export
+        - Validation
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - Windows MSVC build passes.
+        - GUI iOS ingest completes.
+        - Relevant CSV/view populates with nonzero rows on the standard iOS FFS ZIP.
+        - Upload thin bundle contains needed diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence/test data location
+      description: Use local paths only. Do not attach evidence to GitHub.
+      placeholder: "T:\\0202_0024-IT002\\00008132-000269523699001C_files_full.zip"

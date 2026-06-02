@@ -1,0 +1,26 @@
+name: Build failure
+description: Report a Windows/MSVC or CI build failure.
+title: "Build failure: "
+labels: ["build-failure", "msvc"]
+body:
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      render: powershell
+      placeholder: ".\\build_windows_msvc.bat"
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      render: text
+      placeholder: "Paste the failing compiler/linker section."
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Related files/logs
+      placeholder: "V0_8_xx_build.log path or uploaded validation bundle name"

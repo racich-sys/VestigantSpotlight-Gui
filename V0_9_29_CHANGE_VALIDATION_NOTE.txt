@@ -1,0 +1,8 @@
+## V0_9_29 - iOS message body review, timeline/provenance, and diagnostics
+
+- Reviewed V0_9_28 build/thin upload first: Windows/MSVC build completed, GUI linked, iOS reused-cache run reached complete_success, and core counts remained stable at 344,445 raw records, 982,230 compact key/value rows, and 336,037 compact date candidates.
+- Added schema smoke coverage to the self-test for key iOS Spotlight review/diagnostic views so SQL/view regressions are caught earlier.
+- Added case/provenance and parser diagnostics summary views/exports to make parser version, source context, raw failures, partial decode errors, and native decode attempt status visible.
+- Added normalized iOS Spotlight timeline and timeline anomaly summary with source-field/date-provenance cautions.
+- Added message body/subject extraction, contact/thread summary, user-focus message review, and non-destructive noise-reduction summaries for iOS Spotlight communications.
+- Preserved compact normal iOS mode; full FFS/app DB/native-property materialization remains support/diagnostic only.

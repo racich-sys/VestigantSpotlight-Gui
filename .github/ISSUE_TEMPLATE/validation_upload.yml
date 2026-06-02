@@ -1,0 +1,31 @@
+name: Validation upload review
+description: Track review of a thin upload/log bundle.
+title: "Validation upload: "
+labels: ["validation"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "V0_8_99"
+    validations:
+      required: true
+  - type: textarea
+    id: uploaded_files
+    attributes:
+      label: Uploaded files
+      placeholder: |
+        V0_8_99_build.log
+        Upload_Thin_iOS_GUI_V0_8_99_Check.zip
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected validation checks
+      placeholder: |
+        - Confirm build status/version.
+        - Confirm iOS CoreSpotlight counts.
+        - Confirm FFS/app DB inventory counts.
+        - Confirm parsed app DB record counts.
+        - Confirm iOS views stay in iOS tab.

@@ -1,0 +1,43 @@
+name: iOS app database parser task
+description: Add or improve parsing of local iOS app databases.
+title: "iOS app DB parser: "
+labels: ["ios", "app-db"]
+body:
+  - type: dropdown
+    id: db_family
+    attributes:
+      label: Database family
+      options:
+        - Apple Messages SMS.db
+        - CallHistory
+        - WhatsApp
+        - Signal
+        - Telegram
+        - Safari/WebKit/Chrome
+        - Mail
+        - Calendar
+        - Contacts
+        - FileProvider/CloudDocs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: record_fields
+    attributes:
+      label: Desired parsed fields
+      placeholder: "timestamps, sender/recipient, direction, body/snippet, attachment path, URL, table name, row id, source DB path"
+    validations:
+      required: true
+  - type: textarea
+    id: correlation
+    attributes:
+      label: Spotlight correlation target
+      placeholder: "Which Spotlight values should be matched to this DB family?"
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - Parser is read-only and safe on copied/staged DBs.
+        - Parsed records include source DB path, table, rowid, timestamps, and confidence.
+        - GUI iOS view/export is populated.

@@ -1,0 +1,26 @@
+name: AFF4/APFS task
+description: Track AFF4/APFS direct reader and Spotlight copy-out work.
+title: "AFF4/APFS: "
+labels: ["aff4-apfs"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      placeholder: "Example: Wire direct AFF4 virtual reads into V0.8.74 APFS copy-out/staging path."
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Baseline/reference
+      placeholder: "V0.8.74 baseline, Codex direct traversal patch, AFF4 path, target group"
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation requirements
+      placeholder: |
+        - No AFF4_open hang.
+        - APFS target-name hits match baseline.
+        - Copy-out produces Store-V2 staged files.
+        - External comparison metrics generated when copy-out succeeds.

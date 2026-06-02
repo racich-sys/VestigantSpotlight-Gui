@@ -1,0 +1,60 @@
+name: Windows MSVC Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with MSVC batch script
+        shell: pwsh
+        run: |
+          .\build_windows_msvc.bat 2>&1 | Tee-Object -FilePath windows_build.log
+          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlight.exe")) { throw "VestigantSpotlight.exe was not produced." }
+          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlightCli.exe")) { throw "VestigantSpotlightCli.exe was not produced." }
+          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlightTests.exe")) { throw "VestigantSpotlightTests.exe was not produced." }
+
+      - name: CLI version
+        shell: pwsh
+        run: .\build-msvc\Release\VestigantSpotlightCli.exe --version
+
+      - name: Self test
+        shell: pwsh
+        run: .\build-msvc\Release\VestigantSpotlightTests.exe ".\build-msvc\selftest_out"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-log
+          path: windows_build.log
+
+      - name: Upload self-test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-output
+          path: build-msvc/selftest_out/
+
+      - name: Upload binaries
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vestigantspotlight-windows-binaries
+          path: |
+            build-msvc/Release/VestigantSpotlight.exe
+            build-msvc/Release/VestigantSpotlightCli.exe
+            build-msvc/Release/VestigantSpotlightTests.exe
