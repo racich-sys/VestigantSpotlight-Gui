@@ -1,30 +1,18 @@
-# Vestigant Spotlight Release Notes
+# Release Notes
 
-Current version: 0.9.33
+Current version: 0.9.34
 
-## V0_9_33
+## V0_9_34
 
-- Reviewed V0_9_30 build/thin output; V0_9_30 built successfully and completed the iOS reuse-cache workflow.
-- Replaced the overly granular `ios_spotlight_message_contact_summary.csv` with a compact bucketed contact/thread summary so normal investigator exports stay usable.
-- Added `ios_spotlight_message_contact_thread_detail_sample.csv` for bounded representative thread/handle examples.
-- Added message body focus summary, parser diagnostics action summary, Plaso/L2T timeline sample, and case quality dashboard views/exports.
-- Preserved compact normal iOS mode: no full FFS inventory, broad app DB records, or full native property DB materialization by default.
+V0_9_34 is a cleanup/consolidation release after the V0_9_33 build and thin upload completed successfully.  The release keeps parser behavior stable and focuses on production-package hygiene:
 
-## V0_9_33
+- Reviewed the V0_9_33 build/thin output.  The run completed successfully with stable compact-mode iOS counts.
+- Corrected VERSION and VERSION.txt so the source package version is no longer stale.
+- Removed stale root per-version validation-note fragments and old review snippets from the production ZIP.
+- Removed old version-specific PowerShell wrappers from the production ZIP and kept current V0_9_34 wrappers plus generic utility scripts.
+- Removed superseded old V0_7/V0_8 documentation fragments from the production ZIP.
+- Added `docs/PACKAGE_CLEANUP_SUMMARY.md` and `docs/V0_9_34_REVIEW_NOTES.md`.
+- Preserved consolidated help/manual/version/roadmap files as the maintained documentation set.
+- Fixed minor MSVC warning hygiene in the native parser by explicitly marking intentionally unused helper parameters.
 
-- Reviewed V0_9_29 build/thin output before changing code. The Windows/MSVC build completed, GUI linked, and the iOS reuse-cache run reached `complete_success` with stable compact counts.
-- Consolidated stalled/scattered help into `docs/CONSOLIDATED_USER_MANUAL.md`.
-- Consolidated current version history into `docs/CONSOLIDATED_VERSION_HISTORY.md`.
-- Updated top-level `HELP.md`, `RELEASE_NOTES.md`, and `VERSION_HISTORY.md` to point to the consolidated documentation.
-- Improved compact iOS Spotlight message/body review extraction from same-record Spotlight text context, including mail/message title, snippet, description, supporting text, and suggested contact/thread context where present.
-- Added parser diagnostics detail view/export so native failures and partial decode errors are visible at record/sample level, not only as summary counts.
-- Added GUI view `iOS - Parser Diagnostics Detail Sample`.
-- Added normal export `parser_diagnostics_detail_sample.csv`.
-- Preserved compact normal iOS mode; full native/dbStr/property persistence and broad FFS/app DB materialization remain support/diagnostic options.
-
-Validation in this environment:
-
-- C++ syntax checks for modified files.
-- SQLite schema smoke test expanded to include the new diagnostics detail view.
-- Raw-string fragment length check to reduce recurrence of MSVC C2026 oversized literal failures.
-- Linux build/self-test attempted where feasible; Windows/MSVC remains required validation.
+Normal iOS mode remains compact and Spotlight-first.  No broad raw native/dbStr/property persistence, full FFS inventory materialization, or broad app DB record materialization was reintroduced.

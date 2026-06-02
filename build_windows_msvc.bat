@@ -14,10 +14,8 @@ if not exist "src\cli\main.cpp" (
 
 REM ---------------------------------------------------------------------------
 REM VestigantSpotlight no-CMake MSVC build - response-file object build.
-REM V0_7_23_6 changes:
-REM - Date-association hardening compile fix; stops immediately on common object compile failure
-REM   - Preserves working MSVC discovery, response-file linking, and GDI GUI linking.
-REM   - Adds GUI progress-bar support and focused upload-profile defaults.
+REM Current no-CMake MSVC build script.  Keep this script version-neutral:
+REM it reads VERSION.txt and builds common objects once, then links CLI, tests, and GUI.
 REM ---------------------------------------------------------------------------
 
 where cl.exe >nul 2>nul

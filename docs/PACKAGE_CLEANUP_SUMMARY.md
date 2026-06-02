@@ -1,0 +1,187 @@
+# V0_9_34 Package Cleanup Summary
+
+## Removed from the production ZIP
+
+- `Spotlight_V0_9_2_review_and_next_test.txt`
+- `V0_9_11_1_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_13_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_14_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_15_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_17_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_18_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_19_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_1_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_20_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_21_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_22_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_23_1_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_24_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_25_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_26_1_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_26_2_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_28_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_29_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_2_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_30_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_3_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_4_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_6_CHANGE_VALIDATION_NOTE.txt`
+- `V0_9_32_CHANGE_VALIDATION_NOTE.txt`
+- `docs/FORENSIC_ROADMAP_MACOS_IOS_V0_8_74.md`
+- `docs/FORENSIC_ROADMAP_MACOS_IOS_V0_8_75.md`
+- `docs/V0_6_3_FEATURE_FLOWCHART_PLAN.md`
+- `docs/V0_7_13_TEST_COMMANDS.md`
+- `docs/V0_7_15_TEST_COMMANDS.md`
+- `docs/V0_7_16_TEST_COMMANDS.md`
+- `docs/V0_7_17_TEST_COMMANDS.md`
+- `docs/V0_7_19_TEST_COMMANDS.md`
+- `docs/V0_7_20_TEST_COMMANDS.md`
+- `docs/V0_9_33_REVIEW_NOTES.md`
+- `scripts/Build-And-Run-V0_9_11_1-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_17-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_18-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_19-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_20-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_21-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_22-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_24-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_25-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_26_1-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_26_2-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_28-iOS-GUI.ps1`
+- `scripts/Build-And-Run-V0_9_6-iOS-GUI.ps1`
+- `scripts/Build-V0_9_11_1.ps1`
+- `scripts/Build-V0_9_17.ps1`
+- `scripts/Build-V0_9_18.ps1`
+- `scripts/Build-V0_9_19.ps1`
+- `scripts/Build-V0_9_20.ps1`
+- `scripts/Build-V0_9_21.ps1`
+- `scripts/Build-V0_9_22.ps1`
+- `scripts/Build-V0_9_24.ps1`
+- `scripts/Build-V0_9_25.ps1`
+- `scripts/Build-V0_9_26_1.ps1`
+- `scripts/Build-V0_9_26_2.ps1`
+- `scripts/Build-V0_9_28.ps1`
+- `scripts/Build-V0_9_6.ps1`
+- `scripts/Collect-V0_9_18-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_19-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_20-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_21-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_22-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_24-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_25-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_26_1-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_26_2-DBBloat-State.ps1`
+- `scripts/Collect-V0_9_28-DBBloat-State.ps1`
+- `scripts/Package-V0_9_11_1-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_17-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_18-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_19-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_20-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_21-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_22-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_24-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_25-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_26_1-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_26_2-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_28-iOS-ThinUpload.ps1`
+- `scripts/Package-V0_9_6-iOS-ThinUpload.ps1`
+- `scripts/Run-V0_9_11_1-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_11_1-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_11_1-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_11_1-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_11_1-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_17-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_17-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_17-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_17-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_17-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_18-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_18-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_18-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_18-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_18-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_19-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_19-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_19-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_19-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_19-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_20-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_20-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_20-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_20-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_20-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_21-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_21-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_21-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_21-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_21-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_22-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_22-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_22-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_22-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_22-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_24-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_24-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_24-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_24-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_24-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_25-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_25-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_25-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_25-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_25-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_26_1-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_26_1-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_26_1-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_26_1-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_26_1-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_26_2-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_26_2-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_26_2-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_26_2-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_26_2-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_28-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_28-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_28-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_28-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_28-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Run-V0_9_6-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_6-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_6-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_6-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_6-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Build-And-Run-V0_9_32-iOS-GUI.ps1`
+- `scripts/Build-V0_9_32.ps1`
+- `scripts/Collect-V0_9_32-DBBloat-State.ps1`
+- `scripts/Package-V0_9_32-iOS-ThinUpload.ps1`
+- `scripts/Run-V0_9_32-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_32-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_32-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_32-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_32-iOS-ReuseCache-GUI-Test.txt`
+- `scripts/Build-And-Run-V0_9_33-iOS-GUI.ps1`
+- `scripts/Build-V0_9_33.ps1`
+- `scripts/Collect-V0_9_33-DBBloat-State.ps1`
+- `scripts/Package-V0_9_33-iOS-ThinUpload.ps1`
+- `scripts/Run-V0_9_33-iOS-CLI-FullParse-AndZip.ps1`
+- `scripts/Run-V0_9_33-iOS-GUI-Test.txt`
+- `scripts/Run-V0_9_33-iOS-QuickDiagnostics.ps1`
+- `scripts/Run-V0_9_33-iOS-ReuseCache-CLI-AndZip.ps1`
+- `scripts/Run-V0_9_33-iOS-ReuseCache-GUI-Test.txt`
+
+## Kept intentionally
+
+- Source code under `src/`.
+- Build files: `CMakeLists.txt`, `build_windows_msvc.bat`, `build_linux_test.sh`, and related build helpers.
+- Current V0_9_34 PowerShell build/run/package/collect scripts.
+- Generic utility/GitHub scripts.
+- Consolidated documentation under `docs/`.
+- `HELP.md`, `RELEASE_NOTES.md`, `VERSION_HISTORY.md`, `KNOWN_ISSUES.md`, and `BUILD_INSTRUCTIONS.md`.
+
+## Deferred cleanup
+
+- No broad parser refactor was performed.
+- No Win32 MainWindow/global-state refactor was performed.
+- No mass enum/magic-string migration was performed.
+- Legacy V7 importer code remains compiled for compatibility but should stay isolated/deprecated until native iOS/macOS paths are fully stable.

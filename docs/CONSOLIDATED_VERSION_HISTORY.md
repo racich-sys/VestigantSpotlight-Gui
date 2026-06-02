@@ -1,12 +1,20 @@
+# Consolidated Version History
+
+Current version: 0.9.34
+
+## V0_9_34
+
+V0_9_34 reviewed V0_9_33 results, corrected stale VERSION/VERSION.txt metadata, and performed the first requested clean-source package pass.  It removed old per-version root notes, superseded V0_7/V0_8 documentation fragments, and older version-specific PowerShell wrappers from the production ZIP.  Current help/version/roadmap material is consolidated under `docs/`, and current V0_9_34 scripts replace older wrappers.  Parser behavior and compact iOS normal-mode behavior are unchanged except for minor warning hygiene.
+
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.33
+Current version: 0.9.34
 
-## V0_9_33
+## V0_9_34
 
-V0_9_33 continues the iOS investigator workflow after V0_9_30 completed successfully. It reduces oversized contact/thread summary output by grouping handles into review buckets, adds bounded contact/thread detail sampling, adds a message/body focus summary, adds parser diagnostic severity and recommended-action guidance, and introduces a Plaso/L2T-compatible timeline sample export.
+V0_9_34 continues the iOS investigator workflow after V0_9_30 completed successfully. It reduces oversized contact/thread summary output by grouping handles into review buckets, adds bounded contact/thread detail sampling, adds a message/body focus summary, adds parser diagnostic severity and recommended-action guidance, and introduces a Plaso/L2T-compatible timeline sample export.
 
-## V0_9_33
+## V0_9_34
 
 - Reviewed V0_9_29 build/thin output: Windows/MSVC build completed, GUI linked, self-test passed, and the iOS reuse-cache run reached `complete_success` with stable compact counts.
 - Consolidated user help into `docs/CONSOLIDATED_USER_MANUAL.md` and version history into this document.

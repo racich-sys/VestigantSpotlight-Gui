@@ -1,14 +1,12 @@
 # Validation Status
 
-Current version: 0.9.33
+Current version: 0.9.34
 
-V0_9_29 Windows/MSVC build and GUI link completed successfully in the uploaded build log. V0_9_29 iOS reuse-cache thin output reached `complete_success` with stable compact counts.
+V0_9_34 requires Windows/MSVC validation after packaging.  Local validation performed during packaging includes source-tree cleanup inventory, syntax/static checks where available, raw-string risk checks, ZIP integrity checks, and Linux build/self-test attempt where feasible.
 
-V0_9_33 changes require Windows/MSVC validation after packaging. Local validation performed for V0_9_33 should include:
+Expected Windows validation:
 
-- C++ syntax checks for modified files.
-- SQLite schema smoke test for updated/new views.
-- Raw-string literal size check for MSVC C2026 risk.
-- Linux build/self-test where feasible.
-
-Windows/MSVC validation remains authoritative for GUI build health.
+1. Build with `build_windows_msvc.bat`.
+2. Confirm CLI version reports `Vestigant Spotlight v0.9.34`.
+3. Run `VestigantSpotlightTests.exe`.
+4. Run the standard iOS reuse-cache script and upload the thin bundle.

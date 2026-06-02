@@ -1143,6 +1143,7 @@ bool isHighValueNativeFieldName(const std::string& fieldLower) {
 }
 
 std::string trimStoredNativeValue(const std::string& field, const std::string& value) {
+    (void)field;
     constexpr std::size_t DefaultMaxStoredValueBytes = 4096;
     if (value.size() <= DefaultMaxStoredValueBytes) return value;
     return value.substr(0, DefaultMaxStoredValueBytes) + "...[truncated by default iOS Spotlight investigator mode; rerun with --diagnostic-full-native-db for full raw value]";
@@ -1262,6 +1263,7 @@ bool shouldPersistDefaultIosDateCandidate(const std::string& field,
                                           const std::string& value,
                                           bool parsedIso,
                                           std::size_t persistedDatesForRecord) {
+    (void)value;
     // V0.9.20: normal iOS investigator mode must not create a date row for every
     // CoreSpotlight item.  raw_records.last_updated_utc remains the compact per-record
     // index/update timestamp.  raw_date_candidates is reserved for one clearly high-value
