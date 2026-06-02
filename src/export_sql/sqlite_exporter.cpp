@@ -1181,10 +1181,8 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_human_text_rollup.csv", "SELECT * FROM vw_ios_spotlight_human_text_rollup ORDER BY has_high_review_value_text DESC, last_updated_utc DESC, raw_record_id", log);
         exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_summary.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_summary ORDER BY missing_candidate_count DESC, store_guid, field_name, reference_type", log);
         exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_high_value_summary.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_high_value_summary ORDER BY missing_candidate_count DESC, store_guid, field_name, reference_type", log);
-        exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_text_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_text_coverage_summary ORDER BY investigative_priority, missing_candidate_count DESC, store_guid, missing_candidate_category", log);
-        exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_text_detail.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_text_detail ORDER BY investigative_priority_sort, spotlight_text_visibility_status DESC, residency_status, confidence, normalized_ios_path, reference_id", log);
-        exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_candidates.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_candidates ORDER BY investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id", log);
-        exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_high_value_candidates.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates ORDER BY investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id", log);
+        if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_candidates.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_candidates ORDER BY investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id", log);
+        if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_missing_from_ffs_high_value_candidates.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates ORDER BY investigative_priority_sort, residency_status, confidence, normalized_ios_path, reference_id", log);
         exportQuery(db, exportDir / "ios_spotlight_residency_summary.csv", "SELECT * FROM vw_ios_spotlight_residency_summary ORDER BY residency_status, confidence", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_database_residency_candidates.csv", "SELECT * FROM vw_ios_database_residency_candidates ORDER BY object_category, database_residency_status, candidate_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_object_identity.csv", "SELECT * FROM vw_ios_spotlight_object_identity ORDER BY protection_class, store_guid, CAST(spotlight_inode_or_object_id AS INTEGER), raw_record_id", log);
@@ -2038,14 +2036,6 @@ LIMIT 5000
     if (tableExists(db, "vw_ios_string_probe_values")) {
         exportQuery(db, sampleDir / "ios_string_probe_values_sample.csv", "SELECT * FROM vw_ios_string_probe_values ORDER BY probe_category, store_guid, CAST(inode_num AS INTEGER), raw_kv_id LIMIT 5000", log);
         manifest << "ios_string_probe_values_sample.csv,vw_ios_string_probe_values," << tableRowCount(db, "vw_ios_string_probe_values") << "," << FocusSampleLimit << ",bounded iOS string-probe payload rows for investigation\n";
-    }
-    if (tableExists(db, "vw_ios_spotlight_missing_from_ffs_text_coverage_summary")) {
-        exportQuery(db, sampleDir / "ios_spotlight_missing_from_ffs_text_coverage_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_text_coverage_summary ORDER BY investigative_priority, missing_candidate_count DESC, store_guid, missing_candidate_category LIMIT 5000", log);
-        manifest << "ios_spotlight_missing_from_ffs_text_coverage_summary_sample.csv,vw_ios_spotlight_missing_from_ffs_text_coverage_summary," << tableRowCount(db, "vw_ios_spotlight_missing_from_ffs_text_coverage_summary") << "," << FocusSampleLimit << ",Missing From FFS text visibility coverage summary\n";
-    }
-    if (tableExists(db, "vw_ios_spotlight_missing_from_ffs_text_detail")) {
-        exportQuery(db, sampleDir / "ios_spotlight_missing_from_ffs_text_detail_sample.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_text_detail ORDER BY investigative_priority_sort, spotlight_text_visibility_status DESC, normalized_ios_path, reference_id LIMIT 5000", log);
-        manifest << "ios_spotlight_missing_from_ffs_text_detail_sample.csv,vw_ios_spotlight_missing_from_ffs_text_detail," << tableRowCount(db, "vw_ios_spotlight_missing_from_ffs_text_detail") << "," << FocusSampleLimit << ",Missing From FFS row-level details with same-record Spotlight text/content preview and validation locators\n";
     }
     if (tableExists(db, "vw_ios_spotlight_missing_from_ffs_high_value_candidates")) {
         exportQuery(db, sampleDir / "ios_spotlight_missing_from_ffs_high_value_candidates_sample.csv", "SELECT * FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates ORDER BY investigative_priority_sort, spotlight_text_context_status DESC, normalized_ios_path, reference_id LIMIT 5000", log);

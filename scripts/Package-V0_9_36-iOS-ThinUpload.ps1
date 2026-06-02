@@ -1,7 +1,7 @@
 param(
-  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_38",
-  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_38_Check.zip",
-  [string]$Work = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_38_Check"
+  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_36",
+  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_Check.zip",
+  [string]$Work = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_Check"
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,9 +18,6 @@ $LargeCsvNames = @(
   "ios_spotlight_referenced_paths.csv",
   "ios_spotlight_human_text_values.csv",
   "ios_spotlight_human_text_rollup.csv",
-  "ios_spotlight_missing_from_ffs_text_detail.csv",
-  "ios_spotlight_missing_from_ffs_text_coverage_summary.csv",
-  "ios_spotlight_missing_from_ffs_text_detail.csv",
   "ios_spotlight_missing_from_ffs_candidates.csv",
   "ios_database_residency_candidates.csv",
   "ios_spotlight_object_identity.csv",
@@ -50,8 +47,6 @@ $UploadSampleLines = 1001
 $KeepLargeUploadSampleNames = @(
   "ios_spotlight_high_value_text_context_review_sample.csv",
   "ios_spotlight_missing_from_ffs_high_value_candidates_sample.csv",
-  "ios_spotlight_missing_from_ffs_text_detail_sample.csv",
-  "ios_spotlight_missing_from_ffs_text_coverage_summary_sample.csv",
   "ios_spotlight_missing_from_ffs_candidates_sample.csv",
   "ios_spotlight_communication_record_review_sample.csv",
   "ios_spotlight_attachment_reference_review_sample.csv",

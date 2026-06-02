@@ -1,8 +1,8 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.38
+Current version: 0.9.36
 
-This is the maintained version history for the production package.  It intentionally replaces many separate per-version note fragments with one chronological history, while preserving the important historical development process.  V0_9_37 restored and summarized historical details from the uploaded V0_9_3 documentation archive (`Docs.zip`) after V0_9_34 cleanup removed too much detail from the consolidated history.
+This is the maintained version history for the production package.  It intentionally replaces many separate per-version note fragments with one chronological history, while preserving the important historical development process.  V0_9_36 restored and summarized historical details from the uploaded V0_9_3 documentation archive (`Docs.zip`) after V0_9_34 cleanup removed too much detail from the consolidated history.
 
 ## Documentation policy going forward
 
@@ -34,43 +34,20 @@ V0_9_17 introduced clean-room C++ iOS CoreSpotlight dbStr map loading for `index
 
 Once bloat and export stalls were under control, development focused on making Spotlight evidence review usable: parser limits/suppression reporting, text context review, high-value text prioritization, chat-app attribution, communication/message/media views, message body extraction, parser diagnostics, case provenance, normalized timelines, Plaso/L2T timeline sample exports, investigator overview, direct user message review, direct message thread summary, timeline month summary, and case quality dashboards.
 
-### Phase 6 - Documentation/roadmap/package consolidation, V0_9_33 through V0_9_37
+### Phase 6 - Documentation/roadmap/package consolidation, V0_9_33 through V0_9_36
 
-V0_9_33 added a detailed roadmap and testing-source timeline.  V0_9_34 performed the first clean production-package pass, removing stale fragments and old scripts, but compressed too much historical detail.  V0_9_35 restored the historical development story into this single consolidated history while keeping the production package clean.  V0_9_36 fixed a Missing From FFS export-schema mismatch while retaining the V0_9_35 documentation repair.  V0_9_37 improves Missing From FFS text visibility.
+V0_9_33 added a detailed roadmap and testing-source timeline.  V0_9_34 performed the first clean production-package pass, removing stale fragments and old scripts, but compressed too much historical detail.  V0_9_36 repairs that by restoring the historical development story into this single consolidated history while keeping the production package clean.
 
 ---
 
 ## Chronological version history
 
-### V0_9_38
-
-- Reviewed V0_9_37 build/thin results.  Windows/MSVC build succeeded, but the iOS reuse-cache run failed during native parse at the SQLite 5 GiB guardrail.
-- Determined the regression was caused by V0_9_37's larger same-record Spotlight text context budget rather than broad row-count expansion.
-- Preserved Missing From FFS text visibility while restoring normal-mode context to 1,800 bytes / 8 fields / 320 bytes per field sample.
-- Fixed fatal native guardrail propagation so size guardrail hits stop cleanly and do not continue into secondary `COMMIT` errors.
-- Added V0_9_38 review notes and updated scripts/version metadata.
-
-### V0_9_37
-
-- Reviewed V0_9_36 build/thin results; Windows/MSVC build succeeded and the run reached `complete_success` with stable compact iOS counts.
-- Increased compact same-record Spotlight text context retained for reference-bearing iOS records from 1,800 bytes / 5 fields to 4,096 bytes / 12 fields so Missing From FFS and message/media reports have more visible content.
-- Added `vw_ios_spotlight_missing_from_ffs_text_detail` and `vw_ios_spotlight_missing_from_ffs_text_coverage_summary`.
-- Added normal exports `ios_spotlight_missing_from_ffs_text_detail.csv` and `ios_spotlight_missing_from_ffs_text_coverage_summary.csv` so missing-from-FFS content review does not require manual SQLite searching.
-- Made full Missing From FFS candidates and high-value candidates normal exports instead of support-only exports because the candidate set is the primary investigator surface for potential deleted/unresolved Spotlight-indexed data.
-- Added GUI views for Missing From FFS text detail and text coverage.
-
 ### V0_9_36
-
-- Built from the V0_9_35 documentation/history repair baseline.
-- Reviewed V0_9_34 build/thin results and fixed `ios_spotlight_missing_from_ffs_summary.csv` export ordering that referenced a stale/missing `investigative_priority_sort` column.
-- Synchronized the GUI fallback Missing From FFS SQL with the CaseDatabase-managed view shape.
-- Preserved the V0_9_35 consolidated documentation/history work.
-
-### V0_9_35
 
 - Reviewed the user-uploaded historical `Docs.zip` from the V0_9_3 documentation set.
 - Restored historical V0_9 development detail into this consolidated version history rather than reintroducing many stale per-version note fragments.
 - Updated `docs/CONSOLIDATED_USER_MANUAL.md` to explain the documentation model, standard workflows, iOS review path, compact-mode interpretation, and where historical process information now lives.
+- Updated release notes, validation status/history, roadmap, help, and package cleanup notes to state that V0_9_36 is a documentation-history repair release.
 - No parser, schema, GUI, export, or forensic interpretation behavior was intentionally changed from V0_9_34.
 
 ### V0_9_34

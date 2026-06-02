@@ -1,13 +1,13 @@
 $ErrorActionPreference = "Stop"
 
-$SourceRoot = "T:\VestigantSpotlightInv_V0_9_38"
+$SourceRoot = "T:\VestigantSpotlightInv_V0_9_36"
 $Cli = "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe"
-$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_38_CLI"
+$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_36_CLI"
 $InputZip = "T:\0202_0024-IT002\00008132-000269523699001C_files_full.zip"
-$OutZip = "D:\Downloads\Upload_Thin_iOS_CLI_V0_9_38_Check.zip"
-$Work = "D:\Downloads\Upload_Thin_iOS_CLI_V0_9_38_Check"
+$OutZip = "D:\Downloads\Upload_Thin_iOS_CLI_V0_9_36_Check.zip"
+$Work = "D:\Downloads\Upload_Thin_iOS_CLI_V0_9_36_Check"
 
-if (!(Test-Path -LiteralPath $Cli)) { throw "CLI not found. Run scripts\Build-V0_9_38.ps1 first: $Cli" }
+if (!(Test-Path -LiteralPath $Cli)) { throw "CLI not found. Run scripts\Build-V0_9_36.ps1 first: $Cli" }
 if (!(Test-Path -LiteralPath $InputZip)) { throw "Input ZIP not found: $InputZip" }
 
 Remove-Item -LiteralPath $CaseRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -24,4 +24,4 @@ New-Item -ItemType Directory -Force -Path $CaseRoot | Out-Null
   --verbose
 if ($LASTEXITCODE -ne 0) { throw "VestigantSpotlightCli failed with exit code $LASTEXITCODE" }
 
-& "$SourceRoot\scripts\Package-V0_9_38-iOS-ThinUpload.ps1" -CaseRoot $CaseRoot -OutZip $OutZip -Work $Work
+& "$SourceRoot\scripts\Package-V0_9_36-iOS-ThinUpload.ps1" -CaseRoot $CaseRoot -OutZip $OutZip -Work $Work

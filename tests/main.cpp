@@ -50,9 +50,7 @@ bool runSchemaSmokeTest(const fs::path& out) {
         "vw_ios_spotlight_direct_user_message_review",
         "vw_ios_spotlight_direct_user_message_thread_summary",
         "vw_ios_spotlight_timeline_month_summary",
-        "vw_ios_spotlight_investigator_overview",
-        "vw_ios_spotlight_missing_from_ffs_text_detail",
-        "vw_ios_spotlight_missing_from_ffs_text_coverage_summary"
+        "vw_ios_spotlight_investigator_overview"
     };
     try {
         for (const char* view : views) {
