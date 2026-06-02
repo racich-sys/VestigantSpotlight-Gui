@@ -1,7 +1,7 @@
 param(
-  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_34",
-  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_34_Check.zip",
-  [string]$Work = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_34_Check"
+  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_V0_9_36",
+  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_Check.zip",
+  [string]$Work = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_36_Check"
 )
 
 $ErrorActionPreference = "Stop"

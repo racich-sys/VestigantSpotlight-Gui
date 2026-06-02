@@ -1084,6 +1084,33 @@ WITH refs AS (
 )
 SELECT r.reference_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_id,r.parent_inode_num,r.field_name,
        r.raw_reference_value,r.reference_type,r.normalized_ios_path,
+       CASE
+         WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 'LOW_APP_THUMBNAIL_OR_CACHE_REFERENCE'
+         WHEN r.field_name='kMDItemAttachmentPaths' OR r.normalized_ios_path LIKE '%/sms/attachments/%' THEN 'MESSAGE_ATTACHMENT_REFERENCE'
+         WHEN r.field_name LIKE 'com_apple_mobilesms_%' THEN 'MESSAGES_PLUGIN_OR_LINK_PREVIEW_REFERENCE'
+         WHEN r.field_name='kMDItemContentURL' THEN 'CONTENT_URL_REFERENCE'
+         WHEN r.normalized_ios_path LIKE '%/documents/%' THEN 'APP_DOCUMENT_OR_USER_CONTENT_REFERENCE'
+         ELSE 'GENERAL_SPOTLIGHT_PATH_REFERENCE'
+       END AS missing_candidate_category,
+       CASE
+         WHEN r.field_name='kMDItemAttachmentPaths' OR r.normalized_ios_path LIKE '%/sms/attachments/%' OR r.field_name LIKE 'com_apple_mobilesms_%' THEN 'HIGH_INVESTIGATIVE_VALUE'
+         WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 'LOW_INVESTIGATIVE_VALUE'
+         ELSE 'MEDIUM_INVESTIGATIVE_VALUE'
+       END AS investigative_priority,
+       CASE
+         WHEN r.field_name='kMDItemAttachmentPaths' OR r.normalized_ios_path LIKE '%/sms/attachments/%' OR r.field_name LIKE 'com_apple_mobilesms_%' THEN 1
+         WHEN r.field_name='kMDItemContentURL' THEN 3
+         WHEN r.normalized_ios_path LIKE '%/documents/%' THEN 4
+         WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 9
+         ELSE 5
+       END AS investigative_priority_sort,
+       CASE
+         WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' THEN 'Likely app thumbnail/brand/cache reference; useful for app/content context but lower deletion value than user document or attachment paths.'
+         WHEN r.field_name='kMDItemAttachmentPaths' OR r.normalized_ios_path LIKE '%/sms/attachments/%' THEN 'Message/attachment path recovered from Spotlight and absent from available FFS lookup; prioritize for deleted/unresolved attachment review.'
+         WHEN r.field_name LIKE 'com_apple_mobilesms_%' THEN 'Messages link-preview/plugin path recovered from Spotlight; prioritize as communication-context evidence.'
+         WHEN r.field_name='kMDItemContentURL' THEN 'ContentURL recovered from Spotlight; review text context and app/container before treating absence from FFS as deletion.'
+         ELSE 'Spotlight path reference absent from available FFS lookup; review text context, source store, and acquisition scope.'
+       END AS investigative_reason,
        COALESCE(ctx.spotlight_text_context_sample,'') AS spotlight_text_context_sample,
        CASE WHEN COALESCE(ctx.spotlight_text_context_sample,'')<>'' THEN 'TEXT_CONTEXT_RECOVERED_FROM_SAME_SPOTLIGHT_RECORD' ELSE 'NO_TEXT_CONTEXT_RECOVERED_IN_COMPACT_MODE' END AS spotlight_text_context_status,
        COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
@@ -1091,7 +1118,11 @@ SELECT r.reference_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_i
        COALESCE(f.lookup_source,'') AS ffs_lookup_source,
        'FFS_LOOKUP_AVAILABLE' AS ffs_lookup_status,
        'SPOTLIGHT_ONLY_FILE_MISSING_OR_UNRESOLVED' AS residency_status,
-       'MEDIUM_PATH_ABSENT_FROM_FFS_LOOKUP' AS confidence,
+       CASE
+         WHEN r.field_name='kMDItemAttachmentPaths' OR r.normalized_ios_path LIKE '%/sms/attachments/%' OR r.field_name LIKE 'com_apple_mobilesms_%' THEN 'HIGH_PATH_ABSENT_FROM_FFS_LOOKUP'
+         WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 'LOW_APP_CACHE_OR_THUMBNAIL_PATH_ABSENT_FROM_FFS_LOOKUP'
+         ELSE 'MEDIUM_PATH_ABSENT_FROM_FFS_LOOKUP'
+       END AS confidence,
        'Missing means absent from the full FFS inventory or the slim FFS path lookup available in this case. The text_context_sample is recovered from the same Spotlight record to help assess investigative value; absence from FFS does not by itself prove user deletion or app-level deletion.' AS interpretation_note
 FROM refs r
 JOIN lookup_sources ls ON ls.source_id=r.source_id
@@ -1101,16 +1132,38 @@ WHERE f.normalized_path IS NULL;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_summary;
 CREATE VIEW vw_ios_spotlight_missing_from_ffs_summary AS
-SELECT source_id,store_guid,source_db,field_name,reference_type,spotlight_text_context_status,ffs_lookup_status,
+SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status,
        COUNT(*) AS missing_candidate_count,
        COUNT(DISTINCT COALESCE(inode_num,'') || ':' || COALESCE(store_id,'')) AS distinct_spotlight_object_count,
        COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
        MIN(normalized_ios_path) AS min_missing_path_sample,
        MAX(normalized_ios_path) AS max_missing_path_sample,
        substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
-       'Compact normal-mode Missing From FFS summary. Full missing candidate rows are visible in the GUI view and support exports; this summary is safe for default investigator export.' AS interpretation_note
+       MAX(investigative_reason) AS investigative_reason,
+       'Compact normal-mode Missing From FFS summary. Priority/category fields keep likely app thumbnail/cache noise from dominating investigator review.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_candidates
-GROUP BY source_id,store_guid,source_db,field_name,reference_type,spotlight_text_context_status,ffs_lookup_status;
+GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_high_value_candidates;
+CREATE VIEW vw_ios_spotlight_missing_from_ffs_high_value_candidates AS
+SELECT *
+FROM vw_ios_spotlight_missing_from_ffs_candidates
+WHERE investigative_priority IN ('HIGH_INVESTIGATIVE_VALUE','MEDIUM_INVESTIGATIVE_VALUE')
+  AND missing_candidate_category <> 'LOW_APP_THUMBNAIL_OR_CACHE_REFERENCE';
+
+DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_high_value_summary;
+CREATE VIEW vw_ios_spotlight_missing_from_ffs_high_value_summary AS
+SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status,
+       COUNT(*) AS missing_candidate_count,
+       COUNT(DISTINCT COALESCE(inode_num,'') || ':' || COALESCE(store_id,'')) AS distinct_spotlight_object_count,
+       COUNT(DISTINCT normalized_ios_path) AS distinct_missing_path_count,
+       MIN(normalized_ios_path) AS min_missing_path_sample,
+       MAX(normalized_ios_path) AS max_missing_path_sample,
+       substr(MAX(spotlight_text_context_sample),1,1800) AS spotlight_text_context_sample,
+       MAX(investigative_reason) AS investigative_reason,
+       'High/medium-priority subset of Missing From FFS candidates, excluding likely thumbnail/brand/cache-only references. Use this first before the full candidate view.' AS interpretation_note
+FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates
+GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_text_context_review;

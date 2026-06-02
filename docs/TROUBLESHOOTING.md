@@ -1,19 +1,19 @@
 # Troubleshooting
 
-Current version: 0.9.34
+Current version: 0.9.36
 
 ## Build fails before CLI/GUI link
 
-Upload the build log.  Recent MSVC-specific failure classes included oversized raw string literals (`C2026`) and GUI SQL helper scope mistakes.  V0_9_34 keeps raw-string static checks in validation and continues consolidating SQL/view ownership.
+Upload the build log.  Recent MSVC-specific failure classes included oversized raw string literals (`C2026`) and GUI SQL helper scope mistakes.  V0_9_36 keeps raw-string static checks in validation and continues consolidating SQL/view ownership.
 
 ## Run stalls or stops writing
 
 Collect state before rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_34\scripts\Collect-V0_9_34-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_34_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_State_V0_9_34_NoWrites_Stopped_Check.zip" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_36\scripts\Collect-V0_9_36-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_36_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_State_V0_9_36_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
 

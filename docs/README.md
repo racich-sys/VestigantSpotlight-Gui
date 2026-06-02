@@ -1,16 +1,13 @@
 # Vestigant Spotlight Documentation
 
-Current version: 0.9.34
+Current version: 0.9.36
 
-Use these maintained documents first:
+Primary maintained documents:
 
-- `CONSOLIDATED_USER_MANUAL.md`
-- `CONSOLIDATED_VERSION_HISTORY.md`
-- `PROJECT_ROADMAP_AND_CONTINUATION.md`
-- `DETAILED_ROADMAP_AND_TESTING_TIMELINE.md`
-- `THIN_UPLOAD_REVIEW_WORKFLOW.md`
-- `VALIDATION_STATUS.md`
-- `VALIDATION_HISTORY.md`
-- `PACKAGE_CLEANUP_SUMMARY.md`
+- `CONSOLIDATED_USER_MANUAL.md` - user-facing manual and workflow guide.
+- `CONSOLIDATED_VERSION_HISTORY.md` - restored chronological version history and development-process narrative.
+- `PROJECT_ROADMAP_AND_CONTINUATION.md` - active roadmap and continuation state.
+- `DETAILED_ROADMAP_AND_TESTING_TIMELINE.md` - testing-source transition and AFF4/APFS roadmap.
+- `THIN_UPLOAD_REVIEW_WORKFLOW.md` - repeatable build/thin-upload review method.
 
-V0_9_34 removed obsolete historical fragments from the production ZIP.  Historical details needed for active work should be maintained in the consolidated documents above.
+V0_9_36 keeps historical details aggregated in the consolidated version history rather than reintroducing many stale per-version note fragments into the production ZIP.

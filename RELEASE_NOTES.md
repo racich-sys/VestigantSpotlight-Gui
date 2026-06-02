@@ -1,18 +1,26 @@
-# Release Notes
+# Vestigant Spotlight Release Notes
 
-Current version: 0.9.34
+Current version: 0.9.36
 
-## V0_9_34
+## V0_9_36
 
-V0_9_34 is a cleanup/consolidation release after the V0_9_33 build and thin upload completed successfully.  The release keeps parser behavior stable and focuses on production-package hygiene:
+V0_9_36 is a documentation-history repair release after V0_9_34 cleanup compressed too much historical detail.
 
-- Reviewed the V0_9_33 build/thin output.  The run completed successfully with stable compact-mode iOS counts.
-- Corrected VERSION and VERSION.txt so the source package version is no longer stale.
-- Removed stale root per-version validation-note fragments and old review snippets from the production ZIP.
-- Removed old version-specific PowerShell wrappers from the production ZIP and kept current V0_9_34 wrappers plus generic utility scripts.
-- Removed superseded old V0_7/V0_8 documentation fragments from the production ZIP.
-- Added `docs/PACKAGE_CLEANUP_SUMMARY.md` and `docs/V0_9_34_REVIEW_NOTES.md`.
-- Preserved consolidated help/manual/version/roadmap files as the maintained documentation set.
-- Fixed minor MSVC warning hygiene in the native parser by explicitly marking intentionally unused helper parameters.
+Changes:
 
-Normal iOS mode remains compact and Spotlight-first.  No broad raw native/dbStr/property persistence, full FFS inventory materialization, or broad app DB record materialization was reintroduced.
+- Reviewed the uploaded V0_9_3 documentation archive (`Docs.zip`).
+- Restored historical V0_9 development information into `docs/CONSOLIDATED_VERSION_HISTORY.md`.
+- Kept the production package clean by aggregating historical notes instead of reintroducing many stale per-version fragments.
+- Updated `docs/CONSOLIDATED_USER_MANUAL.md` to explain the current documentation model, standard workflows, iOS review start path, compact-mode interpretation, diagnostics, and AFF4/APFS roadmap location.
+- Updated top-level `HELP.md`, `VERSION_HISTORY.md`, validation notes, roadmap, and package-cleanup notes to explain the restored version history.
+- Updated version metadata and scripts to V0_9_36.
+- No parser, schema, GUI, export, or forensic interpretation behavior was intentionally changed from V0_9_34.
+
+Validation performed in this environment:
+
+- Confirmed version metadata was updated to 0.9.36.
+- Confirmed consolidated documentation contains restored entries for V0_9_0 through V0_9_36 based on available historical notes.
+- Confirmed production package still avoids reintroducing root-level historical fragments.
+- Confirmed ZIP/patch integrity and SHA256 files.
+
+Windows/MSVC build validation remains required because only documentation/version/script metadata changed in this packaging environment.
