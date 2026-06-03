@@ -1,36 +1,35 @@
 # Vestigant Spotlight Validation Status
 
-Current version: 0.9.43
+Current version: 0.9.46
 
-## V0_9_43 packaging validation
+## Reviewed V0_9_43 results
 
-Reviewed inputs:
+- Windows/MSVC build log: successful.
+- Stage B fresh-ZIP run: `complete_success`.
+- Fresh-ZIP case counts: 6 valid stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 raw date candidates, 344,445 artifacts, 336,037 timeline events.
+- V0_9_43 bplist discovery output: 2 summary rows and 438 detail rows.
+- Fresh-ZIP defect: `ios_ffs_file_inventory.csv` and `ios_app_database_inventory.csv` had zero data rows; run status reported `ios_ffs_inventory_cpp_parser_complete files=0 app_databases=0 raw_records=0`.
 
-- `V0_9_42_build.log`
-- `Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip`
-- `VestigantSpotlightInv_V0_9_42.zip`
-- V0_9_41 and V0_9_40 logs/thin uploads for comparison.
 
-Findings from uploaded outputs:
+## V0_9_46 validation performed here
 
-- V0_9_42 Windows/MSVC build completed and linked CLI, tests, and GUI.
-- V0_9_42 iOS reuse-cache run reached `complete_success`.
-- V0_9_41 reuse-cache also reached `complete_success`.
-- V0_9_40 failed with SQLite/disk-full behavior, confirming V0_9_41/V0_9_42 were the stable comparison baselines.
-- V0_9_42 source already contained the CSV export fast path and native C++ 7-Zip raw inventory parser.
+- Reviewed uploaded V0_9_44 build log: Windows/MSVC build completed and produced CLI, GUI, and self-test binaries.
+- Reviewed V0_9_44 reuse-cache thin output: run reached complete_success with 344,445 raw records and compact normal-mode behavior preserved.
+- Reviewed V0_9_44 fresh-ZIP thin output: run reached complete_success and native C++ 7-Zip inventory parsed 2,245,783 file entries, 131,610 app-database candidates, and 2,245,783 raw records.
+- Classified remaining defect: app-database inventory over-classified non-database files under SMS/app paths because broad path-family checks did not require database-like file names.
+- Applied focused C++/PowerShell helper fixes to require database-like names for app DB inventory classification and preserve extracted database paths for native inventory rows.
 
-Validation performed in this Linux packaging environment:
+## V0_9_44 validation performed here
 
-- Changed-file C++ syntax checks: PASS for `src/parsers/native_storedb_parser.cpp`, `src/db/case_db.cpp`, and `src/export_sql/sqlite_exporter.cpp`.
-- New VSQL33 bplist / NSKeyedArchiver SQLite view smoke test: PASS.
-- MSVC C2026 raw-string size risk check across major SQL/GUI/export/app files: PASS, no oversized raw-string literals found at the configured 16,000-byte threshold.
-- Linux Release build was attempted, but the sandbox timed out while compiling the very large `src/app/app_runner.cpp`; no compile errors were observed before timeout.
+- `src/app/app_runner.cpp`: Linux syntax check passed with warnings only.
+- `src/parsers/native_storedb_parser.cpp`: Linux syntax check passed.
+- Raw-string size scan: no oversized literals found above the configured threshold.
+- Full Linux build: attempted, but the full build/link did not complete in the available runtime window.
 
-Required external Windows validation:
+## Required Windows validation
 
-1. Run `scripts\Build-V0_9_43.ps1` or `build_windows_msvc.bat`.
-2. Confirm CLI reports `Vestigant Spotlight v0.9.43`.
-3. Run `VestigantSpotlightTests.exe` self-test.
-4. Run `scripts\Run-V0_9_43-iOS-ReuseCache-CLI-AndZip.ps1` and confirm `complete_success`.
-5. Review the new bplist / NSKeyedArchiver summary/detail exports and GUI views.
-6. If reuse-cache validation succeeds, run the Stage B fresh-ZIP script to validate actual FFS ZIP enumeration/staging.
+1. Run `scripts\Build-V0_9_46.ps1`.
+2. Confirm CLI reports `Vestigant Spotlight v0.9.44`.
+3. Run `VestigantSpotlightTests.exe`.
+4. Run reuse-cache test and confirm `complete_success`.
+5. Re-run Stage B fresh-ZIP test and confirm FFS/app-database inventory rows are nonzero.

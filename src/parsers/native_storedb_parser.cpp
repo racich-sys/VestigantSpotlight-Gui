@@ -16,6 +16,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace vestigant::spotlight {
 namespace {
@@ -208,13 +209,20 @@ std::string escapeControlForSqlText(std::string s) {
 }
 
 std::string cleanDecodedString(std::string s) {
-    // Some Spotlight string payloads observed in V0.6.4.1 end with the two-byte
-    // marker 0x16 0x02.  Treat it as a Spotlight value terminator/trailer for
-    // review output purposes, not part of the investigator-facing filename.
+    // Some Spotlight/CoreSpotlight string payloads end with the two-byte marker
+    // 0x16 0x02. Null/spacer bytes may appear around the marker, so trim those
+    // first and again after marker removal. This prevents the trailer from
+    // leaking into investigator-facing names/paths when UTF-8 conversion has
+    // already mapped nulls to spaces.
+    auto trimTrailingPadding = [&]() {
+        while (!s.empty() && (s.back() == ' ' || s.back() == '\0')) s.pop_back();
+    };
+    trimTrailingPadding();
     while (s.size() >= 2 &&
            static_cast<unsigned char>(s[s.size() - 2]) == 0x16u &&
            static_cast<unsigned char>(s[s.size() - 1]) == 0x02u) {
         s.resize(s.size() - 2);
+        trimTrailingPadding();
     }
     return s;
 }
@@ -1461,22 +1469,42 @@ void checkSqliteSizeGuardrail(CaseDatabase& db,
 }
 
 std::vector<std::string> extractHighValueProbeStrings(const std::vector<std::uint8_t>& data,
+                                                       std::size_t startPos = 0,
+                                                       std::size_t endPos = (std::numeric_limits<std::size_t>::max)(),
                                                        std::size_t minLen = 4,
                                                        std::size_t maxLen = 512,
                                                        std::size_t maxStrings = 12) {
+    if (startPos > data.size()) startPos = data.size();
+    endPos = (std::min)(endPos, data.size());
+    if (endPos < startPos) endPos = startPos;
     std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
     std::string cur;
     auto flush = [&]() {
         if (cur.size() >= minLen) {
             while (!cur.empty() && std::isspace(static_cast<unsigned char>(cur.back()))) cur.pop_back();
             while (!cur.empty() && std::isspace(static_cast<unsigned char>(cur.front()))) cur.erase(cur.begin());
-            if (isLikelyHighValueProbeString(cur) && std::find(out.begin(), out.end(), cur) == out.end()) out.push_back(cur);
+            if (isLikelyHighValueProbeString(cur) && seen.insert(cur).second) out.push_back(cur);
         }
         cur.clear();
     };
-    for (auto ch : data) {
+    for (std::size_t i = startPos; i < endPos; ++i) {
+        const auto ch = data[i];
         const bool printable = (ch >= 0x20 && ch <= 0x7Eu) || ch == '\t';
         if (printable) {
+            if (cur.size() < maxLen) cur.push_back(static_cast<char>(ch));
+            else flush();
+        } else if (ch == 0x00u && i + 1 < endPos && data[i + 1] >= 0x20u && data[i + 1] <= 0x7Eu) {
+            // UTF-16BE ASCII-ish run: null followed by printable byte. Preserve
+            // the printable byte when the next loop iteration sees it.
+            continue;
+        } else if (ch >= 0xC0u) {
+            // Preserve UTF-8 lead bytes in bounded probes instead of discarding
+            // all non-ASCII text. Continuation bytes will be appended as the loop
+            // advances when they are >= 0x80.
+            if (cur.size() < maxLen) cur.push_back(static_cast<char>(ch));
+            else flush();
+        } else if (ch >= 0x80u && !cur.empty()) {
             if (cur.size() < maxLen) cur.push_back(static_cast<char>(ch));
             else flush();
         } else {
@@ -1489,8 +1517,9 @@ std::vector<std::string> extractHighValueProbeStrings(const std::vector<std::uin
     return out;
 }
 
-void addCoreProbeMetadata(ParsedItem& item, const std::vector<std::uint8_t>& data) {
-    auto probes = extractHighValueProbeStrings(data);
+void addCoreProbeMetadata(ParsedItem& item, const std::vector<std::uint8_t>& data,
+                          std::size_t startPos, std::size_t endPos) {
+    auto probes = extractHighValueProbeStrings(data, startPos, endPos);
     int i = 1;
     for (const auto& p : probes) {
         std::ostringstream name;
@@ -1504,6 +1533,10 @@ void addCoreProbeMetadata(ParsedItem& item, const std::vector<std::uint8_t>& dat
             item.metadata["__native_probe_mounted_volume_path"] = p;
         }
     }
+}
+
+void addCoreProbeMetadata(ParsedItem& item, const std::vector<std::uint8_t>& data) {
+    addCoreProbeMetadata(item, data, 0, data.size());
 }
 
 bool isLikelyIosCoreSpotlightStorePath(const fs::path& p) {
@@ -1520,18 +1553,31 @@ bool isLikelyIosCoreSpotlightStorePath(const fs::path& p) {
 
 class MetadataItemParser {
 public:
+    MetadataItemParser(const std::vector<std::uint8_t>& data,
+                       std::size_t startPos,
+                       std::size_t endPos,
+                       const std::map<int, PropertyDef>& properties,
+                       const std::map<int, std::string>& categories,
+                       const std::map<int, std::vector<int>>& indexes1,
+                       const std::map<int, std::vector<int>>& indexes2)
+        : data_(data), startPos_(startPos), pos_(startPos), endPos_((std::min)(endPos, data.size())),
+          properties_(properties), categories_(categories), indexes1_(indexes1), indexes2_(indexes2) {
+        if (startPos_ > endPos_) startPos_ = pos_ = endPos_;
+    }
+
     MetadataItemParser(std::vector<std::uint8_t> data,
                        const std::map<int, PropertyDef>& properties,
                        const std::map<int, std::string>& categories,
                        const std::map<int, std::vector<int>>& indexes1,
                        const std::map<int, std::vector<int>>& indexes2)
-        : data_(std::move(data)), properties_(properties), categories_(categories), indexes1_(indexes1), indexes2_(indexes2) {}
+        : ownedData_(std::move(data)), data_(ownedData_), startPos_(0), pos_(0), endPos_(ownedData_.size()),
+          properties_(properties), categories_(categories), indexes1_(indexes1), indexes2_(indexes2) {}
 
     ParsedItem parseV2() {
         ParsedItem item = parseV2HeaderOnly();
         int propIndex = 0;
 
-        while (pos_ < data_.size()) {
+        while (pos_ < endPos_) {
             try {
                 const auto rawPropSkip = readVar("v2 property skip");
                 if (rawPropSkip == 0 || rawPropSkip == 0xFFFFFFFFull) break;
@@ -1564,7 +1610,7 @@ public:
         // bounded high-value printable string/path probes from the raw item.
         // Full structured value decoding remains behind --experimental-full-native-values.
         ParsedItem item = parseV2HeaderOnly();
-        addCoreProbeMetadata(item, data_);
+        addCoreProbeMetadata(item, data_, startPos_, endPos_);
         return item;
     }
 
@@ -1576,13 +1622,13 @@ public:
         // walking typed property records. Header/core-only mode intentionally
         // does not consume this value because it never enters the property loop.
         try {
-            if (pos_ + 8 <= data_.size()) readUInt64();
+            if (remaining() >= 8) readUInt64();
         } catch (const std::exception& ex) {
             item.metadata["__decode_error"] = std::string("Partial V1 decode aborted before property loop: ") + ex.what();
             return item;
         }
 
-        while (pos_ + 12 <= data_.size()) {
+        while (remaining() >= 12) {
             try {
                 const auto dataType = readUInt32();
                 const auto propIndex = readUInt32();
@@ -1614,7 +1660,7 @@ public:
     ParsedItem parseV1CoreOnly(std::uint64_t rawId) {
         // V0.6.4 safety change mirrors V2: stable header plus bounded raw probes only.
         ParsedItem item = parseV1HeaderOnly(rawId);
-        addCoreProbeMetadata(item, data_);
+        addCoreProbeMetadata(item, data_, startPos_, endPos_);
         return item;
     }
 
@@ -1634,8 +1680,8 @@ public:
         item.inodeId = static_cast<std::int64_t>(rawId);
         item.rawDateUpdated = readUInt64();
         item.lastUpdatedUtc = epochMicrosToUtc(item.rawDateUpdated);
-        if (pos_ + 8 <= data_.size()) readUInt64();
-        if (pos_ + 8 <= data_.size()) item.itemId = static_cast<std::int64_t>(readUInt64());
+        if (remaining() >= 8) readUInt64();
+        if (remaining() >= 8) item.itemId = static_cast<std::int64_t>(readUInt64());
         item.parentId = 0;
         return item;
     }
@@ -1643,7 +1689,7 @@ public:
 private:
     static constexpr int MaxRecursionDepth = 10;
 
-    std::size_t remaining() const { return pos_ <= data_.size() ? data_.size() - pos_ : 0; }
+    std::size_t remaining() const { return pos_ <= endPos_ ? endPos_ - pos_ : 0; }
 
     void requireAvailable(std::size_t n, const char* context) const {
         if (n > remaining()) throw std::runtime_error(std::string(context) + " beyond metadata item limits");
@@ -1851,12 +1897,15 @@ private:
         auto c = categories_.find(value); return c == categories_.end() ? std::string() : c->second;
     }
 
-    std::vector<std::uint8_t> data_;
+    std::vector<std::uint8_t> ownedData_;
+    const std::vector<std::uint8_t>& data_;
+    std::size_t startPos_ = 0;
+    std::size_t pos_ = 0;
+    std::size_t endPos_ = 0;
     const std::map<int, PropertyDef>& properties_;
     const std::map<int, std::string>& categories_;
     const std::map<int, std::vector<int>>& indexes1_;
     const std::map<int, std::vector<int>>& indexes2_;
-    std::size_t pos_ = 0;
 };
 
 
@@ -2176,40 +2225,43 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                     try {
                         std::size_t pos = 0;
                         while (true) {
-                            std::vector<std::uint8_t> itemData;
                             std::uint64_t v1RawId = 0;
                             std::size_t itemAdvance = 0;
+                            std::size_t itemStart = 0;
+                            std::size_t itemEnd = 0;
                             if (h.version == 1) {
                                 if (pos + 16 > payload.size()) break;
                                 v1RawId = readU64(payload, pos);
                                 const auto itemSize = readI32(payload, pos + 12);
                                 if (itemSize <= 16 || static_cast<std::size_t>(itemSize) > MaxMetadataItemBytes || pos + static_cast<std::size_t>(itemSize) > payload.size()) break;
-                                itemData.assign(payload.begin() + static_cast<std::ptrdiff_t>(pos + 16), payload.begin() + static_cast<std::ptrdiff_t>(pos + static_cast<std::size_t>(itemSize)));
+                                itemStart = pos + 16;
+                                itemEnd = pos + static_cast<std::size_t>(itemSize);
                                 itemAdvance = static_cast<std::size_t>(itemSize);
                             } else {
                                 if (pos + 4 > payload.size()) break;
                                 const auto itemSize = readI32(payload, pos);
                                 if (itemSize <= 0 || static_cast<std::size_t>(itemSize) > MaxMetadataItemBytes || pos + 4 + static_cast<std::size_t>(itemSize) > payload.size()) break;
-                                itemData.assign(payload.begin() + static_cast<std::ptrdiff_t>(pos + 4), payload.begin() + static_cast<std::ptrdiff_t>(pos + 4 + static_cast<std::size_t>(itemSize)));
+                                itemStart = pos + 4;
+                                itemEnd = pos + 4 + static_cast<std::size_t>(itemSize);
                                 itemAdvance = 4 + static_cast<std::size_t>(itemSize);
                             }
                             try {
                                 ParsedItem item;
                                 try {
-                                    MetadataItemParser itemParser(itemData, properties, categories, indexes1, indexes2);
+                                    MetadataItemParser itemParser(payload, itemStart, itemEnd, properties, categories, indexes1, indexes2);
                                     if (decodeMode_ == NativeDecodeMode::FullValues) item = (h.version == 1) ? itemParser.parseV1(v1RawId) : itemParser.parseV2();
                                     else if (decodeMode_ == NativeDecodeMode::CoreFields) item = (h.version == 1) ? itemParser.parseV1CoreOnly(v1RawId) : itemParser.parseV2CoreOnly();
                                     else item = (h.version == 1) ? itemParser.parseV1HeaderOnly(v1RawId) : itemParser.parseV2HeaderOnly();
                                 } catch (const std::exception& decodeEx) {
                                     if (decodeMode_ == NativeDecodeMode::HeaderOnly) throw;
-                                    MetadataItemParser fallbackParser(itemData, properties, categories, indexes1, indexes2);
+                                    MetadataItemParser fallbackParser(payload, itemStart, itemEnd, properties, categories, indexes1, indexes2);
                                     item = (h.version == 1) ? fallbackParser.parseV1HeaderOnly(v1RawId) : fallbackParser.parseV2HeaderOnly();
-                                    if (isLikelyIosCoreSpotlightStorePath(store.storePath)) addCoreProbeMetadata(item, itemData);
+                                    if (isLikelyIosCoreSpotlightStorePath(store.storePath)) addCoreProbeMetadata(item, payload, itemStart, itemEnd);
                                     ++counts.fallbackHeaderOnlyItems;
                                     insertFailure(db, source, store, "metadata_item_decode_fallback", std::string("block=") + std::to_string(blockOrdinal) + " offset=" + std::to_string(pos) + " error=" + decodeEx.what());
                                 }
                                 if (decodeMode_ == NativeDecodeMode::FullValues && isLikelyIosCoreSpotlightStorePath(store.storePath) && item.metadata.empty()) {
-                                    addCoreProbeMetadata(item, itemData);
+                                    addCoreProbeMetadata(item, payload, itemStart, itemEnd);
                                 }
                                 auto name = fileNameOf(item);
                                 if (!name.empty()) pathNodes[item.inodeId] = {item.parentId, name};

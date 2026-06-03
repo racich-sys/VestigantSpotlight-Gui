@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Current version: 0.9.43
+Current version: 0.9.46
 
 ## Build fails before CLI/GUI link
 
@@ -11,8 +11,8 @@ Upload the build log.  Recent MSVC-specific failure classes included oversized r
 Collect state before rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_43\scripts\Collect-V0_9_43-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_43_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_46\scripts\Collect-V0_9_46-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_46_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```

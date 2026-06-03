@@ -2577,16 +2577,24 @@ function Get-ProtectionClassHint([string]$path) {
   if ($p.Contains('/priority/')) { return 'Priority' }
   return 'Unknown'
 }
+function Test-IsSignalPath([string]$lowerPath) {
+  $pn = $lowerPath.Replace('\','/')
+  return ($pn.Contains('org.whispersystems.signal') -or $pn.Contains('signal.messenger') -or $pn.Contains('/signal/'))
+}
+function Test-IsChromeBrowserPath([string]$lowerPath) {
+  $pn = $lowerPath.Replace('\','/')
+  return ($pn.Contains('com.google.chrome') -or $pn.Contains('/chrome/') -or $pn.Contains('/google/chrome'))
+}
 function Get-DomainHint([string]$path) {
   $p = $path.ToLowerInvariant()
   if ($p.Contains('/library/sms/') -or $p.EndsWith('/sms.db')) { return 'Messages' }
   if ($p.Contains('/keychains/') -or $p.Contains('/keychain/')) { return 'Keychain' }
   if ($p.Contains('callhistory')) { return 'CallHistory' }
   if ($p.Contains('whatsapp')) { return 'WhatsApp' }
-  if ($p.Contains('signal')) { return 'Signal' }
+  if (Test-IsSignalPath $p) { return 'Signal' }
   if ($p.Contains('telegram')) { return 'Telegram' }
   if ($p.Contains('safari')) { return 'Safari' }
-  if ($p.Contains('chrome') -or $p.Contains('google')) { return 'GoogleOrChrome' }
+  if (Test-IsChromeBrowserPath $p) { return 'Chrome' }
   if ($p.Contains('/mail/')) { return 'Mail' }
   if ($p.Contains('/calendar/')) { return 'Calendar' }
   if ($p.Contains('/addressbook/') -or $p.Contains('contacts')) { return 'Contacts' }
@@ -2604,20 +2612,20 @@ function Get-AppContainerHint([string]$path) {
 function Get-DatabaseCategory([string]$path, [string]$name) {
   $p = $path.ToLowerInvariant(); $n = $name.ToLowerInvariant()
   $dbLike = ($n -like '*.db' -or $n -like '*.sqlite' -or $n -like '*.sqlite3' -or $n -like '*.sqlitedb' -or $n -like '*.storedata' -or $n -eq 'chatstorage.sqlite' -or $n -eq 'contactsv2.sqlite' -or $n -eq 'callhistory.sqlite')
-  if ($n -eq 'sms.db' -or $p.Contains('/library/sms/')) { return @('APPLE_MESSAGES','Messages') }
-  if ($dbLike -and ($p.Contains('/keychains/') -or $p.Contains('/keychain/') -or $n -eq 'keychain-2.db' -or $n -eq 'keychain-2-debug.db')) { return @('KEYCHAIN','Keychain') }
+  if (-not $dbLike) { return @('','') }
+  if ($n -eq 'sms.db') { return @('APPLE_MESSAGES','Messages') }
+  if ($p.Contains('/keychains/') -or $p.Contains('/keychain/') -or $n -eq 'keychain-2.db' -or $n -eq 'keychain-2-debug.db') { return @('KEYCHAIN','Keychain') }
   if ($p.Contains('callhistory') -or $n -like 'callhistory*') { return @('CALL_HISTORY','PhoneFaceTime') }
-  if ($dbLike -and (($p.Contains('group.net.whatsapp') -or $p.Contains('/whatsapp/') -or $p.Contains('whatsapp.shared')) -or $n -eq 'chatstorage.sqlite' -or $n -eq 'contactsv2.sqlite')) { return @('WHATSAPP','WhatsApp') }
-  if ($p.Contains('signal')) { return @('SIGNAL','Signal') }
+  if (($p.Contains('group.net.whatsapp') -or $p.Contains('/whatsapp/') -or $p.Contains('whatsapp.shared')) -or $n -eq 'chatstorage.sqlite' -or $n -eq 'contactsv2.sqlite') { return @('WHATSAPP','WhatsApp') }
+  if (Test-IsSignalPath $p) { return @('SIGNAL','Signal') }
   if ($p.Contains('telegram')) { return @('TELEGRAM','Telegram') }
-  if ($p.Contains('safari') -and ($n -like '*.db' -or $n -like '*.sqlite*')) { return @('SAFARI_WEB','Safari') }
-  if (($p.Contains('chrome') -or $p.Contains('google')) -and ($n -like '*history*' -or $n -like '*.db' -or $n -like '*.sqlite*')) { return @('CHROME_WEB','ChromeGoogle') }
-  if ($p.Contains('webkit') -and ($n -like '*.db' -or $n -like '*.sqlite*')) { return @('WEBKIT','WebKit') }
-  if ($p.Contains('/mail/') -and ($n -like '*.db' -or $n -like '*.sqlite*')) { return @('MAIL','Mail') }
-  if (($p.Contains('/calendar/') -or $n.Contains('calendar')) -and ($n -like '*.db' -or $n -like '*.sqlite*')) { return @('CALENDAR','Calendar') }
-  if (($p.Contains('addressbook') -or $p.Contains('contacts')) -and ($n -like '*.db' -or $n -like '*.sqlite*')) { return @('CONTACTS','Contacts') }
-  if ($n -like '*.db' -or $n -like '*.sqlite' -or $n -like '*.sqlite3' -or $n -like '*.storedata') { return @('OTHER_SQLITE_OR_STORE_DATABASE','Other') }
-  return @('','')
+  if ($p.Contains('safari')) { return @('SAFARI_WEB','Safari') }
+  if (Test-IsChromeBrowserPath $p) { return @('CHROME_WEB','Chrome') }
+  if ($p.Contains('webkit')) { return @('WEBKIT','WebKit') }
+  if ($p.Contains('/mail/')) { return @('MAIL','Mail') }
+  if ($p.Contains('/calendar/') -or $n.Contains('calendar')) { return @('CALENDAR','Calendar') }
+  if ($p.Contains('addressbook') -or $p.Contains('contacts')) { return @('CONTACTS','Contacts') }
+  return @('OTHER_SQLITE_OR_STORE_DATABASE','Other')
 }
 function Get-SevenZipPath {
   $candidates = @(
@@ -2772,7 +2780,11 @@ function Write-FfsZipInventoryFromSevenZipStreaming([string]$SevenZipPath, [Syst
   $script:zipInventoryDbCount = 0
   $rawListing = Join-Path (Split-Path $InventoryPath -Parent) "logs\ios_ffs_7z_inventory_raw_slt.txt"
   New-Item -ItemType Directory -Force -Path (Split-Path $rawListing -Parent) | Out-Null
-  & $SevenZipPath l $ZipPath -slt > $rawListing 2>$null
+  # Important: Windows PowerShell redirection writes UTF-16 text by default.
+  # Use cmd.exe redirection so the native C++ parser receives the raw 7z byte stream.
+  # V0_9_44 also keeps C++ fallback decoding for older UTF-16 raw listings.
+  $cmdLine = '"' + $SevenZipPath + '" l "' + $ZipPath + '" -slt > "' + $rawListing + '" 2>NUL'
+  & $env:ComSpec /d /c $cmdLine
   $sevenZipExit = $LASTEXITCODE
   Write-ZipInventoryProgress 'ffs_inventory_7z_dump_complete' 0 ("exit=" + $sevenZipExit + " raw=" + $rawListing)
   if ($sevenZipExit -ne 0 -and -not (Test-Path -LiteralPath $rawListing)) { throw "7z inventory listing failed exit=$sevenZipExit" }
@@ -3114,16 +3126,28 @@ std::string protectionClassHintCpp(const std::string& path) {
     return "Unknown";
 }
 
+bool isSignalPathCpp(const std::string& lowerPath) {
+    return lowerPath.find("org.whispersystems.signal") != std::string::npos ||
+           lowerPath.find("signal.messenger") != std::string::npos ||
+           lowerPath.find("/signal/") != std::string::npos;
+}
+
+bool isChromeBrowserPathCpp(const std::string& lowerPath) {
+    return lowerPath.find("com.google.chrome") != std::string::npos ||
+           lowerPath.find("/chrome/") != std::string::npos ||
+           lowerPath.find("/google/chrome") != std::string::npos;
+}
+
 std::string domainHintCpp(const std::string& path) {
     const std::string p = toLower(path);
     if (p.find("/library/sms/") != std::string::npos || endsWithCpp(p, "/sms.db")) return "Messages";
     if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos) return "Keychain";
     if (p.find("callhistory") != std::string::npos) return "CallHistory";
     if (p.find("whatsapp") != std::string::npos) return "WhatsApp";
-    if (p.find("signal") != std::string::npos) return "Signal";
+    if (isSignalPathCpp(p)) return "Signal";
     if (p.find("telegram") != std::string::npos) return "Telegram";
     if (p.find("safari") != std::string::npos) return "Safari";
-    if (p.find("chrome") != std::string::npos || p.find("google") != std::string::npos) return "GoogleOrChrome";
+    if (isChromeBrowserPathCpp(p)) return "Chrome";
     if (p.find("/mail/") != std::string::npos) return "Mail";
     if (p.find("/calendar/") != std::string::npos) return "Calendar";
     if (p.find("/addressbook/") != std::string::npos || p.find("contacts") != std::string::npos) return "Contacts";
@@ -3152,25 +3176,52 @@ std::string appContainerHintCpp(const std::string& path) {
     return "";
 }
 
+fs::path extractedIosAppDbPathForZipEntryCpp(const fs::path& caseDir, const std::string& fullName) {
+    std::string rel = fullName;
+    std::replace(rel.begin(), rel.end(), '\\', '/');
+    while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
+    for (char& ch : rel) {
+        if (ch == ':' || ch == '<' || ch == '>' || ch == '"' || ch == '|' || ch == '?' || ch == '*') ch = '_';
+    }
+    while (rel.rfind("../", 0) == 0) rel.erase(0, 3);
+    const std::string marker = "/../";
+    for (;;) {
+        const auto pos = rel.find(marker);
+        if (pos == std::string::npos) break;
+        rel.replace(pos, marker.size(), "/_/", 3);
+    }
+    fs::path out = caseDir / "EvidenceStaging" / "ios_app_databases";
+    std::size_t start = 0;
+    while (start <= rel.size()) {
+        const auto slash = rel.find('/', start);
+        const std::string part = rel.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+        if (!part.empty() && part != "." && part != "..") out /= part;
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return out;
+}
+
 std::pair<std::string, std::string> databaseCategoryAndAppHintCpp(const std::string& path, const std::string& name) {
     const std::string p = toLower(path);
     const std::string n = toLower(name);
     const bool dbLike = endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".sqlitedb") || endsWithCpp(n, ".storedata") || n == "chatstorage.sqlite" || n == "contactsv2.sqlite" || n == "callhistory.sqlite";
-    if (n == "sms.db" || p.find("/library/sms/") != std::string::npos) return {"APPLE_MESSAGES", "Messages"};
-    if (dbLike && (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos || n == "keychain-2.db" || n == "keychain-2-debug.db")) return {"KEYCHAIN", "Keychain"};
+    if (!dbLike) return {"", ""};
+    if (n == "sms.db") return {"APPLE_MESSAGES", "Messages"};
+    if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos || n == "keychain-2.db" || n == "keychain-2-debug.db") return {"KEYCHAIN", "Keychain"};
     if (p.find("callhistory") != std::string::npos || n.rfind("callhistory", 0) == 0) return {"CALL_HISTORY", "PhoneFaceTime"};
-    if (dbLike && ((p.find("group.net.whatsapp") != std::string::npos || p.find("/whatsapp/") != std::string::npos || p.find("whatsapp.shared") != std::string::npos) || n == "chatstorage.sqlite" || n == "contactsv2.sqlite")) return {"WHATSAPP", "WhatsApp"};
-    if (p.find("signal") != std::string::npos) return {"SIGNAL", "Signal"};
+    if ((p.find("group.net.whatsapp") != std::string::npos || p.find("/whatsapp/") != std::string::npos || p.find("whatsapp.shared") != std::string::npos) || n == "chatstorage.sqlite" || n == "contactsv2.sqlite") return {"WHATSAPP", "WhatsApp"};
+    if (isSignalPathCpp(p)) return {"SIGNAL", "Signal"};
     if (p.find("telegram") != std::string::npos) return {"TELEGRAM", "Telegram"};
-    if (p.find("safari") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"SAFARI_WEB", "Safari"};
-    if ((p.find("chrome") != std::string::npos || p.find("google") != std::string::npos) && (n.find("history") != std::string::npos || endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CHROME_WEB", "ChromeGoogle"};
-    if (p.find("webkit") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"WEBKIT", "WebKit"};
-    if (p.find("/mail/") != std::string::npos && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"MAIL", "Mail"};
-    if ((p.find("/calendar/") != std::string::npos || n.find("calendar") != std::string::npos) && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CALENDAR", "Calendar"};
-    if ((p.find("addressbook") != std::string::npos || p.find("contacts") != std::string::npos) && (endsWithCpp(n, ".db") || n.find(".sqlite") != std::string::npos)) return {"CONTACTS", "Contacts"};
-    if (endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".storedata")) return {"OTHER_SQLITE_OR_STORE_DATABASE", "Other"};
-    return {"", ""};
+    if (p.find("safari") != std::string::npos) return {"SAFARI_WEB", "Safari"};
+    if (isChromeBrowserPathCpp(p)) return {"CHROME_WEB", "Chrome"};
+    if (p.find("webkit") != std::string::npos) return {"WEBKIT", "WebKit"};
+    if (p.find("/mail/") != std::string::npos) return {"MAIL", "Mail"};
+    if (p.find("/calendar/") != std::string::npos || n.find("calendar") != std::string::npos) return {"CALENDAR", "Calendar"};
+    if (p.find("addressbook") != std::string::npos || p.find("contacts") != std::string::npos) return {"CONTACTS", "Contacts"};
+    return {"OTHER_SQLITE_OR_STORE_DATABASE", "Other"};
 }
+
 
 struct IosZipInventoryParseResult {
     std::size_t ffsRows = 0;
@@ -3178,6 +3229,71 @@ struct IosZipInventoryParseResult {
     std::size_t rawRecords = 0;
     std::string status = "NOT_RUN";
 };
+
+void appendUtf8Codepoint(std::string& out, std::uint32_t cp) {
+    if (cp == 0) return;
+    if (cp <= 0x7Fu) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FFu) {
+        out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp <= 0xFFFFu) {
+        out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp <= 0x10FFFFu) {
+        out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    }
+}
+
+std::string decodeSevenZipRawLine(std::string line) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.size() >= 3 &&
+        static_cast<unsigned char>(line[0]) == 0xEFu &&
+        static_cast<unsigned char>(line[1]) == 0xBBu &&
+        static_cast<unsigned char>(line[2]) == 0xBFu) {
+        line.erase(0, 3);
+    }
+    if (line.size() >= 2 &&
+        static_cast<unsigned char>(line[0]) == 0xFFu &&
+        static_cast<unsigned char>(line[1]) == 0xFEu) {
+        line.erase(0, 2);
+    } else if (line.size() >= 2 &&
+               static_cast<unsigned char>(line[0]) == 0xFEu &&
+               static_cast<unsigned char>(line[1]) == 0xFFu) {
+        line.erase(0, 2);
+    }
+    if (line.find('\0') == std::string::npos) return line;
+
+    std::size_t evenNulls = 0, oddNulls = 0;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\0') {
+            if ((i % 2) == 0) ++evenNulls;
+            else ++oddNulls;
+        }
+    }
+    std::string out;
+    out.reserve(line.size());
+    if (oddNulls >= evenNulls) {
+        for (std::size_t i = 0; i + 1 < line.size(); i += 2) {
+            const auto lo = static_cast<unsigned char>(line[i]);
+            const auto hi = static_cast<unsigned char>(line[i + 1]);
+            appendUtf8Codepoint(out, static_cast<std::uint32_t>(lo) | (static_cast<std::uint32_t>(hi) << 8));
+        }
+        if ((line.size() % 2) == 1 && line.back() != '\0') out.push_back(line.back());
+    } else {
+        for (std::size_t i = 0; i + 1 < line.size(); i += 2) {
+            const auto hi = static_cast<unsigned char>(line[i]);
+            const auto lo = static_cast<unsigned char>(line[i + 1]);
+            appendUtf8Codepoint(out, (static_cast<std::uint32_t>(hi) << 8) | static_cast<std::uint32_t>(lo));
+        }
+        if ((line.size() % 2) == 1 && line.back() != '\0') out.push_back(line.back());
+    }
+    return out;
+}
 
 IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& caseDir, const fs::path& zipPath, Logger& log) {
     IosZipInventoryParseResult result;
@@ -3225,9 +3341,16 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
         ++result.ffsRows;
         auto cat = databaseCategoryAndAppHintCpp(norm, name);
         if (!cat.first.empty()) {
+            const fs::path extractedPath = extractedIosAppDbPathForZipEntryCpp(caseDir, fullName);
+            std::error_code extractedEc;
+            const bool extractedExists = fs::is_regular_file(extractedPath, extractedEc);
+            const std::string parseStatus = extractedExists ? "extracted_for_record_inventory_v0_9_45" : "identified_not_extracted_v0_9_45";
+            const std::string recordStatus = extractedExists ? "database_extracted_record_count_pending" : "database_family_present_record_level_parser_pending";
             dbOut << csvEscape(norm) << ',' << csvEscape(fullName) << ',' << csvEscape(name) << ',' << csvEscape(cat.first) << ','
                   << csvEscape(cat.second) << ',' << csvEscape(prot) << ',' << csvEscape(size) << ',' << csvEscape(modified) << ','
-                  << "not_parsed,inventory_only," << csvEscape("native_cpp_7z_slt_inventory_parser") << ',' << csvEscape("") << "\n";
+                  << csvEscape(parseStatus) << ',' << csvEscape(recordStatus) << ','
+                  << csvEscape("native_cpp_7z_slt_inventory_parser_database_like_only") << ','
+                  << csvEscape(extractedExists ? pathString(extractedPath) : "") << "\n";
             ++result.appDbRows;
         }
         ++result.rawRecords;
@@ -3238,7 +3361,7 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
     };
     std::string line;
     while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
+        line = decodeSevenZipRawLine(std::move(line));
         if (trim(line).empty()) { flush(); continue; }
         const std::string sep = " = ";
         const auto pos = line.find(sep);
@@ -3249,6 +3372,10 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
     flush();
     result.status = "NATIVE_CPP_7Z_RAW_INVENTORY_PARSED";
     appendRunStatus(caseDir, "ios_ffs_inventory_cpp_parser_complete", "files=" + std::to_string(result.ffsRows) + " app_databases=" + std::to_string(result.appDbRows) + " raw_records=" + std::to_string(result.rawRecords));
+    if (result.rawRecords == 0) {
+        appendRunStatus(caseDir, "ios_ffs_inventory_cpp_parser_warning", "raw 7z listing parsed but produced zero records; check encoding/redirection and raw listing contents");
+        log.warn("Native C++ parsed 7z raw iOS ZIP inventory but produced zero records. Check raw listing encoding/content: " + pathString(rawListing));
+    }
     log.info("Native C++ parsed 7z raw iOS ZIP inventory. files=" + std::to_string(result.ffsRows) + " app_databases=" + std::to_string(result.appDbRows) + " raw=" + pathString(rawListing));
     return result;
 }

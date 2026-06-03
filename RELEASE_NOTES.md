@@ -1,91 +1,39 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.43
+Current version: 0.9.44
 
+## V0_9_46
 
-## V0_9_43 - Bplist / NSKeyedArchiver discovery scaffold
+- Reviewed V0_9_45 build, reuse-cache thin output, and fresh-ZIP thin output.
+- Confirmed V0_9_45 completed both reuse-cache and fresh-ZIP runs.
+- Confirmed fresh-ZIP inventory now reports nonzero FFS rows and a much smaller app database candidate set.
+- Tightened app database categorization so generic `signals` and `history` database names do not become Signal or Chrome/Web evidence without stronger path/app identifiers.
+- Updated stale VERSION/VERSION.txt/CMake project metadata so the build banner matches the package version.
 
-V0_9_43 reviews the uploaded V0_9_42 build log and reuse-cache thin output. V0_9_42 built successfully and the reuse-cache run reached `complete_success`, so this release moves from performance-only work to bounded iOS investigative value.
+## V0_9_44 - Fresh ZIP FFS inventory recovery and native parser efficiency
 
-Changes:
-
-- Adds compact iOS CoreSpotlight bplist / NSKeyedArchiver marker discovery during native value parsing.
-- Adds one bounded synthetic key/value row per matching record: `__spotlight_bplist_nskeyedarchiver_context`.
-- Extracts limited printable tokens from likely bplist/NSKeyedArchiver blobs to help identify potentially useful serialized app interaction/content records.
-- Adds CaseDatabase views `vw_ios_spotlight_bplist_nskeyedarchiver_summary` and `vw_ios_spotlight_bplist_nskeyedarchiver_detail`.
-- Adds GUI views `iOS - Bplist/NSKeyedArchiver Summary` and `iOS - Bplist/NSKeyedArchiver Detail`.
-- Adds normal CSV exports and upload samples for the new summary/detail views.
-- Keeps normal iOS mode compact and explicitly labels this as bounded token discovery only, not full NSKeyedArchiver graph decoding.
-
-Validation performed in this environment:
-
-- Reviewed V0_9_42 build log and reuse-cache thin output.
-- Confirmed V0_9_42 build succeeded and the reuse-cache run reached `complete_success`.
-- Confirmed the V0_9_42 CSV fast path and native 7-Zip inventory parser were already present in source.
-- Ran changed-file C++ syntax checks for `native_storedb_parser.cpp`, `case_db.cpp`, and `sqlite_exporter.cpp`.
-- Ran a SQLite view smoke test for the new VSQL33 bplist views.
-- Ran MSVC C2026 raw-string size risk check on the major SQL/GUI/export files.
-
-Windows/MSVC build, GUI launch, self-test, and standard iOS reuse-cache execution remain required on the user's Windows system.
-
-## V0_9_39
-
-V0_9_39 reviews the V0_9_37 build/thin results and fixes the new database guardrail regression introduced by expanding Missing From FFS same-record text context too aggressively.
+V0_9_44 reviews the uploaded V0_9_43 build log, reuse-cache thin upload, and Stage B fresh-ZIP thin upload. The Windows/MSVC build succeeded and the Stage B fresh-ZIP run reached `complete_success`, but the fresh-ZIP iOS FFS/app-database inventory CSVs contained zero rows even though CoreSpotlight stores were extracted and parsed. The run status showed `ios_ffs_inventory_cpp_parser_complete files=0 app_databases=0 raw_records=0`, which indicates the raw 7-Zip inventory handoff did not parse correctly.
 
 Changes:
 
-- Preserves the V0_9_37 Missing From FFS text-detail views/exports.
-- Restores normal-mode Spotlight text context to a bounded investigator-safe size: 1,800 bytes, 8 fields, and 320 bytes per field sample.
-- Keeps row-level text visibility/status columns so missing-from-FFS candidates show recovered Spotlight text where compact mode has it.
-- Fixes fatal SQLite size guardrail propagation inside native metadata parsing so guardrail hits stop cleanly instead of being swallowed and followed by a secondary `COMMIT` error.
-- Adds `docs/V0_9_39_REVIEW_NOTES.md`.
-- Updates version metadata and scripts to V0_9_39.
+- Fixed the fresh-ZIP 7-Zip raw inventory handoff by avoiding Windows PowerShell UTF-16 redirection for `7z l -slt` output.
+- Added native C++ raw-listing line normalization that can decode older UTF-16LE/UTF-16BE PowerShell-redirection logs as a fallback.
+- Added a warning status if a raw 7-Zip listing exists but the C++ parser produces zero inventory records.
+- Converted the native metadata item parser to support zero-copy bounded item parsing from the decompressed metadata block payload, reducing per-item heap copying during native parse.
+- Improved bounded high-value probe deduplication and non-ASCII preservation for fallback/CoreSpotlight probes.
+- Hardened `cleanDecodedString` so trailing null/space padding does not prevent removal of the CoreSpotlight `0x16 0x02` trailer marker.
+- Updated version metadata, scripts, help, validation notes, and roadmap to V0_9_44.
 
-Validation performed in this environment:
+Validation here:
 
-- Reviewed the V0_9_37 Windows build log and thin upload.
-- Confirmed the failure class was DB-size guardrail caused by larger text context values rather than row-count explosion.
-- Confirmed source syntax and static raw-string checks.
+- Reviewed V0_9_43 fresh-ZIP thin output: run completed, 6 valid stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 date candidates, 438 bplist/NSKeyedArchiver detail rows, but 0 FFS inventory rows.
+- `src/app/app_runner.cpp` passed Linux `g++ -fsyntax-only` with warnings only.
+- `src/parsers/native_storedb_parser.cpp` passed Linux `g++ -fsyntax-only`.
+- Raw-string size scan found no oversized raw-string literals above the configured threshold.
+- Full Linux build was attempted; it progressed through native parser compilation and app_runner syntax, but full link/build was not completed in the available runtime window.
 
-Windows/MSVC build and the standard iOS reuse-cache run remain required.
+Windows/MSVC validation still required:
 
-
-## V0_9_37
-
-V0_9_37 is a documentation-history repair release after V0_9_34 cleanup compressed too much historical detail.
-
-Changes:
-
-- Reviewed the uploaded V0_9_3 documentation archive (`Docs.zip`).
-- Restored historical V0_9 development information into `docs/CONSOLIDATED_VERSION_HISTORY.md`.
-- Kept the production package clean by aggregating historical notes instead of reintroducing many stale per-version fragments.
-- Updated `docs/CONSOLIDATED_USER_MANUAL.md` to explain the current documentation model, standard workflows, iOS review start path, compact-mode interpretation, diagnostics, and AFF4/APFS roadmap location.
-- Updated top-level `HELP.md`, `VERSION_HISTORY.md`, validation notes, roadmap, and package-cleanup notes to explain the restored version history.
-- Updated version metadata and scripts to V0_9_37.
-- No parser, schema, GUI, export, or forensic interpretation behavior was intentionally changed from V0_9_34.
-
-Validation performed in this environment:
-
-- Confirmed version metadata was updated to 0.9.37.
-- Confirmed consolidated documentation contains restored entries for V0_9_0 through V0_9_37 based on available historical notes.
-- Confirmed production package still avoids reintroducing root-level historical fragments.
-- Confirmed ZIP/patch integrity and SHA256 files.
-
-Windows/MSVC build validation remains required because only documentation/version/script metadata changed in this packaging environment.
-
-## V0_9_37 - Missing From FFS text visibility
-
-V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did not show recovered Spotlight text/content.  It adds row-level Missing From FFS text detail and text coverage exports, exposes the same views in the GUI, increases compact same-record text context retention for reference-bearing iOS records, and documents when text is unavailable or suppressed by compact mode.
-
-## V0_9_42
-
-- Reviewed V0_9_39 build/thin results; Windows build and reuse-cache run completed successfully.
-- Optimized CSV export writing to reduce string allocation and small-write overhead.
-- Increased sequential hash-read buffers.
-- Improved generated 7-Zip FFS inventory parsing for future actual-ZIP testing.
-- Added a fresh-ZIP Stage B run script.
-- Preserved compact iOS Spotlight normal mode and current investigator views.
-
-## V0_9_42 - Native C++ 7-Zip inventory parser
-
-V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
+- Build V0_9_44 with `scripts\Build-V0_9_44.ps1`.
+- Run the reuse-cache validation.
+- Re-run Stage B fresh-ZIP validation and confirm `ios_ffs_inventory_cpp_parser_complete` reports nonzero `raw_records` / `files`, and that `ios_ffs_file_inventory.csv` and `ios_app_database_inventory.csv` contain rows.

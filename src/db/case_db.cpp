@@ -5617,11 +5617,11 @@ UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diag
        'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
 FROM vw_parser_diagnostics_action_summary
 UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
-       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_43 extracts printable tokens only; full object graph decoding remains future work.'
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_44 extracts printable tokens only; full object graph decoding remains future work.'
 FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary;
 )VSQL32"}));
 
-    // V0_9_43: bounded bplist / NSKeyedArchiver discovery views. These expose
+    // V0_9_44: bounded bplist / NSKeyedArchiver discovery views. These expose
     // compact parser-produced token summaries without asserting full semantic decode.
     exec(joinSql({R"VSQL33(
 DROP VIEW IF EXISTS vw_ios_spotlight_bplist_nskeyedarchiver_detail;
@@ -5644,7 +5644,7 @@ SELECT kv.raw_kv_id,
        CASE WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=0')>0 THEN 'BPLIST_DETECTED_NO_NSKEYED_MARKER'
             WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=')>0 THEN 'NSKEYEDARCHIVER_MARKER_DETECTED'
             ELSE 'BPLIST_OR_NSKEYED_CONTEXT_DETECTED' END AS bplist_detection_status,
-       'V0_9_43 bounded ASCII token discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
+       'V0_9_44 bounded ASCII token discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
 FROM raw_key_values kv
 LEFT JOIN raw_records r
   ON r.source_id=kv.source_id

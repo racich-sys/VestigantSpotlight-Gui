@@ -1,9 +1,9 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_43",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_46",
   [string]$InputZip = "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip",
   [string]$ReuseCache = "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4",
-  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_43_ReusedCache",
-  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_43_ReusedCache_Check.zip"
+  [string]$CaseRoot = "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_46_ReusedCache",
+  [string]$OutZip = "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_46_ReusedCache_Check.zip"
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,4 +22,4 @@ New-Item -ItemType Directory -Force -Path $CaseRoot | Out-Null
   --export-profile investigator `
   --verbose
 
-powershell -ExecutionPolicy Bypass -File "$SourceRoot\scripts\Package-V0_9_43-iOS-ThinUpload.ps1" -CaseRoot $CaseRoot -OutZip $OutZip
+powershell -ExecutionPolicy Bypass -File "$SourceRoot\scripts\Package-V0_9_46-iOS-ThinUpload.ps1" -CaseRoot $CaseRoot -OutZip $OutZip
