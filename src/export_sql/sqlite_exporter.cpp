@@ -261,6 +261,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
     out << "Same-folder groups: " << scalarInt64(db, "SELECT COUNT(*) FROM (SELECT source_id, store_guid, child_parent_inode_num FROM parent_inode_links GROUP BY source_id, store_guid, child_parent_inode_num HAVING COUNT(*)>1)") << "\n";
     out << "Native decode errors: " << scalarInt64(db, "SELECT COUNT(*) FROM raw_failures") << "\n";
     out << "Native partial decode errors: " << scalarInt64(db, "SELECT COUNT(*) FROM raw_key_values WHERE field_name='__decode_error'") << "\n";
+    out << "iOS bplist/NSKeyedArchiver context rows: " << (tableExists(db, "vw_ios_spotlight_bplist_nskeyedarchiver_detail") ? scalarInt64(db, "SELECT COUNT(*) FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail") : 0) << "\n";
     out << "\nRun limits / suppression status\n";
     const long long summaryRawRecords = scalarInt64(db, "SELECT COUNT(*) FROM raw_records");
     const long long summaryRawKv = scalarInt64(db, "SELECT COUNT(*) FROM raw_key_values");
@@ -290,6 +291,18 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
             }
             out << "- " << fieldName << " rows=" << stmt.colText(1) << " populated=" << stmt.colText(2) << " sample=" << sample << "\n";
         }
+    }
+    out << "\niOS bplist / NSKeyedArchiver discovery\n";
+    if (tableExists(db, "vw_ios_spotlight_bplist_nskeyedarchiver_summary")) {
+        auto stmt = db.prepare("SELECT bplist_detection_status,SUM(spotlight_record_count),MIN(earliest_last_updated_utc),MAX(latest_last_updated_utc),substr(MAX(max_context_sample),1,180) FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary GROUP BY bplist_detection_status ORDER BY SUM(spotlight_record_count) DESC LIMIT 10");
+        bool any = false;
+        while (stmt.stepRow()) {
+            any = true;
+            out << "- " << stmt.colText(0) << " records=" << stmt.colText(1) << " range=" << stmt.colText(2) << " to " << stmt.colText(3) << " sample=" << stmt.colText(4) << "\n";
+        }
+        if (!any) out << "- none detected in compact normal-mode key/value rows\n";
+    } else {
+        out << "- bplist/NSKeyedArchiver views not available\n";
     }
     out << "\niOS CoreSpotlight string probe categories\n";
     {
@@ -396,6 +409,8 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_communications_review_summary.csv", "Grouped counts and date coverage for the unified iOS communications review rows.");
     row("exports/ios_spotlight_communication_candidates.csv", "CoreSpotlight string probes that appear communication-related, with conservative app-database context.");
     row("exports/ios_spotlight_decode_coverage_summary.csv", "Spotlight-first decode coverage by iOS CoreSpotlight store: raw records, recovered values, human text values, and native decode status.");
+    row("exports/ios_spotlight_bplist_nskeyedarchiver_summary.csv", "Bounded summary of iOS CoreSpotlight binary plist / NSKeyedArchiver payload token discovery.");
+    row("exports/ios_spotlight_bplist_nskeyedarchiver_detail.csv", "Row-level bounded bplist / NSKeyedArchiver context tokens; not a full object-graph decode.");
     row("exports/ios_spotlight_field_coverage_summary.csv", "Recovered Spotlight field/probe coverage by store and field name; highlights generic native probes versus named fields.");
     row("exports/ios_spotlight_text_category_summary.csv", "Counts of recovered iOS CoreSpotlight human-readable text categories and review priorities.");
     row("exports/ios_spotlight_record_review.csv", "Support/diagnostic only full Spotlight-first record review surface. Normal investigator export uses compact summaries to avoid long SQL materialization.");
@@ -1153,6 +1168,8 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         if (supportDataExport) exportQuery(db, exportDir / "ios_keychain_support_reference_inventory.csv", "SELECT * FROM vw_ios_keychain_support_reference_inventory ORDER BY normalized_path", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_referenced_paths.csv", "SELECT * FROM vw_ios_spotlight_referenced_paths ORDER BY reference_type, normalized_ios_path, reference_id", log);
         exportQuery(db, exportDir / "ios_spotlight_decode_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_decode_coverage_summary ORDER BY raw_record_count DESC, store_guid", log);
+        exportQuery(db, exportDir / "ios_spotlight_bplist_nskeyedarchiver_summary.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary ORDER BY spotlight_record_count DESC, store_guid, source_db, bplist_detection_status", log);
+        exportQuery(db, exportDir / "ios_spotlight_bplist_nskeyedarchiver_detail.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail ORDER BY last_updated_utc DESC, store_guid, raw_kv_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_field_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_field_coverage_summary ORDER BY value_row_count DESC, store_guid, field_name", log);
         exportQuery(db, exportDir / "ios_spotlight_text_category_summary.csv", "SELECT * FROM vw_ios_spotlight_text_category_summary ORDER BY text_value_count DESC, human_text_category", log);
         exportQuery(db, exportDir / "ios_spotlight_text_context_priority_summary.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);
@@ -2094,6 +2111,14 @@ LIMIT 5000
     if (tableExists(db, "vw_ios_spotlight_dictionary_coverage")) {
         exportQuery(db, sampleDir / "ios_spotlight_dictionary_coverage_sample.csv", "SELECT * FROM vw_ios_spotlight_dictionary_coverage ORDER BY raw_record_count DESC, store_guid, source_db LIMIT 5000", log);
         manifest << "ios_spotlight_dictionary_coverage_sample.csv,vw_ios_spotlight_dictionary_coverage," << tableRowCount(db, "vw_ios_spotlight_dictionary_coverage") << "," << FocusSampleLimit << ",iOS CoreSpotlight dictionary/dbStr coverage by store\n";
+    }
+    if (tableExists(db, "vw_ios_spotlight_bplist_nskeyedarchiver_summary")) {
+        exportQuery(db, sampleDir / "ios_spotlight_bplist_nskeyedarchiver_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary ORDER BY spotlight_record_count DESC, store_guid, source_db, bplist_detection_status LIMIT 5000", log);
+        manifest << "ios_spotlight_bplist_nskeyedarchiver_summary_sample.csv,vw_ios_spotlight_bplist_nskeyedarchiver_summary," << tableRowCount(db, "vw_ios_spotlight_bplist_nskeyedarchiver_summary") << "," << FocusSampleLimit << ",bounded bplist / NSKeyedArchiver token discovery summary\n";
+    }
+    if (tableExists(db, "vw_ios_spotlight_bplist_nskeyedarchiver_detail")) {
+        exportQuery(db, sampleDir / "ios_spotlight_bplist_nskeyedarchiver_detail_sample.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail ORDER BY last_updated_utc DESC, store_guid, raw_kv_id LIMIT 5000", log);
+        manifest << "ios_spotlight_bplist_nskeyedarchiver_detail_sample.csv,vw_ios_spotlight_bplist_nskeyedarchiver_detail," << tableRowCount(db, "vw_ios_spotlight_bplist_nskeyedarchiver_detail") << "," << FocusSampleLimit << ",row-level bounded bplist / NSKeyedArchiver token contexts; not full object graph decode\n";
     }
     if (tableExists(db, "vw_ios_spotlight_apple_field_coverage")) {
         exportQuery(db, sampleDir / "ios_spotlight_apple_field_coverage_sample.csv", "SELECT * FROM vw_ios_spotlight_apple_field_coverage ORDER BY value_row_count DESC, apple_semantic_group, field_name LIMIT 5000", log);

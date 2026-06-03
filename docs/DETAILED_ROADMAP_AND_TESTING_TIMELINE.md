@@ -1,6 +1,6 @@
 # Vestigant Spotlight / Spotlight2 Detailed Roadmap and Testing Timeline
 
-Current version: 0.9.42
+Current version: 0.9.43
 Last reviewed input: V0_9_32 Windows build log and V0_9_32 iOS reuse-cache thin upload.
 
 ## Current status from V0_9_32

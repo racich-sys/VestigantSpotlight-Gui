@@ -1,6 +1,6 @@
 # Vestigant Spotlight Documentation
 
-Current version: 0.9.42
+Current version: 0.9.43
 
 Primary maintained documents:
 
@@ -11,3 +11,5 @@ Primary maintained documents:
 - `THIN_UPLOAD_REVIEW_WORKFLOW.md` - repeatable build/thin-upload review method.
 
 V0_9_37 keeps historical details aggregated in the consolidated version history rather than reintroducing many stale per-version note fragments into the production ZIP.
+
+V0_9_43 adds bounded bplist / NSKeyedArchiver discovery surfaces and keeps historical details aggregated in the consolidated version history rather than reintroducing many stale per-version note fragments into the production ZIP.

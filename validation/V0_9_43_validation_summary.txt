@@ -1,0 +1,49 @@
+Vestigant Spotlight V0_9_43 validation summary
+Generated UTC: 2026-06-03
+
+Uploaded inputs reviewed:
+- VestigantSpotlightInv_V0_9_42.zip
+- V0_9_42_build.log
+- Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip
+- V0_9_41 and V0_9_40 build/thin files for comparison fallback
+- V0_9_42 review/suggestion pasted markdown/text files
+
+V0_9_42 review findings:
+- Windows/MSVC build log shows CLI, self-test, and GUI targets linked and binary version reported as Vestigant Spotlight v0.9.42.
+- Reuse-cache thin upload reached complete_success at 2026-06-03T00:00:19Z.
+- Headline V0_9_42 case counts: stores=6, valid_stores=6, database_candidates=12, parser_selected_database_count=6, raw_records=344445, raw_key_values=982230, raw_date_candidates=336037, artifacts=344445, timeline_events=336037, usage_evidence=0.
+- Normal iOS mode skipped broad FFS inventory materialization and imported referenced-path hits after native parse; referenced_path_hits=391.
+- V0_9_41 reuse-cache also completed successfully; V0_9_40 was the last relevant SQLite/disk-full failure baseline.
+- V0_9_42 source already contained the intended CSV fast path and native C++ 7-Zip raw inventory parser.
+
+Decision class:
+- V0_9_42 did not show a current build failure, reuse-cache runtime failure, DB/WAL-growth regression, or repeated CSV/export stall in the reviewed thin output.
+- V0_9_43 therefore targets bounded investigative value: iOS CoreSpotlight bplist / NSKeyedArchiver marker discovery and review surfaces.
+
+V0_9_43 changes:
+- Added bounded binary plist / NSKeyedArchiver marker discovery during iOS native value parsing.
+- Added compact synthetic raw_key_values field __spotlight_bplist_nskeyedarchiver_context for matching records.
+- Added bounded printable-token extraction with explicit decode status stating this is not full NSKeyedArchiver graph decoding.
+- Added CaseDatabase views vw_ios_spotlight_bplist_nskeyedarchiver_summary and vw_ios_spotlight_bplist_nskeyedarchiver_detail.
+- Added GUI entries iOS - Bplist/NSKeyedArchiver Summary and iOS - Bplist/NSKeyedArchiver Detail.
+- Added normal CSV exports, upload samples, review-index rows, and case-summary reporting for bplist / NSKeyedArchiver discovery.
+- Updated version metadata, scripts, release notes, version history, validation status, and roadmap to V0_9_43.
+
+Validation performed in this environment:
+- Changed-file C++ syntax checks: PASS for src/parsers/native_storedb_parser.cpp, src/db/case_db.cpp, and src/export_sql/sqlite_exporter.cpp.
+- SQLite smoke test for new VSQL33 views: PASS; detail rows=1, summary rows=1, status=NSKEYEDARCHIVER_MARKER_DETECTED.
+- Raw-string MSVC C2026 risk scan: PASS; oversize_count=0 at 16000-byte threshold for checked major SQL/GUI/export/app files.
+- Linux Release build attempted but did not complete inside the sandbox timeout while compiling the large src/app/app_runner.cpp translation unit; no compile errors were observed before termination.
+
+Validation still required on Windows:
+1. Build with scripts\Build-V0_9_43.ps1 or build_windows_msvc.bat.
+2. Confirm CLI reports Vestigant Spotlight v0.9.43.
+3. Run VestigantSpotlightTests.exe self-test.
+4. Run scripts\Run-V0_9_43-iOS-ReuseCache-CLI-AndZip.ps1 and confirm complete_success.
+5. Review bplist / NSKeyedArchiver summary/detail GUI views and exports.
+6. If reuse-cache succeeds, run Stage B fresh-ZIP script.
+
+
+Package integrity:
+- VestigantSpotlightInv_V0_9_43.zip unzip test: PASS.
+- VestigantSpotlightInv_V0_9_43_patch.zip unzip test: PASS.

@@ -5615,8 +5615,61 @@ UNION ALL SELECT '06_timeline','timeline','iOS - Timeline Month Summary','vw_ios
 FROM vw_ios_spotlight_timeline_month_summary
 UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diagnostics Action Summary','vw_parser_diagnostics_action_summary',CAST(COUNT(*) AS TEXT),
        'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
-FROM vw_parser_diagnostics_action_summary;
+FROM vw_parser_diagnostics_action_summary
+UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_43 extracts printable tokens only; full object graph decoding remains future work.'
+FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary;
 )VSQL32"}));
+
+    // V0_9_43: bounded bplist / NSKeyedArchiver discovery views. These expose
+    // compact parser-produced token summaries without asserting full semantic decode.
+    exec(joinSql({R"VSQL33(
+DROP VIEW IF EXISTS vw_ios_spotlight_bplist_nskeyedarchiver_detail;
+CREATE VIEW vw_ios_spotlight_bplist_nskeyedarchiver_detail AS
+SELECT kv.raw_kv_id,
+       kv.source_id,
+       kv.store_guid,
+       kv.source_db,
+       kv.inode_num AS spotlight_inode_or_object_id,
+       kv.store_id AS spotlight_store_id,
+       kv.parent_inode_num,
+       COALESCE(r.raw_record_id,'') AS raw_record_id,
+       COALESCE(r.last_updated_utc,'') AS last_updated_utc,
+       COALESCE(r.file_name,'') AS file_name,
+       COALESCE(r.display_name,'') AS display_name,
+       COALESCE(r.content_type,'') AS content_type,
+       kv.full_path,
+       kv.field_name AS parser_context_field,
+       kv.field_value AS bplist_context,
+       CASE WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=0')>0 THEN 'BPLIST_DETECTED_NO_NSKEYED_MARKER'
+            WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=')>0 THEN 'NSKEYEDARCHIVER_MARKER_DETECTED'
+            ELSE 'BPLIST_OR_NSKEYED_CONTEXT_DETECTED' END AS bplist_detection_status,
+       'V0_9_43 bounded ASCII token discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
+FROM raw_key_values kv
+LEFT JOIN raw_records r
+  ON r.source_id=kv.source_id
+ AND r.store_guid=kv.store_guid
+ AND r.source_db=kv.source_db
+ AND r.inode_num=kv.inode_num
+ AND COALESCE(r.store_id,'')=COALESCE(kv.store_id,'')
+WHERE kv.field_name='__spotlight_bplist_nskeyedarchiver_context';
+
+DROP VIEW IF EXISTS vw_ios_spotlight_bplist_nskeyedarchiver_summary;
+CREATE VIEW vw_ios_spotlight_bplist_nskeyedarchiver_summary AS
+SELECT source_id,
+       store_guid,
+       source_db,
+       bplist_detection_status,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       MIN(NULLIF(last_updated_utc,'')) AS earliest_last_updated_utc,
+       MAX(NULLIF(last_updated_utc,'')) AS latest_last_updated_utc,
+       substr(MIN(NULLIF(bplist_context,'')),1,1200) AS min_context_sample,
+       substr(MAX(NULLIF(bplist_context,'')),1,1200) AS max_context_sample,
+       'Summary of compact bplist / NSKeyedArchiver token-discovery contexts. Counts are parser-discovery counts, not decoded app event counts.' AS interpretation_note
+FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail
+GROUP BY source_id,store_guid,source_db,bplist_detection_status;
+)VSQL33"}));
 
 }
 

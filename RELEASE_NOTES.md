@@ -1,6 +1,32 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.42
+Current version: 0.9.43
+
+
+## V0_9_43 - Bplist / NSKeyedArchiver discovery scaffold
+
+V0_9_43 reviews the uploaded V0_9_42 build log and reuse-cache thin output. V0_9_42 built successfully and the reuse-cache run reached `complete_success`, so this release moves from performance-only work to bounded iOS investigative value.
+
+Changes:
+
+- Adds compact iOS CoreSpotlight bplist / NSKeyedArchiver marker discovery during native value parsing.
+- Adds one bounded synthetic key/value row per matching record: `__spotlight_bplist_nskeyedarchiver_context`.
+- Extracts limited printable tokens from likely bplist/NSKeyedArchiver blobs to help identify potentially useful serialized app interaction/content records.
+- Adds CaseDatabase views `vw_ios_spotlight_bplist_nskeyedarchiver_summary` and `vw_ios_spotlight_bplist_nskeyedarchiver_detail`.
+- Adds GUI views `iOS - Bplist/NSKeyedArchiver Summary` and `iOS - Bplist/NSKeyedArchiver Detail`.
+- Adds normal CSV exports and upload samples for the new summary/detail views.
+- Keeps normal iOS mode compact and explicitly labels this as bounded token discovery only, not full NSKeyedArchiver graph decoding.
+
+Validation performed in this environment:
+
+- Reviewed V0_9_42 build log and reuse-cache thin output.
+- Confirmed V0_9_42 build succeeded and the reuse-cache run reached `complete_success`.
+- Confirmed the V0_9_42 CSV fast path and native 7-Zip inventory parser were already present in source.
+- Ran changed-file C++ syntax checks for `native_storedb_parser.cpp`, `case_db.cpp`, and `sqlite_exporter.cpp`.
+- Ran a SQLite view smoke test for the new VSQL33 bplist views.
+- Ran MSVC C2026 raw-string size risk check on the major SQL/GUI/export files.
+
+Windows/MSVC build, GUI launch, self-test, and standard iOS reuse-cache execution remain required on the user's Windows system.
 
 ## V0_9_39
 

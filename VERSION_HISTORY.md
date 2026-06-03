@@ -1,6 +1,11 @@
 # Vestigant Spotlight Version History
 
-Current version: 0.9.42
+Current version: 0.9.43
+
+
+## V0_9_43 - Bplist / NSKeyedArchiver discovery scaffold
+
+V0_9_43 reviewed the successful V0_9_42 Windows build and iOS reuse-cache thin result. Because the performance work from V0_9_42 was already present and the reuse-cache path completed, the release adds a bounded investigative scaffold for likely iOS CoreSpotlight binary plist / NSKeyedArchiver values. The new parser logic detects bplist and NSKeyedArchiver markers, extracts a bounded printable-token context, stores one compact synthetic context row per matching record, and surfaces the results through CaseDatabase views, GUI views, normal CSV exports, upload samples, review index, and case summary text. It is intentionally not a full NSKeyedArchiver graph decoder; that remains a future parser phase after Stage B fresh-ZIP validation.
 
 The maintained full history is `docs/CONSOLIDATED_VERSION_HISTORY.md`.  V0_9_37 restored historical V0_9 details from the uploaded V0_9_3 documentation archive into that single consolidated history.
 

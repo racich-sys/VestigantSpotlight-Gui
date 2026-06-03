@@ -1,6 +1,6 @@
 # Vestigant Spotlight Consolidated User Manual
 
-Version: 0.9.42
+Version: 0.9.43
 
 ## Purpose
 
@@ -25,12 +25,12 @@ V0_9_37 restored historical version details from the uploaded V0_9_3 documentati
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_42.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_42" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_42.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_42\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_42_build.log"
-& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_42\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_43.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_43" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_43.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_43\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_43_build.log"
+& "T:\VestigantSpotlightInv_V0_9_43\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_43\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_43\build-msvc\selftest_out"
 ```
 
 ## Standard iOS reuse-cache test
@@ -38,11 +38,11 @@ Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_42.zip -DestinationPath
 Use this for fast parser/view/export iteration while the large source ZIP and known-good cache remain unchanged.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_42\scripts\Run-V0_9_42-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_43\scripts\Run-V0_9_43-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_43_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_43_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources during development iterations.  For final forensic reporting, run an explicit container/source hash workflow and preserve the hash with the case.
@@ -105,11 +105,11 @@ Thin upload ZIPs are for review/debugging and may contain samples of large CSVs.
 
 ## Troubleshooting
 
-If a run stalls or stops writing, use the matching `Collect-V0_9_42-DBBloat-State.ps1` script before stopping/rerunning:
+If a run stalls or stops writing, use the matching `Collect-V0_9_43-DBBloat-State.ps1` script before stopping/rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_42\scripts\Collect-V0_9_42-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_43\scripts\Collect-V0_9_43-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_43_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
@@ -120,8 +120,8 @@ If MSVC reports `C2026: string too big`, the likely source is an oversized SQL r
 
 Upload:
 
-- `D:\Downloads\V0_9_42_build.log`
-- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip`
+- `D:\Downloads\V0_9_43_build.log`
+- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_43_ReusedCache_Check.zip`
 - stopped-state ZIP/SHA256 only if the run stalls, DB/WAL grows unexpectedly, or no writes occur for a long period.
 
 

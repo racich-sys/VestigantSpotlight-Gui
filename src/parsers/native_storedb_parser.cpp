@@ -1195,6 +1195,108 @@ bool isLikelyUsefulSpotlightTextContext(const std::string& field, const std::str
     return false;
 }
 
+
+bool containsBinaryPlistMarker(const std::string& value) {
+    return value.find("bplist00") != std::string::npos;
+}
+
+bool containsNsKeyedArchiverMarker(const std::string& value) {
+    return value.find("NSKeyedArchiver") != std::string::npos ||
+           value.find("$objects") != std::string::npos ||
+           value.find("$archiver") != std::string::npos;
+}
+
+bool isLikelyIosBplistValue(const std::string& value) {
+    return containsBinaryPlistMarker(value) || containsNsKeyedArchiverMarker(value);
+}
+
+bool isTokenCharForBplistSummary(unsigned char c) {
+    return (c >= 0x20 && c <= 0x7E);
+}
+
+bool isLowSignalBplistToken(const std::string& token) {
+    if (token.size() < 3) return true;
+    const std::string t = lowerAscii(token);
+    static const char* lowSignal[] = {
+        "$null", "$top", "$version", "$archiver", "$objects", "$class", "ns.objects", "ns.keys", "ns.object",
+        "null", "root", "bytes"
+    };
+    for (const auto* x : lowSignal) if (t == x) return true;
+    std::size_t useful = 0;
+    for (unsigned char c : token) {
+        if (std::isalnum(c) || c == '_' || c == '-' || c == '.' || c == '/' || c == '@' || c == ':') ++useful;
+    }
+    return useful < 3;
+}
+
+std::vector<std::string> extractPrintableBplistTokens(const std::string& value) {
+    constexpr std::size_t MaxInputScanBytes = 16384;
+    constexpr std::size_t MaxTokens = 48;
+    constexpr std::size_t MaxTokenBytes = 120;
+    std::vector<std::string> tokens;
+    std::string cur;
+    const std::size_t n = std::min<std::size_t>(value.size(), MaxInputScanBytes);
+    auto flush = [&]() {
+        if (cur.size() >= 3) {
+            std::string token = cur;
+            if (token.size() > MaxTokenBytes) token = token.substr(0, MaxTokenBytes) + "...[truncated]";
+            if (!isLowSignalBplistToken(token) && std::find(tokens.begin(), tokens.end(), token) == tokens.end()) {
+                tokens.push_back(token);
+            }
+        }
+        cur.clear();
+    };
+    for (std::size_t i = 0; i < n; ++i) {
+        const unsigned char c = static_cast<unsigned char>(value[i]);
+        if (isTokenCharForBplistSummary(c)) {
+            cur.push_back(static_cast<char>(c));
+            if (cur.size() >= MaxTokenBytes) flush();
+        } else {
+            flush();
+        }
+        if (tokens.size() >= MaxTokens) break;
+    }
+    flush();
+    return tokens;
+}
+
+std::string buildIosBplistNsKeyedArchiverContext(const std::map<std::string, std::string, std::less<>>& metadata) {
+    constexpr std::size_t MaxFields = 3;
+    constexpr std::size_t MaxContextBytes = 1800;
+    std::vector<std::string> pieces;
+    std::size_t fieldsSeen = 0;
+    std::size_t keyedFields = 0;
+    for (const auto& kv : metadata) {
+        if (!isLikelyIosBplistValue(kv.second)) continue;
+        ++fieldsSeen;
+        if (containsNsKeyedArchiverMarker(kv.second)) ++keyedFields;
+        if (pieces.size() >= MaxFields) continue;
+        auto tokens = extractPrintableBplistTokens(kv.second);
+        std::string tokenText;
+        for (const auto& token : tokens) {
+            std::string candidate = tokenText.empty() ? token : tokenText + ";" + token;
+            if (candidate.size() > 1000) break;
+            tokenText = std::move(candidate);
+        }
+        if (tokenText.empty()) tokenText = "no_printable_tokens_recovered";
+        std::ostringstream os;
+        os << kv.first << "[format=" << (containsBinaryPlistMarker(kv.second) ? "bplist00" : "unknown")
+           << ";nskeyed=" << (containsNsKeyedArchiverMarker(kv.second) ? "1" : "0")
+           << ";raw_bytes=" << kv.second.size() << ";tokens=" << tokenText << "]";
+        pieces.push_back(os.str());
+    }
+    if (fieldsSeen == 0) return {};
+    std::ostringstream out;
+    out << "bplist_field_count=" << fieldsSeen << "; nskeyedarchiver_field_count=" << keyedFields
+        << "; decode_status=bounded_ascii_token_discovery_only; note=not_full_NSKeyedArchiver_graph_decode";
+    for (const auto& p : pieces) {
+        const std::string add = " | " + p;
+        if (out.str().size() + add.size() > MaxContextBytes) { out << " | ...[truncated]"; break; }
+        out << add;
+    }
+    return out.str();
+}
+
 std::string buildIosSpotlightInvestigatorTextContext(const std::map<std::string, std::string, std::less<>>& metadata) {
     constexpr std::size_t MaxContextBytes = 1200;
     constexpr std::size_t MaxContextPieces = 6;
@@ -1912,6 +2014,13 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
             if (iosDefaultFilteredKvMode && persistedReferenceForRecord && !spotlightTextContext.empty()) {
                 kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, fullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_investigator_text_context"); kvStmt.bind(11, spotlightTextContext); kvStmt.stepDone(); kvStmt.reset();
                 ++counts.rawKeyValues;
+            }
+            if (iosDefaultFilteredKvMode) {
+                const std::string bplistContext = buildIosBplistNsKeyedArchiverContext(item.metadata);
+                if (!bplistContext.empty()) {
+                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, fullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_bplist_nskeyedarchiver_context"); kvStmt.bind(11, bplistContext); kvStmt.stepDone(); kvStmt.reset();
+                    ++counts.rawKeyValues;
+                }
             }
             if (!item.lastUpdatedUtc.empty() && !iosDefaultFilteredKvMode) {
                 dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, pathString(store.storePath.parent_path())); dateStmt.bind(4, pathString(store.storePath)); dateStmt.bind(5, inode); dateStmt.bind(6, std::to_string(item.itemId)); dateStmt.bind(7, "Last_Updated"); dateStmt.bind(8, item.lastUpdatedUtc); dateStmt.bind(9, item.lastUpdatedUtc); dateStmt.bind(10, "native_epoch_microseconds"); dateStmt.stepDone(); dateStmt.reset();

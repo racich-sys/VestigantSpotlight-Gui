@@ -1,39 +1,36 @@
 # Vestigant Spotlight Validation Status
 
-Current version: 0.9.42
+Current version: 0.9.43
 
-V0_9_42 is a parser stability and Missing From FFS text-visibility guardrail fix.  It is based on the V0_9_37 source and keeps the consolidated documentation/history model.
+## V0_9_43 packaging validation
 
-Validation performed during packaging:
+Reviewed inputs:
 
-- Reviewed `V0_9_37_build.log` and `Upload_Thin_iOS_GUI_V0_9_37_ReusedCache_Check.zip`.
-- Confirmed V0_9_37 Windows/MSVC build succeeded.
-- Confirmed the V0_9_37 run failed at the SQLite DB-size guardrail during native parsing after text-context expansion.
-- Reduced normal-mode text context budget while preserving Missing From FFS text-detail views.
-- Fixed fatal native guardrail exception propagation.
-- Confirmed syntax/static validation in this environment.
+- `V0_9_42_build.log`
+- `Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip`
+- `VestigantSpotlightInv_V0_9_42.zip`
+- V0_9_41 and V0_9_40 logs/thin uploads for comparison.
 
-Required external validation:
+Findings from uploaded outputs:
 
-1. Run Windows/MSVC build.
-2. Confirm CLI reports `Vestigant Spotlight v0.9.42`.
-3. Run self-test.
-4. Run the standard iOS reuse-cache script and confirm it reaches `complete_success` without DB/WAL guardrail failure.
+- V0_9_42 Windows/MSVC build completed and linked CLI, tests, and GUI.
+- V0_9_42 iOS reuse-cache run reached `complete_success`.
+- V0_9_41 reuse-cache also reached `complete_success`.
+- V0_9_40 failed with SQLite/disk-full behavior, confirming V0_9_41/V0_9_42 were the stable comparison baselines.
+- V0_9_42 source already contained the CSV export fast path and native C++ 7-Zip raw inventory parser.
 
-## V0_9_37 - Missing From FFS text visibility
+Validation performed in this Linux packaging environment:
 
-V0_9_37 addresses the user-reported issue that some Spotlight CSV reports did not show recovered Spotlight text/content.  It adds row-level Missing From FFS text detail and text coverage exports, exposes the same views in the GUI, increases compact same-record text context retention for reference-bearing iOS records, and documents when text is unavailable or suppressed by compact mode.
+- Changed-file C++ syntax checks: PASS for `src/parsers/native_storedb_parser.cpp`, `src/db/case_db.cpp`, and `src/export_sql/sqlite_exporter.cpp`.
+- New VSQL33 bplist / NSKeyedArchiver SQLite view smoke test: PASS.
+- MSVC C2026 raw-string size risk check across major SQL/GUI/export/app files: PASS, no oversized raw-string literals found at the configured 16,000-byte threshold.
+- Linux Release build was attempted, but the sandbox timed out while compiling the very large `src/app/app_runner.cpp`; no compile errors were observed before timeout.
 
+Required external Windows validation:
 
-
-## V0_9_42 - Missing From FFS text visibility guardrail fix
-
-V0_9_37 improved Missing From FFS text visibility but over-expanded same-record text context and hit the SQLite 5 GiB guardrail during native parse.  V0_9_42 keeps the text-detail views/exports but restores a bounded normal-mode text-context budget and fixes fatal guardrail propagation so runs stop cleanly if a guardrail is ever hit.
-
-### V0_9_42 V1-readiness note
-
-V0_9_42 tightens normal iOS compact-mode text storage to keep Missing From FFS text visibility without exceeding the DB guardrail on the current large iOS source. GUI review-page loads are now tracked and cancellable instead of detached.
-
-## V0_9_42 - Native C++ 7-Zip inventory parser
-
-V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
+1. Run `scripts\Build-V0_9_43.ps1` or `build_windows_msvc.bat`.
+2. Confirm CLI reports `Vestigant Spotlight v0.9.43`.
+3. Run `VestigantSpotlightTests.exe` self-test.
+4. Run `scripts\Run-V0_9_43-iOS-ReuseCache-CLI-AndZip.ps1` and confirm `complete_success`.
+5. Review the new bplist / NSKeyedArchiver summary/detail exports and GUI views.
+6. If reuse-cache validation succeeds, run the Stage B fresh-ZIP script to validate actual FFS ZIP enumeration/staging.

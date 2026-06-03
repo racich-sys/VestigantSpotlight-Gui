@@ -1,6 +1,18 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.42
+Current version: 0.9.43
+
+
+### V0_9_43
+
+- Reviewed V0_9_42 build/thin output: Windows/MSVC build succeeded and the standard iOS reuse-cache run reached `complete_success`.
+- Confirmed V0_9_42 already contained the CSV export fast path and native C++ 7-Zip raw inventory parser.
+- Added compact bplist / NSKeyedArchiver marker discovery for iOS CoreSpotlight values.
+- Added one bounded synthetic parser-context row per matching record using field `__spotlight_bplist_nskeyedarchiver_context`.
+- Added summary/detail CaseDatabase views, GUI entries, normal CSV exports, upload samples, review index entries, and case-summary reporting for bplist / NSKeyedArchiver discovery.
+- Explicitly labels this as bounded ASCII token discovery only, not full NSKeyedArchiver object graph decoding.
+- Preserves compact iOS normal mode; broad property persistence and full app DB/FFS materialization remain disabled by default.
+- Stage B fresh-ZIP testing remains the next operational validation step after V0_9_43 reuse-cache validation.
 
 This is the maintained version history for the production package.  It intentionally replaces many separate per-version note fragments with one chronological history, while preserving the important historical development process.  V0_9_37 restored and summarized historical details from the uploaded V0_9_3 documentation archive (`Docs.zip`) after V0_9_34 cleanup removed too much detail from the consolidated history.
 
@@ -48,7 +60,7 @@ V0_9_33 added a detailed roadmap and testing-source timeline.  V0_9_34 performed
 - Added CSV export performance improvements using direct SQLite text pointers, streaming CSV escaping, and a 1 MiB output buffer to reduce allocations and small writes during large exports.
 - Increased Windows sequential SHA256 file-read buffer to 4 MiB and non-Windows hashing buffer to 1 MiB.
 - Improved the generated iOS FFS ZIP inventory workflow by dumping `7z l -slt` output to a raw text file and parsing it without an external-process PowerShell pipeline or per-line regex matching.
-- Added `Run-V0_9_42-iOS-FreshZip-CLI-AndZip.ps1` for Stage B actual-source ZIP testing after the reuse-cache path validates.
+- Added `Run-V0_9_43-iOS-FreshZip-CLI-AndZip.ps1` for Stage B actual-source ZIP testing after the reuse-cache path validates.
 - Preserved compact iOS Spotlight normal mode and deferred broad GUI/parser refactors that are not required for V1 usability.
 
 ### V0_9_39

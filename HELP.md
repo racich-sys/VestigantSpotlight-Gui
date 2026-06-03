@@ -1,6 +1,6 @@
 # Vestigant Spotlight Help
 
-Current version: 0.9.42
+Current version: 0.9.43
 
 ## Start here
 
@@ -16,22 +16,22 @@ No parser, schema, GUI, export, or forensic interpretation behavior was intentio
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_42.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_42" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_42.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_42\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_42_build.log"
-& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_42\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_42\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_43.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_43" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_43.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_43\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_43_build.log"
+& "T:\VestigantSpotlightInv_V0_9_43\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_43\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_43\build-msvc\selftest_out"
 ```
 
 ## iOS reuse-cache test
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_42\scripts\Run-V0_9_42-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_43\scripts\Run-V0_9_43-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_42_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_42_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_43_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_43_ReusedCache_Check.zip"
 ```
 
 ## Key documents
