@@ -2614,6 +2614,7 @@ function Get-DatabaseCategory([string]$path, [string]$name) {
   $dbLike = ($n -like '*.db' -or $n -like '*.sqlite' -or $n -like '*.sqlite3' -or $n -like '*.sqlitedb' -or $n -like '*.storedata' -or $n -eq 'chatstorage.sqlite' -or $n -eq 'contactsv2.sqlite' -or $n -eq 'callhistory.sqlite')
   if (-not $dbLike) { return @('','') }
   if ($n -eq 'sms.db') { return @('APPLE_MESSAGES','Messages') }
+  if ($n -eq 'knowledgec.db' -or $p.Contains('/coreduet/knowledge/')) { return @('KNOWLEDGEC_COREDUET','KnowledgeC') }
   if ($p.Contains('/keychains/') -or $p.Contains('/keychain/') -or $n -eq 'keychain-2.db' -or $n -eq 'keychain-2-debug.db') { return @('KEYCHAIN','Keychain') }
   if ($p.Contains('callhistory') -or $n -like 'callhistory*') { return @('CALL_HISTORY','PhoneFaceTime') }
   if (($p.Contains('group.net.whatsapp') -or $p.Contains('/whatsapp/') -or $p.Contains('whatsapp.shared')) -or $n -eq 'chatstorage.sqlite' -or $n -eq 'contactsv2.sqlite') { return @('WHATSAPP','WhatsApp') }
@@ -2736,7 +2737,10 @@ function Extract-KnownAppDatabases([string]$SevenZipPath) {
     "-ir!*AddressBook*.sqlitedb",
     "-ir!*AddressBook*.db",
     "-ir!*Contacts*.sqlite*",
-    "-ir!*Contacts*.db"
+    "-ir!*Contacts*.db",
+    "-ir!*knowledgeC.db",
+    "-ir!*interactionC.db",
+    "-ir!*globalKnowledge.db"
   )
   & $SevenZipPath x $ZipPath "-o$AppDbStageRoot" @dbPatterns -y > $dbExtractLog 2>&1
   $dbExit = $LASTEXITCODE
@@ -3208,6 +3212,9 @@ std::pair<std::string, std::string> databaseCategoryAndAppHintCpp(const std::str
     const bool dbLike = endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".sqlitedb") || endsWithCpp(n, ".storedata") || n == "chatstorage.sqlite" || n == "contactsv2.sqlite" || n == "callhistory.sqlite";
     if (!dbLike) return {"", ""};
     if (n == "sms.db") return {"APPLE_MESSAGES", "Messages"};
+    if (n == "knowledgec.db" || p.find("/coreduet/knowledge/") != std::string::npos) return {"KNOWLEDGEC_COREDUET", "KnowledgeC"};
+    if (n == "interactionc.db" || p.find("/coreduet/people/") != std::string::npos) return {"COREDUET_INTERACTIONS", "CoreDuet"};
+    if (n == "globalknowledge.db" || p.find("/intelligenceplatform/globalknowledge.db") != std::string::npos) return {"KNOWLEDGEC_COREDUET", "KnowledgeC"};
     if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos || n == "keychain-2.db" || n == "keychain-2-debug.db") return {"KEYCHAIN", "Keychain"};
     if (p.find("callhistory") != std::string::npos || n.rfind("callhistory", 0) == 0) return {"CALL_HISTORY", "PhoneFaceTime"};
     if ((p.find("group.net.whatsapp") != std::string::npos || p.find("/whatsapp/") != std::string::npos || p.find("whatsapp.shared") != std::string::npos) || n == "chatstorage.sqlite" || n == "contactsv2.sqlite") return {"WHATSAPP", "WhatsApp"};
@@ -3902,6 +3909,12 @@ std::string classifyIosAppDbRecordTable(const std::string& category, const std::
     const std::string c = toLower(category);
     const std::string t = toLower(tableName);
     const std::string cols = toLower(columns);
+    if (c.find("knowledgec") != std::string::npos || c.find("coreduet") != std::string::npos) {
+        if (t == "zobject") return "KNOWLEDGEC_EVENTS";
+        if (t == "zstructuredmetadata") return "KNOWLEDGEC_METADATA";
+        if (t.find("zobject") != std::string::npos || cols.find("zstreamname") != std::string::npos) return "KNOWLEDGEC_EVENTS";
+        return "KNOWLEDGEC_SUPPORT_TABLE";
+    }
     if (c.find("apple_messages") != std::string::npos) {
         // SMS.db/iMessage needs schema-specific handling.  The primary message table is
         // joined to chat, attachment, and handle tables below; join/support tables are
@@ -4078,7 +4091,7 @@ bool isTargetIosRecordCategory(const std::string& category) {
         "CALL_RECORDS", "CALL_PARTICIPANTS",
         "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE",
         "MAIL_RECORDS", "CALENDAR_RECORDS", "CONTACT_RECORDS",
-        "CHAT_RECORDS"
+        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS"
     };
     return target.find(category) != target.end();
 }
@@ -4518,6 +4531,74 @@ bool shouldUseAppleMessagesSpecialParser(const IosAppDbInv& inv, const std::stri
            ((t == "handle" || t == "chat") && recCat == "MESSAGE_PARTICIPANTS");
 }
 
+
+std::string buildKnowledgeCTextSnippet(const std::string& stream,
+                                       const std::string& bundleId,
+                                       const std::string& creationDate,
+                                       const std::string& endDate) {
+    std::string out;
+    if (!stream.empty()) out += "stream=" + stream;
+    if (!bundleId.empty()) out += (out.empty() ? "" : "; ") + std::string("bundle_id=") + bundleId;
+    if (!creationDate.empty()) out += (out.empty() ? "" : "; ") + std::string("creation_raw=") + creationDate;
+    if (!endDate.empty()) out += (out.empty() ? "" : "; ") + std::string("end_raw=") + endDate;
+    if (out.size() > 2000) out.resize(2000);
+    return out;
+}
+
+std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
+                                          const IosAppDbInv& inv,
+                                          sqlite3* ext,
+                                          const std::string& table,
+                                          SqlStatement& parsedIns) {
+    const std::string lowerTable = toLower(table);
+    if (lowerTable != "zobject") return 0;
+    constexpr int MaxRowsPerTable = 100000;
+    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents') LIMIT ?";
+    sqlite3_stmt* st = nullptr;
+    int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
+    if (rc != SQLITE_OK || !st) {
+        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ?";
+        rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
+    }
+    if (rc != SQLITE_OK || !st) return 0;
+    sqlite3_bind_int(st, 1, MaxRowsPerTable);
+    const int colCount = sqlite3_column_count(st);
+    std::map<std::string, int> cols;
+    for (int i = 0; i < colCount; ++i) {
+        const char* name = sqlite3_column_name(st, i);
+        if (name) cols[toLower(name)] = i;
+    }
+    const int rowidCol = findColumnIndex(cols, {"__rowid__", "z_pk", "zuuid", "uuid", "identifier"}, true);
+    const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
+    const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
+    const int startDateCol = findColumnIndex(cols, {"zstartdate"}, true);
+    const int endDateCol = findColumnIndex(cols, {"zenddate"}, true);
+    const int creationDateCol = findColumnIndex(cols, {"zcreationdate"}, true);
+    std::size_t rows = 0;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        const std::string stream = columnValue(st, streamNameCol, 256);
+        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents") continue;
+        const std::string bundleId = columnValue(st, valueStringCol, 512);
+        const auto startTs = normalizeIosAppTimestamp(columnValue(st, startDateCol, 128), "ZSTARTDATE");
+        const auto creationTs = normalizeIosAppTimestamp(columnValue(st, creationDateCol, 128), "ZCREATIONDATE");
+        bindIosParsedRecord(parsedIns, sourceId, inv, table, "KNOWLEDGEC_EVENTS",
+                            columnValue(st, rowidCol, 256),
+                            !startTs.first.empty() ? startTs.first : creationTs.first,
+                            !startTs.second.empty() ? startTs.second : creationTs.second,
+                            bundleId,
+                            "",
+                            "User Interaction: " + stream,
+                            "",
+                            stream,
+                            buildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128)),
+                            "parsed_knowledgec_zobject_interaction",
+                            "read_only_sqlite_coreduet_knowledgec table=" + table);
+        ++rows;
+    }
+    sqlite3_finalize(st);
+    return rows;
+}
+
 std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                    const IosAppDbInv& inv,
                                    sqlite3* ext,
@@ -4554,6 +4635,21 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         const std::string dateRaw = columnValue(st, dateCol, 128);
         const char* dateNamePtr = dateCol >= 0 ? sqlite3_column_name(st, dateCol) : "";
         const auto ts = normalizeIosAppTimestamp(dateRaw, dateNamePtr ? std::string(dateNamePtr) : std::string());
+        if (recordCategory == "KNOWLEDGEC_EVENTS") {
+            const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
+            const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
+            const std::string stream = columnValue(st, streamNameCol, 256);
+            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents") continue;
+            const std::string bundleId = columnValue(st, valueStringCol, 512);
+            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
+                                columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
+                                "User Interaction: " + stream, "", stream,
+                                buildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
+                                "parsed_knowledgec_generic_row",
+                                "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_47");
+            ++rows;
+            continue;
+        }
         int i = 1;
         parsedIns.bind(i++, sourceId);
         parsedIns.bind(i++, inv.id);
@@ -4686,6 +4782,10 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                         } else if (lowerTable == "handle" || lowerTable == "chat") {
                             specialRows = parseAppleMessagesSmsDbParticipantRows(sourceId, inv, ext, table, parsedIns);
                         }
+                        if (specialRows > 0) parsedRows += specialRows;
+                        else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
+                    } else if (recCat == "KNOWLEDGEC_EVENTS") {
+                        std::size_t specialRows = parseKnowledgeCIosZObjectRows(sourceId, inv, ext, table, parsedIns);
                         if (specialRows > 0) parsedRows += specialRows;
                         else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
                     } else {

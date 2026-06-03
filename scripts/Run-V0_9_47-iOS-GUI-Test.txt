@@ -1,11 +1,11 @@
 Open this executable:
-T:\VestigantSpotlightInv_V0_9_46\build-msvc\Release\VestigantSpotlight.exe
+T:\VestigantSpotlightInv_V0_9_47\build-msvc\Release\VestigantSpotlight.exe
 
 Use these GUI settings:
 Source type: ZIP
 Profile: iOS/CoreSpotlight
 Input: T:\0202_0024-IT002\00008132-000269523699001C_files_full.zip
-Case location: Q:\SpotlightCase\TestiOS_V0_9_46
+Case location: Q:\SpotlightCase\TestiOS_V0_9_47
 Mode: Process Raw Spotlight Evidence
 Full native values: enabled
 Export profile: Investigator

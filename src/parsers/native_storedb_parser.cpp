@@ -1222,6 +1222,68 @@ bool isTokenCharForBplistSummary(unsigned char c) {
     return (c >= 0x20 && c <= 0x7E);
 }
 
+bool isLowSignalBplistToken(const std::string& token);
+
+void appendUtf8CodepointNative(std::string& out, std::uint32_t cp) {
+    if (cp == 0) return;
+    if (cp <= 0x7Fu) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FFu) {
+        out.push_back(static_cast<char>(0xC0u | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp <= 0xFFFFu) {
+        if (cp >= 0xD800u && cp <= 0xDFFFu) return;
+        out.push_back(static_cast<char>(0xE0u | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    } else if (cp <= 0x10FFFFu) {
+        out.push_back(static_cast<char>(0xF0u | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+    }
+}
+
+std::string utf16beToUtf8BplistString(const std::string& bytes, std::size_t off, std::size_t byteLen) {
+    std::string out;
+    if (off >= bytes.size()) return out;
+    const std::size_t end = (std::min)(bytes.size(), off + byteLen);
+    for (std::size_t i = off; i + 1 < end; i += 2) {
+        const std::uint16_t w1 = (static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[i])) << 8) |
+                                 static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[i + 1]));
+        if (w1 >= 0xD800u && w1 <= 0xDBFFu && i + 3 < end) {
+            const std::uint16_t w2 = (static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[i + 2])) << 8) |
+                                     static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[i + 3]));
+            if (w2 >= 0xDC00u && w2 <= 0xDFFFu) {
+                const std::uint32_t cp = 0x10000u + (((static_cast<std::uint32_t>(w1) - 0xD800u) << 10) |
+                                                     (static_cast<std::uint32_t>(w2) - 0xDC00u));
+                appendUtf8CodepointNative(out, cp);
+                i += 2;
+                continue;
+            }
+        }
+        appendUtf8CodepointNative(out, w1);
+    }
+    return cleanDecodedString(std::move(out));
+}
+
+std::uint64_t readBplistBigEndianInt(const std::string& bytes, std::size_t off, std::size_t len, bool* ok = nullptr) {
+    if (ok) *ok = false;
+    if (len == 0 || len > 8 || off > bytes.size() || off + len > bytes.size()) return 0;
+    std::uint64_t v = 0;
+    for (std::size_t i = 0; i < len; ++i) v = (v << 8) | static_cast<unsigned char>(bytes[off + i]);
+    if (ok) *ok = true;
+    return v;
+}
+
+bool addBplistToken(std::vector<std::string>& tokens, std::unordered_set<std::string>& seen, std::string token, std::size_t maxTokenBytes, std::size_t maxTokens) {
+    token = cleanDecodedString(trimAscii(std::move(token)));
+    if (token.size() > maxTokenBytes) token = token.substr(0, maxTokenBytes) + "...[truncated]";
+    if (token.empty() || isLowSignalBplistToken(token)) return tokens.size() < maxTokens;
+    if (seen.insert(token).second) tokens.push_back(token);
+    return tokens.size() < maxTokens;
+}
+
 bool isLowSignalBplistToken(const std::string& token) {
     if (token.size() < 3) return true;
     const std::string t = lowerAscii(token);
@@ -1237,20 +1299,96 @@ bool isLowSignalBplistToken(const std::string& token) {
     return useful < 3;
 }
 
+std::vector<std::string> extractBplistObjectStringTokensAt(const std::string& value,
+                                                            std::size_t bplistOff,
+                                                            std::size_t maxTokens,
+                                                            std::size_t maxTokenBytes) {
+    constexpr std::size_t MaxBplistBytes = 1024ull * 1024ull;
+    constexpr std::uint64_t MaxBplistObjects = 50000ull;
+    std::vector<std::string> tokens;
+    std::unordered_set<std::string> seen;
+    if (bplistOff > value.size() || value.size() - bplistOff < 40) return tokens;
+    const std::size_t bplistSize = value.size() - bplistOff;
+    if (bplistSize > MaxBplistBytes) return tokens;
+    if (std::memcmp(value.data() + static_cast<std::ptrdiff_t>(bplistOff), "bplist00", 8) != 0) return tokens;
+
+    const std::size_t trailer = value.size() - 32;
+    const auto offsetIntSize = static_cast<unsigned char>(value[trailer + 6]);
+    const auto objectRefSize = static_cast<unsigned char>(value[trailer + 7]);
+    bool ok = false;
+    const std::uint64_t numObjects = readBplistBigEndianInt(value, trailer + 8, 8, &ok);
+    if (!ok) return tokens;
+    const std::uint64_t offsetTableOffsetRel = readBplistBigEndianInt(value, trailer + 24, 8, &ok);
+    if (!ok || offsetIntSize == 0 || offsetIntSize > 8 || objectRefSize == 0 || objectRefSize > 8 || numObjects == 0 || numObjects > MaxBplistObjects) return tokens;
+    if (offsetTableOffsetRel > bplistSize) return tokens;
+    const std::size_t offsetTable = bplistOff + static_cast<std::size_t>(offsetTableOffsetRel);
+    if (offsetTable < bplistOff || offsetTable > value.size()) return tokens;
+    if (numObjects > (std::numeric_limits<std::size_t>::max)() / offsetIntSize) return tokens;
+    const std::size_t offsetTableBytes = static_cast<std::size_t>(numObjects) * offsetIntSize;
+    if (offsetTableBytes > value.size() - offsetTable) return tokens;
+
+    auto readObjectLength = [&](std::size_t& payloadOff, std::uint64_t inlineCount, std::uint64_t& countOut) -> bool {
+        countOut = inlineCount;
+        if (inlineCount != 0x0Fu) return true;
+        if (payloadOff >= value.size()) return false;
+        const auto intMarker = static_cast<unsigned char>(value[payloadOff++]);
+        if ((intMarker & 0xF0u) != 0x10u) return false;
+        const std::size_t intBytes = std::size_t{1} << (intMarker & 0x0Fu);
+        if (intBytes == 0 || intBytes > 8 || payloadOff > value.size() || intBytes > value.size() - payloadOff) return false;
+        bool lenOk = false;
+        countOut = readBplistBigEndianInt(value, payloadOff, intBytes, &lenOk);
+        payloadOff += intBytes;
+        return lenOk;
+    };
+
+    for (std::uint64_t objIndex = 0; objIndex < numObjects && tokens.size() < maxTokens; ++objIndex) {
+        const std::size_t offsetPos = offsetTable + static_cast<std::size_t>(objIndex) * offsetIntSize;
+        const std::uint64_t objRel = readBplistBigEndianInt(value, offsetPos, offsetIntSize, &ok);
+        if (!ok || objRel >= bplistSize) continue;
+        const std::size_t objOff = bplistOff + static_cast<std::size_t>(objRel);
+        if (objOff >= value.size()) continue;
+        const auto marker = static_cast<unsigned char>(value[objOff]);
+        const std::uint8_t type = marker & 0xF0u;
+        std::uint64_t count = marker & 0x0Fu;
+        std::size_t payloadOff = objOff + 1;
+        if (!readObjectLength(payloadOff, count, count)) continue;
+        if (type == 0x50u) { // ASCII string
+            if (count == 0 || count > MaxBplistBytes || payloadOff > value.size() || count > value.size() - payloadOff) continue;
+            std::string token(value.data() + static_cast<std::ptrdiff_t>(payloadOff), static_cast<std::size_t>(count));
+            if (!addBplistToken(tokens, seen, std::move(token), maxTokenBytes, maxTokens)) break;
+        } else if (type == 0x60u) { // UTF-16BE string
+            if (count == 0 || count > MaxBplistBytes / 2) continue;
+            const std::size_t byteLen = static_cast<std::size_t>(count) * 2;
+            if (payloadOff > value.size() || byteLen > value.size() - payloadOff) continue;
+            std::string token = utf16beToUtf8BplistString(value, payloadOff, byteLen);
+            if (!addBplistToken(tokens, seen, std::move(token), maxTokenBytes, maxTokens)) break;
+        }
+    }
+    return tokens;
+}
+
 std::vector<std::string> extractPrintableBplistTokens(const std::string& value) {
     constexpr std::size_t MaxInputScanBytes = 16384;
     constexpr std::size_t MaxTokens = 48;
     constexpr std::size_t MaxTokenBytes = 120;
+
+    const std::size_t bplistOff = value.find("bplist00");
+    if (bplistOff != std::string::npos) {
+        auto parsed = extractBplistObjectStringTokensAt(value, bplistOff, MaxTokens, MaxTokenBytes);
+        if (!parsed.empty()) return parsed;
+    }
+
+    // Conservative fallback for damaged/truncated bplist payloads: preserve the
+    // prior bounded printable-token scan, but use hash-based deduplication.
     std::vector<std::string> tokens;
+    std::unordered_set<std::string> seen;
     std::string cur;
     const std::size_t n = std::min<std::size_t>(value.size(), MaxInputScanBytes);
     auto flush = [&]() {
         if (cur.size() >= 3) {
             std::string token = cur;
             if (token.size() > MaxTokenBytes) token = token.substr(0, MaxTokenBytes) + "...[truncated]";
-            if (!isLowSignalBplistToken(token) && std::find(tokens.begin(), tokens.end(), token) == tokens.end()) {
-                tokens.push_back(token);
-            }
+            if (!isLowSignalBplistToken(token) && seen.insert(token).second) tokens.push_back(token);
         }
         cur.clear();
     };
@@ -1296,7 +1434,7 @@ std::string buildIosBplistNsKeyedArchiverContext(const std::map<std::string, std
     if (fieldsSeen == 0) return {};
     std::ostringstream out;
     out << "bplist_field_count=" << fieldsSeen << "; nskeyedarchiver_field_count=" << keyedFields
-        << "; decode_status=bounded_ascii_token_discovery_only; note=not_full_NSKeyedArchiver_graph_decode";
+        << "; decode_status=bounded_bplist_object_string_discovery_only; note=not_full_NSKeyedArchiver_graph_decode";
     for (const auto& p : pieces) {
         const std::string add = " | " + p;
         if (out.str().size() + add.size() > MaxContextBytes) { out << " | ...[truncated]"; break; }

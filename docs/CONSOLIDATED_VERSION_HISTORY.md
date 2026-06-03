@@ -1,11 +1,12 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.46
+Current version: 0.9.47
 
+## V0_9_47
 
-## V0_9_46
+V0_9_47 reviewed the uploaded V0_9_46 Windows/MSVC build, reuse-cache thin upload, Stage B fresh-ZIP thin upload, and new parser recommendations. V0_9_46 was stable: source and binary versions matched, both runs completed successfully, fresh-ZIP inventory remained at 2,245,783 files, and app database candidates remained narrowed to 5,528. The next improvement class was investigative value rather than a stability hotfix.
 
-V0_9_46 reviewed the uploaded V0_9_45 Windows build plus reuse-cache and Stage B fresh-ZIP thin outputs. Both runs completed successfully. V0_9_45 fixed the broad app-database inventory issue, reducing the fresh-ZIP app database candidate set to 5,528 while preserving extracted paths for high-value staged databases such as sms.db, WhatsApp ChatStorage.sqlite/ContactsV2.sqlite, Safari databases, Contacts, Calendar, CallHistory, and Keychain targets. The follow-up issue was classification precision: files containing generic words such as `signals` or `history` could still be mislabeled as Signal or Chrome/Web evidence. V0_9_46 tightens Signal and Chrome/Web categorization to stronger app/path indicators and fixes stale top-level version files that caused the build script banner to report source version 0.9.44 even though the binary built as 0.9.45.
+This release adds conservative bplist object-string discovery for ASCII and UTF-16BE `bplist00` string objects, KnowledgeC/CoreDuet database identification and support-mode parser scaffolding, KnowledgeC summary/event review views, and an explicit investigator time-anomaly triage view. It intentionally preserves compact normal iOS mode: no broad FFS materialization and no broad app database record materialization by default. Full LZFSE/LZVN integration remains deferred until the Apple reference codec source is explicitly added and build integration can be validated.
 
 ## V0_9_45
 

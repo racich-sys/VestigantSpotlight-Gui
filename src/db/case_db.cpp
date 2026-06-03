@@ -5617,7 +5617,7 @@ UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diag
        'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
 FROM vw_parser_diagnostics_action_summary
 UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
-       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_44 extracts printable tokens only; full object graph decoding remains future work.'
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_47 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
 FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary;
 )VSQL32"}));
 
@@ -5644,7 +5644,7 @@ SELECT kv.raw_kv_id,
        CASE WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=0')>0 THEN 'BPLIST_DETECTED_NO_NSKEYED_MARKER'
             WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=')>0 THEN 'NSKEYEDARCHIVER_MARKER_DETECTED'
             ELSE 'BPLIST_OR_NSKEYED_CONTEXT_DETECTED' END AS bplist_detection_status,
-       'V0_9_44 bounded ASCII token discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
+       'V0_9_47 bounded bplist object-string discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
 FROM raw_key_values kv
 LEFT JOIN raw_records r
   ON r.source_id=kv.source_id
@@ -5670,6 +5670,85 @@ SELECT source_id,
 FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail
 GROUP BY source_id,store_guid,source_db,bplist_detection_status;
 )VSQL33"}));
+
+    // V0_9_47: explicit investigator time anomaly and KnowledgeC/CoreDuet
+    // interaction views. These are triage surfaces and preserve provenance; they
+    // do not assert misconduct without source-field validation.
+    exec(joinSql({R"VSQL47(
+DROP VIEW IF EXISTS vw_investigator_time_anomalies;
+CREATE VIEW vw_investigator_time_anomalies AS
+WITH candidates AS (
+  SELECT a.artifact_id,
+         a.source_id,
+         a.store_guid,
+         a.inode_num AS spotlight_inode_or_object_id,
+         a.file_name,
+         a.display_name,
+         a.best_path,
+         a.content_type,
+         a.last_updated_utc,
+         a.downloaded_date_utc,
+         a.first_used_candidate_utc,
+         a.last_used_date_utc,
+         CASE
+           WHEN COALESCE(a.last_used_date_utc,'')<>'' AND COALESCE(a.last_updated_utc,'')<>'' AND a.last_used_date_utc < a.last_updated_utc
+             THEN 'REVIEW_USED_BEFORE_LAST_UPDATED'
+           WHEN COALESCE(a.first_used_candidate_utc,'')<>'' AND COALESCE(a.last_updated_utc,'')<>'' AND a.first_used_candidate_utc < a.last_updated_utc
+             THEN 'REVIEW_FIRST_USED_BEFORE_LAST_UPDATED'
+           WHEN COALESCE(a.downloaded_date_utc,'')<>'' AND COALESCE(a.last_updated_utc,'')<>'' AND a.downloaded_date_utc < a.last_updated_utc
+             THEN 'REVIEW_DOWNLOADED_BEFORE_LAST_UPDATED'
+           ELSE 'NO_BASIC_ANOMALY'
+         END AS anomaly_type,
+         'Triage only: compares available Spotlight-derived usage/download/update fields. Validate raw source field provenance before inferring timestomping or user action.' AS interpretation_note
+  FROM artifacts a
+  WHERE (COALESCE(a.last_used_date_utc,'')<>'' OR COALESCE(a.first_used_candidate_utc,'')<>'' OR COALESCE(a.downloaded_date_utc,'')<>'')
+    AND COALESCE(a.last_updated_utc,'')<>''
+)
+SELECT * FROM candidates WHERE anomaly_type<>'NO_BASIC_ANOMALY';
+
+DROP VIEW IF EXISTS vw_ios_knowledgec_interaction_events;
+CREATE VIEW vw_ios_knowledgec_interaction_events AS
+SELECT ios_app_record_id,
+       source_id,
+       ios_db_id,
+       database_normalized_path,
+       database_name,
+       database_category,
+       app_hint,
+       table_name,
+       record_category,
+       source_primary_key,
+       record_timestamp_utc,
+       timestamp_source,
+       contact_or_participant AS app_bundle_id,
+       title AS interaction_type,
+       item_identifier AS knowledge_stream_name,
+       text_snippet,
+       parse_status,
+       provenance,
+       created_utc,
+       'KnowledgeC/CoreDuet interaction event parsed from extracted app database in support/full mode. Absence of rows in normal mode usually means broad app DB record materialization was intentionally skipped.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE database_category IN ('KNOWLEDGEC_COREDUET','COREDUET_INTERACTIONS')
+   OR record_category LIKE 'KNOWLEDGEC_%'
+ORDER BY record_timestamp_utc, ios_app_record_id;
+
+DROP VIEW IF EXISTS vw_ios_knowledgec_interaction_summary;
+CREATE VIEW vw_ios_knowledgec_interaction_summary AS
+SELECT database_category,
+       app_hint,
+       knowledge_stream_name,
+       app_bundle_id,
+       parse_status,
+       COUNT(*) AS event_count,
+       MIN(record_timestamp_utc) AS earliest_event_utc,
+       MAX(record_timestamp_utc) AS latest_event_utc,
+       substr(MIN(NULLIF(text_snippet,'')),1,1200) AS min_event_sample,
+       substr(MAX(NULLIF(text_snippet,'')),1,1200) AS max_event_sample,
+       'KnowledgeC/CoreDuet summary. Rows are available only when targeted database extraction and app DB record materialization are enabled.' AS interpretation_note
+FROM vw_ios_knowledgec_interaction_events
+GROUP BY database_category,app_hint,knowledge_stream_name,app_bundle_id,parse_status;
+)VSQL47"}));
 
 }
 

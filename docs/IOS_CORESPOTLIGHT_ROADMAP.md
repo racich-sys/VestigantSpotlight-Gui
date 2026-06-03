@@ -188,3 +188,11 @@ The unified keyword surface combines CoreSpotlight human-readable strings, parse
 Contact, calendar, and web review views are triage views over parsed local app database records. They are not deletion findings. Cache/FTS/contact-token tables can duplicate or tokenize records, and calendar rows can represent support rows rather than user events. Use the source database path, table name, primary key, provenance, and timestamp source columns before reporting.
 
 WhatsApp status remains `WHATSAPP_DB_NOT_FOUND` in the current test dataset because no iOS WhatsApp `ChatStorage.sqlite`, `ContactsV2.sqlite`, or WhatsApp `CallHistory.sqlite` was present. WhatsApp parsing still needs validation on a dataset containing those databases.
+
+## V0_9_47 iOS CoreSpotlight update
+
+- Added bounded `bplist00` ASCII/UTF-16BE object-string extraction for CoreSpotlight bplist/NSKeyedArchiver context rows.
+- Added KnowledgeC/CoreDuet database identification and support-mode parser scaffolding for `/app/inFocus`, `/document/open`, and `/app/intents` streams.
+- Added iOS GUI/export surfaces for KnowledgeC summaries/events and investigator time-anomaly triage.
+- Normal mode remains compact and Spotlight-first; support/full profiles should be used for broader app database materialization.
+

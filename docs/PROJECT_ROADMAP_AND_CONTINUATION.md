@@ -1,30 +1,30 @@
 # Vestigant Spotlight Project Roadmap and Continuation
 
-Current baseline: V0_9_46.
+Current baseline: V0_9_47.
 
 ## Current status
 
-V0_9_42 was reviewed from the uploaded build log, source, and reuse-cache thin output. The Windows/MSVC build succeeded, V0_9_42 reuse-cache reached `complete_success`, and the prior performance fixes for CSV export and native 7-Zip raw inventory parsing were already present in source. V0_9_44 therefore moves to bounded iOS investigative-value improvement rather than another speed-only patch.
+V0_9_46 was validated from uploaded Windows/MSVC build log plus reuse-cache and Stage B fresh-ZIP thin outputs. Build/version consistency is fixed, both runs completed successfully, the fresh-ZIP native 7-Zip inventory path remains functional, and the app database candidate set remains narrowed to database-like entries.
 
+## V0_9_47 focus
 
-## V0_9_46 focus
-
-V0_9_46 is a fresh-ZIP inventory correctness release. V0_9_44 confirmed that the native 7-Zip raw inventory path works and parses the large iOS ZIP, but the app-database inventory was too broad. V0_9_46 keeps normal mode Spotlight-first and compact, narrows app database inventory to database-like file names, and preserves extracted database paths where targeted extraction produced staged SQLite databases.
-
-Next validation should confirm that Stage B fresh-ZIP still reports nonzero FFS inventory rows while app database candidates drop from the overbroad V0_9_44 value of 131,610 to a database-like candidate set, and that known WhatsApp/SMS databases retain extracted_path when staged.
-
-## V0_9_44 focus
-
-V0_9_44 adds compact bplist / NSKeyedArchiver marker discovery for iOS CoreSpotlight values. This is a bounded discovery scaffold: it detects likely binary plist / NSKeyedArchiver values and extracts limited printable-token context so investigators can identify records that may warrant deeper decoding. It does not claim full NSKeyedArchiver graph decoding.
+V0_9_47 moves from inventory correctness to bounded iOS investigative value while preserving compact normal mode. It adds conservative bplist object-string extraction, KnowledgeC/CoreDuet classification and support-mode parser scaffolding, KnowledgeC interaction review views/exports, and an explicit investigator time-anomaly triage view with provenance caution.
 
 ## Near-term priorities
 
-1. Validate V0_9_44 on Windows/MSVC and run the standard iOS reuse-cache script.
-2. Review the new `iOS - Bplist/NSKeyedArchiver Summary` and `iOS - Bplist/NSKeyedArchiver Detail` GUI views/exports.
-3. If reuse-cache validation succeeds, run Stage B fresh-ZIP testing against the large iOS FFS ZIP to validate the native 7-Zip inventory path without cache reuse.
-4. Continue improving iOS investigator views, especially direct messages, thread/contact summaries, timeline review, Missing From FFS text context, parser diagnostics, and bplist/NSKeyedArchiver discovery surfaces.
-5. Add full NSKeyedArchiver / bplist object-graph decoding only after bounded diagnostics identify useful target classes and Stage B fresh-ZIP stability is confirmed.
-6. Resume macOS AFF4/APFS work after iOS investigator views remain stable: focus on APFS extraction, Store-V2 extraction/copy-out validation, LZFSE/LZVN decmpfs, group/source provenance, and external Store-V2 comparison.
+1. Validate V0_9_47 on Windows/MSVC and run the standard iOS reuse-cache script.
+2. Run Stage B fresh-ZIP validation and confirm FFS/app-database inventory remains stable.
+3. Inspect `iOS - Bplist/NSKeyedArchiver Detail` for improved string extraction quality and confirm no DB/WAL bloat regression.
+4. Validate KnowledgeC/CoreDuet database classification/extraction in fresh-ZIP output.
+5. After normal-mode stability is confirmed, run support/full app DB materialization to validate `iOS - KnowledgeC Interaction Summary` and `iOS - KnowledgeC Interaction Events`.
+6. Continue improving iOS investigator views, especially direct messages, thread/contact summaries, timeline review, Missing From FFS text context, parser diagnostics, and bplist/NSKeyedArchiver discovery surfaces.
+7. Add full NSKeyedArchiver object-graph decoding only after bounded diagnostics identify useful target classes.
+8. Resume macOS AFF4/APFS work after iOS investigator views remain stable, with focus on APFS extraction, Store-V2 extraction/copy-out validation, LZFSE/LZVN decmpfs, group/source provenance, and external Store-V2 comparison.
+
+## Deferred / requires external source validation
+
+- LZFSE/LZVN integration requires adding Apple/reference codec source to the build and validating license/build compatibility; do not add blind stubs that cannot decode actual data.
+- Full NSKeyedArchiver graph decoding requires a bounded, clean-room parser with cycle/depth/object-count guards.
 
 ## Backburner but useful
 
