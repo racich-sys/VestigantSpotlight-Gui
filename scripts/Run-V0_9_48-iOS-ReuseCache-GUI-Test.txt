@@ -1,8 +1,8 @@
-V0_9_47 GUI reuse-cache test
+V0_9_48 GUI reuse-cache test
 
-1. Build V0_9_47.
+1. Build V0_9_48.
 2. Start VestigantSpotlight.exe.
-3. Case location: Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_47_ReusedCache
+3. Case location: Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_48_ReusedCache
 4. Source type: ZIP
 5. Raw Spotlight evidence source: the same large iOS FFS ZIP used for V0_9_4.
 6. Profile: iOS/CoreSpotlight

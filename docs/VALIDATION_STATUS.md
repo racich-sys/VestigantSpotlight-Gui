@@ -1,6 +1,6 @@
 # Vestigant Spotlight Validation Status
 
-Current version: 0.9.47
+Current version: 0.9.48
 
 ## Uploaded V0_9_46 results reviewed
 
@@ -11,7 +11,7 @@ Current version: 0.9.47
 - CoreSpotlight metrics remained stable: 6 valid stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 raw date candidates, 344,445 artifacts, and 336,037 timeline events.
 - Bplist/NSKeyedArchiver detail rows remained 438 in the V0_9_46 normal run.
 
-## V0_9_47 validation performed here
+## V0_9_48 validation performed here
 
 - `src/parsers/native_storedb_parser.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
 - `src/app/app_runner.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
@@ -24,8 +24,8 @@ Current version: 0.9.47
 
 ## Required Windows validation
 
-1. Run `scripts\Build-V0_9_47.ps1`.
-2. Confirm CLI reports `Vestigant Spotlight v0.9.47`.
+1. Run `scripts\Build-V0_9_48.ps1`.
+2. Confirm CLI reports `Vestigant Spotlight v0.9.48`.
 3. Run `VestigantSpotlightTests.exe`.
 4. Run reuse-cache test and confirm `complete_success`.
 5. Run Stage B fresh-ZIP test and confirm FFS/app-database inventory remains nonzero and KnowledgeC/CoreDuet targets are classified/extracted.

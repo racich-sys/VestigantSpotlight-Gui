@@ -38,3 +38,6 @@ V0_9_37 improved Missing From FFS text visibility but over-expanded same-record 
 ## V0_9_42 - Native C++ 7-Zip inventory parser
 
 V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
+
+## V0_9_48
+Reviewed V0_9_47 build/reuse-cache/fresh-ZIP outputs. Both thin runs completed successfully, but normal-mode app DB parsed rows remained zero because record materialization was skipped. V0_9_48 enables targeted parsed-record extraction for already-extracted high-value databases only, adds KnowledgeC metadata joins, adds deleted/recoverable Apple Messages extraction, and adds the unified investigator super timeline. Local validation passed changed-file C++ syntax checks and SQLite smoke tests for the new views. Windows/MSVC validation remains required.

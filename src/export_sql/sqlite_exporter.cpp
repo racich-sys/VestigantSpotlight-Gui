@@ -1173,6 +1173,8 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "investigator_time_anomalies.csv", "SELECT * FROM vw_investigator_time_anomalies ORDER BY anomaly_type, last_updated_utc DESC, artifact_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_knowledgec_interaction_summary.csv", "SELECT * FROM vw_ios_knowledgec_interaction_summary ORDER BY event_count DESC, latest_event_utc DESC, app_bundle_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_knowledgec_interaction_events.csv", "SELECT * FROM vw_ios_knowledgec_interaction_events ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
+        exportQuery(db, exportDir / "investigator_super_timeline_sample.csv", "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category LIMIT 5000", log);
+        if (supportDataExport) exportQuery(db, exportDir / "investigator_super_timeline.csv", "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category", log);
         exportQuery(db, exportDir / "ios_spotlight_field_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_field_coverage_summary ORDER BY value_row_count DESC, store_guid, field_name", log);
         exportQuery(db, exportDir / "ios_spotlight_text_category_summary.csv", "SELECT * FROM vw_ios_spotlight_text_category_summary ORDER BY text_value_count DESC, human_text_category", log);
         exportQuery(db, exportDir / "ios_spotlight_text_context_priority_summary.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);

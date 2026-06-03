@@ -1,10 +1,10 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.47
+Current version: 0.9.48
 
-## V0_9_47 - iOS investigative-value update
+## V0_9_48 - iOS investigative-value update
 
-V0_9_47 reviews the uploaded V0_9_46 Windows/MSVC build log, reuse-cache thin upload, fresh-ZIP thin upload, and the new parser recommendations. The V0_9_46 build completed successfully, and both normal validation runs reached `complete_success`. No build/runtime hotfix was required.
+V0_9_48 reviews the uploaded V0_9_46 Windows/MSVC build log, reuse-cache thin upload, fresh-ZIP thin upload, and the new parser recommendations. The V0_9_46 build completed successfully, and both normal validation runs reached `complete_success`. No build/runtime hotfix was required.
 
 Changes:
 
@@ -23,12 +23,12 @@ Validation here:
 - Confirmed fresh-ZIP inventory remained at 2,245,783 files and 5,528 app database candidates.
 - Confirmed V0_9_46 already extracted/staged high-value databases but classified KnowledgeC/CoreDuet targets as generic database candidates.
 - Changed-file Linux `g++ -fsyntax-only` checks passed.
-- SQLite smoke test for new V0_9_47 views passed.
+- SQLite smoke test for new V0_9_48 views passed.
 - Raw-string size scan found no oversized raw-string literals above the configured threshold.
 
 Windows/MSVC validation still required:
 
-- Build V0_9_47 with `scripts\Build-V0_9_47.ps1`.
+- Build V0_9_48 with `scripts\Build-V0_9_48.ps1`.
 - Run the reuse-cache validation.
 - Run Stage B fresh-ZIP validation.
 - For KnowledgeC parsed rows, run a support/full materialization profile after confirming normal-mode stability.
@@ -60,3 +60,11 @@ Windows/MSVC validation still required:
 - Build V0_9_44 with `scripts\Build-V0_9_44.ps1`.
 - Run the reuse-cache validation.
 - Re-run Stage B fresh-ZIP validation and confirm `ios_ffs_inventory_cpp_parser_complete` reports nonzero `raw_records` / `files`, and that `ios_ffs_file_inventory.csv` and `ios_app_database_inventory.csv` contain rows.
+
+## V0_9_48
+- Reviewed V0_9_47 Windows build and both thin outputs; build, reuse-cache, and fresh-ZIP were stable.
+- Changed normal iOS mode to parse only already-extracted high-value app databases for investigator summaries. Full broad app DB materialization remains opt-in.
+- Added KnowledgeC/CoreDuet ZOBJECT + ZSTRUCTUREDMETADATA joined parsing where available.
+- Added deleted/recoverable Apple Messages table row extraction for tables already classified as MESSAGE_DELETED_OR_RECOVERABLE.
+- Added `vw_investigator_super_timeline`, normal export `investigator_super_timeline_sample.csv`, support/full export `investigator_super_timeline.csv`, and GUI view `iOS - Investigator Super Timeline`.
+- No LZFSE/LZVN codec was added; that remains deferred until vetted codec source is included and build-system integration can be validated.

@@ -4553,7 +4553,29 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
     const std::string lowerTable = toLower(table);
     if (lowerTable != "zobject") return 0;
     constexpr int MaxRowsPerTable = 100000;
-    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents') LIMIT ?";
+
+    const bool hasStructuredMetadata = sqliteTableExistsLocal(ext, "ZSTRUCTUREDMETADATA") || sqliteTableExistsLocal(ext, "zstructuredmetadata");
+    const bool hasJoinColumn = sqliteColumnExistsLocal(ext, table, "ZSTRUCTUREDMETADATA") || sqliteColumnExistsLocal(ext, table, "zstructuredmetadata");
+
+    std::string sql;
+    if (hasStructuredMetadata && hasJoinColumn) {
+        const std::string metaTable = sqliteTableExistsLocal(ext, "ZSTRUCTUREDMETADATA") ? "ZSTRUCTUREDMETADATA" : "zstructuredmetadata";
+        sql = "SELECT o.rowid AS __rowid__, "
+              + sqliteOptionalColumnExpr(ext, table, "o", "ZSTREAMNAME", "zstreamname") + ", "
+              + sqliteOptionalColumnExpr(ext, table, "o", "ZVALUESTRING", "zvaluestring") + ", "
+              + sqliteOptionalColumnExpr(ext, table, "o", "ZSTARTDATE", "zstartdate") + ", "
+              + sqliteOptionalColumnExpr(ext, table, "o", "ZENDDATE", "zenddate") + ", "
+              + sqliteOptionalColumnExpr(ext, table, "o", "ZCREATIONDATE", "zcreationdate") + ", "
+              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__INTENTCLASS", "metadata_intent_class") + ", "
+              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__INTENTVERB", "metadata_intent_verb") + ", "
+              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKDOCUMENTMETADATAKEY__TITLE", "metadata_document_title") + ", "
+              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__SERIALIZEDINTERACTION", "metadata_serialized_interaction")
+              + " FROM " + sqlIdentLocal(table) + " o LEFT JOIN " + sqlIdentLocal(metaTable) + " m ON o.ZSTRUCTUREDMETADATA=m.Z_PK "
+              + "WHERE COALESCE(o.ZSTREAMNAME,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
+    } else {
+        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
+    }
+
     sqlite3_stmt* st = nullptr;
     int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
     if (rc != SQLITE_OK || !st) {
@@ -4574,25 +4596,40 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
     const int startDateCol = findColumnIndex(cols, {"zstartdate"}, true);
     const int endDateCol = findColumnIndex(cols, {"zenddate"}, true);
     const int creationDateCol = findColumnIndex(cols, {"zcreationdate"}, true);
+    const int intentClassCol = findColumnIndex(cols, {"metadata_intent_class", "z_dkintentmetadatakey__intentclass"}, true);
+    const int intentVerbCol = findColumnIndex(cols, {"metadata_intent_verb", "z_dkintentmetadatakey__intentverb"}, true);
+    const int docTitleCol = findColumnIndex(cols, {"metadata_document_title", "z_dkdocumentmetadatakey__title"}, true);
+    const int serializedInteractionCol = findColumnIndex(cols, {"metadata_serialized_interaction", "z_dkintentmetadatakey__serializedinteraction"}, true);
     std::size_t rows = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
         const std::string stream = columnValue(st, streamNameCol, 256);
-        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents") continue;
+        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
         const std::string bundleId = columnValue(st, valueStringCol, 512);
         const auto startTs = normalizeIosAppTimestamp(columnValue(st, startDateCol, 128), "ZSTARTDATE");
         const auto creationTs = normalizeIosAppTimestamp(columnValue(st, creationDateCol, 128), "ZCREATIONDATE");
+        const std::string intentClass = columnValue(st, intentClassCol, 512);
+        const std::string intentVerb = columnValue(st, intentVerbCol, 256);
+        const std::string docTitle = columnValue(st, docTitleCol, 1000);
+        const std::string serialized = columnValue(st, serializedInteractionCol, 1000);
+        std::string title = docTitle.empty() ? ("User Interaction: " + stream) : ("Opened Document: " + docTitle);
+        std::string snippet = buildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128));
+        if (!intentClass.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_class=") + intentClass;
+        if (!intentVerb.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_verb=") + intentVerb;
+        if (!docTitle.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("document_title=") + docTitle;
+        if (!serialized.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("serialized_interaction_preview=") + serialized;
+        if (snippet.size() > 2000) snippet.resize(2000);
         bindIosParsedRecord(parsedIns, sourceId, inv, table, "KNOWLEDGEC_EVENTS",
                             columnValue(st, rowidCol, 256),
                             !startTs.first.empty() ? startTs.first : creationTs.first,
                             !startTs.second.empty() ? startTs.second : creationTs.second,
                             bundleId,
                             "",
-                            "User Interaction: " + stream,
+                            title,
                             "",
                             stream,
-                            buildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128)),
-                            "parsed_knowledgec_zobject_interaction",
-                            "read_only_sqlite_coreduet_knowledgec table=" + table);
+                            snippet,
+                            "parsed_knowledgec_zobject_interaction_joined_metadata",
+                            hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v0_9_48" : "read_only_sqlite_coreduet_knowledgec table=" + table);
         ++rows;
     }
     sqlite3_finalize(st);
@@ -4639,14 +4676,27 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
             const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
             const std::string stream = columnValue(st, streamNameCol, 256);
-            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents") continue;
+            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
             const std::string bundleId = columnValue(st, valueStringCol, 512);
             bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                                 columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
                                 "User Interaction: " + stream, "", stream,
                                 buildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
                                 "parsed_knowledgec_generic_row",
-                                "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_47");
+                                "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_48");
+            ++rows;
+            continue;
+        }
+        if (recordCategory == "MESSAGE_DELETED_OR_RECOVERABLE") {
+            const int guidCol = findColumnIndex(cols, {"guid", "message_guid", "chat_id", "message_id", "zmessage", "zmessageguid"}, true);
+            const int deleteDateCol = findColumnIndex(cols, {"delete_date", "deleted_date", "date", "zdate", "zdeleteddate", "zcreatedate"}, true);
+            const auto delTs = normalizeIosAppTimestamp(columnValue(st, deleteDateCol, 128), "deleted_or_recoverable_date");
+            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
+                                columnValue(st, pkCol, 256), delTs.first, delTs.second, "", "",
+                                "Apple Messages deleted/recoverable record", "", columnValue(st, guidCol, 512),
+                                "Deleted/recoverable Apple Messages table row; table=" + table,
+                                "parsed_apple_deleted_or_recoverable_record",
+                                "read_only_sqlite_dynamic_schema table=" + table + "; deleted_or_recoverable_table_v0_9_48");
             ++rows;
             continue;
         }
@@ -14674,8 +14724,9 @@ RunResult runApplication(const RunOptions& opt) {
                 if (materializeAppDbRecords) {
                     parseIosAppDatabaseRecordInventories(db, caseDir, source.sourceId, log);
                 } else {
-                    appendRunStatus(caseDir, "ios_app_db_record_inventory_skipped", "normal Spotlight-first mode skips broad app DB parsed-record materialization; use --materialize-ios-app-db-records for support correlation runs");
-                    log.info("Normal iOS Spotlight-first mode skipped broad app DB parsed-record materialization.");
+                    appendRunStatus(caseDir, "ios_app_db_record_inventory_targeted_normal_mode", "normal Spotlight-first mode parses only already-extracted high-value app databases; full broad app DB materialization still requires --materialize-ios-app-db-records");
+                    log.info("Normal iOS Spotlight-first mode will parse only already-extracted high-value app databases for investigator summaries.");
+                    parseIosAppDatabaseRecordInventories(db, caseDir, source.sourceId, log);
                 }
             }
         }

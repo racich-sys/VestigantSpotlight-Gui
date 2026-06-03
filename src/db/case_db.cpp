@@ -5617,8 +5617,11 @@ UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diag
        'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
 FROM vw_parser_diagnostics_action_summary
 UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
-       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_47 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
-FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary;
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_48 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
+FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary
+UNION ALL SELECT '09_super_timeline','timeline','iOS - Investigator Super Timeline','vw_investigator_super_timeline',CAST(COUNT(*) AS TEXT),
+       'Unified chronological surface combining normalized Spotlight timeline, targeted app database events, KnowledgeC/CoreDuet rows, and usage evidence where available.'
+FROM vw_investigator_super_timeline;
 )VSQL32"}));
 
     // V0_9_44: bounded bplist / NSKeyedArchiver discovery views. These expose
@@ -5644,7 +5647,7 @@ SELECT kv.raw_kv_id,
        CASE WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=0')>0 THEN 'BPLIST_DETECTED_NO_NSKEYED_MARKER'
             WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=')>0 THEN 'NSKEYEDARCHIVER_MARKER_DETECTED'
             ELSE 'BPLIST_OR_NSKEYED_CONTEXT_DETECTED' END AS bplist_detection_status,
-       'V0_9_47 bounded bplist object-string discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
+       'V0_9_48 bounded bplist object-string discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
 FROM raw_key_values kv
 LEFT JOIN raw_records r
   ON r.source_id=kv.source_id
@@ -5671,7 +5674,7 @@ FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail
 GROUP BY source_id,store_guid,source_db,bplist_detection_status;
 )VSQL33"}));
 
-    // V0_9_47: explicit investigator time anomaly and KnowledgeC/CoreDuet
+    // V0_9_48: explicit investigator time anomaly and KnowledgeC/CoreDuet
     // interaction views. These are triage surfaces and preserve provenance; they
     // do not assert misconduct without source-field validation.
     exec(joinSql({R"VSQL47(
@@ -5748,6 +5751,44 @@ SELECT database_category,
        'KnowledgeC/CoreDuet summary. Rows are available only when targeted database extraction and app DB record materialization are enabled.' AS interpretation_note
 FROM vw_ios_knowledgec_interaction_events
 GROUP BY database_category,app_hint,knowledge_stream_name,app_bundle_id,parse_status;
+
+DROP VIEW IF EXISTS vw_investigator_super_timeline;
+CREATE VIEW vw_investigator_super_timeline AS
+SELECT event_time_utc AS event_utc,
+       'Spotlight Index' AS source_module,
+       review_category AS category,
+       event_type AS action,
+       bundle_id AS app_context,
+       contact_or_thread AS target,
+       event_summary AS details,
+       validation_locator AS provenance,
+       interpretation_note
+FROM vw_ios_spotlight_normalized_timeline
+WHERE COALESCE(event_time_utc,'')<>''
+UNION ALL
+SELECT record_timestamp_utc AS event_utc,
+       'App Database' AS source_module,
+       database_category AS category,
+       record_category AS action,
+       app_hint AS app_context,
+       contact_or_participant AS target,
+       COALESCE(title,'') || CASE WHEN COALESCE(text_snippet,'')<>'' THEN ' | ' || text_snippet ELSE '' END AS details,
+       provenance,
+       'Parsed iOS app database activity row; availability depends on targeted app DB extraction/materialization settings.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(record_timestamp_utc,'')<>''
+UNION ALL
+SELECT parsed_utc AS event_utc,
+       'Usage Evidence' AS source_module,
+       'FILE_USAGE' AS category,
+       field_name AS action,
+       '' AS app_context,
+       inode_num AS target,
+       field_value AS details,
+       'artifact_id=' || COALESCE(CAST(artifact_id AS TEXT),'') || '; source_id=' || COALESCE(source_id,'') || '; store_guid=' || COALESCE(store_guid,'') AS provenance,
+       'Usage evidence row with original field provenance. Validate raw source field before inferring user activity.' AS interpretation_note
+FROM usage_evidence
+WHERE COALESCE(parsed_utc,'')<>'';
 )VSQL47"}));
 
 }

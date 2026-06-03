@@ -1,10 +1,10 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.47
+Current version: 0.9.48
 
-## V0_9_47
+## V0_9_48
 
-V0_9_47 reviewed the uploaded V0_9_46 Windows/MSVC build, reuse-cache thin upload, Stage B fresh-ZIP thin upload, and new parser recommendations. V0_9_46 was stable: source and binary versions matched, both runs completed successfully, fresh-ZIP inventory remained at 2,245,783 files, and app database candidates remained narrowed to 5,528. The next improvement class was investigative value rather than a stability hotfix.
+V0_9_48 reviewed the uploaded V0_9_46 Windows/MSVC build, reuse-cache thin upload, Stage B fresh-ZIP thin upload, and new parser recommendations. V0_9_46 was stable: source and binary versions matched, both runs completed successfully, fresh-ZIP inventory remained at 2,245,783 files, and app database candidates remained narrowed to 5,528. The next improvement class was investigative value rather than a stability hotfix.
 
 This release adds conservative bplist object-string discovery for ASCII and UTF-16BE `bplist00` string objects, KnowledgeC/CoreDuet database identification and support-mode parser scaffolding, KnowledgeC summary/event review views, and an explicit investigator time-anomaly triage view. It intentionally preserves compact normal iOS mode: no broad FFS materialization and no broad app database record materialization by default. Full LZFSE/LZVN integration remains deferred until the Apple reference codec source is explicitly added and build integration can be validated.
 
