@@ -1,0 +1,23 @@
+V0_9_60 validation notes
+
+Scope:
+- Restore AFF4/APFS and Raw IMG/DD source-type visibility in the GUI as staged image workflows.
+- Change processing telemetry throughput units from MiB/MiB/s to decimal MB/MB/s.
+- Remove the unused srcType compile warning path by logging staged image source selections before worker start.
+
+Forensic/product rationale:
+- AFF4/APFS remains important for macOS forensic images.
+- Raw IMG/DD remains important for external media attached to Macs, including exFAT devices containing Spotlight indexes.
+- Staged labels preserve investigator clarity without falsely claiming fully implemented image-backed extraction in every path.
+- MB is used in the GUI because it is more widely understood by investigators than MiB.
+
+Validation performed in this environment:
+- Source inspection and targeted patching against V0_9_59.
+- C++ syntax/build validation where available.
+- Package integrity validation.
+
+Windows/MSVC validation required:
+- Build-V0_9_60.ps1.
+- GUI launch.
+- Confirm source-type dropdown shows Folder, ZIP, AFF4/APFS image (staged), Raw IMG/DD image (staged).
+- Confirm telemetry shows MB and MB/s.

@@ -441,6 +441,9 @@ void writeUploadReviewIndex(const fs::path& file) {
         row("image_inventory_readiness.csv", "Image-backed filesystem inventory readiness for AFF4/APFS active-file comparison.");
         row("reader_tool_readiness.csv", "AFF4/APFS/HFS helper tool discovery status for reader integration.");
         row("AFF4_APFS_READER_PLAN.md", "Current AFF4/APFS reader integration plan, hash policy, and tool search order.");
+        row("AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "V1.0.0 single-AFF4 diagnostic rerun plan and decision rules before changing APFS reconstruction gates.");
+        row("aff4_apfs_v1_diagnostic_checklist.csv", "Machine-readable checklist of expected V1 AFF4/APFS diagnostic outputs and interpretation rules.");
+        row("aff4_apfs_v1_diagnostic_plan_summary.json", "Machine-readable summary of the V1 AFF4/APFS diagnostic rerun policy.");
         row("AFF4_STREAM_SELECTION_PLAN.md", "AFF4 stream-list command status and ranked stream candidates when aff4imager is available.");
         row("AFF4_ZIP_SINGLE_FILE_PROBE.md", "Single-file AFF4 ZIP central-directory probe; reads only the explicit AFF4 input path.");
         row("aff4_zip_probe_summary.json", "Machine-readable single-file AFF4 ZIP probe summary.");
@@ -618,7 +621,7 @@ void createUploadBundle(const fs::path& caseDir) {
         const std::vector<fs::path> rootFiles = {
             "CASE_REVIEW_SUMMARY.txt", "investigator_dashboard.html", "INVESTIGATOR_UI_GUIDE.md", "IOS_CORESPOTLIGHT_PLAN.md", "UPLOAD_README.txt", "TARGETED_EXPORT_README.txt", "Export-SpotlightTargetedData.ps1", "Create-UploadZip.ps1",
             "case_info.json", "case_summary.json", "case_summary.csv",
-            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_stream_inventory_raw.txt", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv",
+            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_stream_inventory_raw.txt", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv",
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
@@ -12918,6 +12921,16 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
     std::vector<ApfsVolumeRootTreeLookupRow> directVolumeRootTreeLookupRows;
     std::vector<ApfsRootTreeNodeProbeRow> directRootTreeNodeRows;
     std::vector<ApfsRootTreeRecordSampleRow> directRootTreeRecordRows;
+    std::vector<ApfsRootTreeRecordSampleRow> directSpotlightTargetRows;
+    std::vector<ApfsRootTreeRecordSampleRow> directSpotlightNameSampleRows;
+    std::vector<ApfsSpotlightCopyAttemptRow> directSpotlightCopyAttemptRows;
+    std::vector<ApfsSpotlightInodeProbeRow> directSpotlightInodeRows;
+    std::vector<ApfsSpotlightXattrProbeRow> directSpotlightXattrRows;
+    std::vector<ApfsSpotlightFileExtentProbeRow> directSpotlightFileExtentRows;
+    std::vector<ApfsSpotlightFileCopyOutRow> directSpotlightFileCopyOutRows;
+    ApfsSpotlightTargetScanMetrics directSpotlightScanMetrics;
+    std::map<std::uint32_t, ApfsVolumeOmapProbeRow> directVolumeOmapBySequence;
+    std::map<std::uint32_t, std::vector<unsigned char>> directVolumeOmapRootBySequence;
     std::vector<ApfsCheckpointMapEntryRow> directCheckpointMapRows;
     std::vector<ApfsCheckpointMappedObjectProbeRow> directCheckpointObjectRows;
     std::string finalStatus = "NOT_RUN";
@@ -13418,6 +13431,10 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         }
                     }
                     directVolumeOmapRows.push_back(omRow);
+                    if (omRow.treeStatus == "VOLUME_OMAP_BTREE_ROOT_READ" && !omapTreeRootBuf.empty()) {
+                        directVolumeOmapBySequence[omRow.volumeSequence] = omRow;
+                        directVolumeOmapRootBySequence[omRow.volumeSequence] = omapTreeRootBuf;
+                    }
 
                     ApfsVolumeRootTreeLookupRow lookup;
                     lookup.sequence = static_cast<std::uint32_t>(directVolumeRootTreeLookupRows.size());
@@ -13619,6 +13636,219 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
 
                 probeDirectOmapLeaf();
 
+                auto directIsSpotlightStoreV2TopLevelComponentName = [&](const std::string& name) -> bool {
+                    const std::string lname = asciiLower(name);
+                    if (lname == "0.directorystorefile" || lname == "0.directorystorefile.shadow") return true;
+                    if (lname.rfind("0.index", 0) == 0 || lname.rfind("0.shadowindex", 0) == 0) return true;
+                    if (lname.rfind("live.", 0) == 0) return true;
+                    if (lname == "reversestore.updates" || lname == "store.updates" || lname == "store_generation") return true;
+                    if (lname == "reversedirectorystore" || lname == "reversedirectorystore.shadow") return true;
+                    if (lname == "permstore" || lname == "journalexclusion" || lname == "journals.migration_secondchance") return true;
+                    if (lname == "cab.created" || lname == "cab.modified" || lname == "lion.created" || lname == "lion.modified" || lname == "star.created" || lname == "star.modified") return true;
+                    if (lname == "tmp.cab" || lname == "tmp.lion" || lname == "tmp.star") return true;
+                    if (lname.rfind("dbstr-", 0) == 0 || lname.rfind("dbhdr-", 0) == 0) return true;
+                    if (lname.rfind("tmp.spotlight", 0) == 0) return true;
+                    return false;
+                };
+                auto directIsSpotlightTargetName = [&](const std::string& name) -> bool {
+                    const std::string lname = asciiLower(name);
+                    return lname == ".spotlight-v100" || lname == "store-v2" || lname == "index.db" ||
+                           directIsSpotlightStoreV2TopLevelComponentName(lname) ||
+                           lname.find("spotlight") != std::string::npos || lname.find("corespotlight") != std::string::npos;
+                };
+                auto directSpotlightTargetKind = [&](const std::string& name) -> std::string {
+                    const std::string lname = asciiLower(name);
+                    if (lname == ".spotlight-v100") return "SPOTLIGHT_ROOT_DIRECTORY";
+                    if (lname == "store-v2") return "SPOTLIGHT_STORE_V2_DIRECTORY";
+                    if (lname == "store.db" || lname == ".store.db") return "SPOTLIGHT_STORE_DB_FILE";
+                    if (lname == "store.db-wal" || lname == "store.db-shm") return "SPOTLIGHT_STORE_SQLITE_SUPPORT_FILE";
+                    if (lname.rfind("dbstr-", 0) == 0) return "SPOTLIGHT_DBSTR_FILE";
+                    if (lname.rfind("dbhdr-", 0) == 0) return "SPOTLIGHT_DBHDR_FILE";
+                    if (directIsSpotlightStoreV2TopLevelComponentName(lname)) return "SPOTLIGHT_STOREV2_TOPLEVEL_COMPONENT";
+                    if (lname.find("corespotlight") != std::string::npos) return "IOS_CORESPOTLIGHT_NAME";
+                    if (lname == "index.db") return "IOS_CORESPOTLIGHT_INDEX_DB_FILE";
+                    return "SPOTLIGHT_RELATED_NAME";
+                };
+                auto appendDirectSpotlightCopyAttempt = [&](const ApfsRootTreeRecordSampleRow& rr) {
+                    ApfsSpotlightCopyAttemptRow cr;
+                    cr.sequence = static_cast<std::uint32_t>(directSpotlightCopyAttemptRows.size());
+                    cr.volumeSequence = rr.volumeSequence;
+                    cr.targetRole = rr.targetRole;
+                    cr.fsOid = rr.fsOid;
+                    cr.volumeName = rr.volumeName;
+                    cr.parentObjectId = rr.keyObjectId;
+                    cr.childFileId = rr.valueU64_0;
+                    cr.targetName = rr.decodedName;
+                    cr.targetKind = directSpotlightTargetKind(rr.decodedName);
+                    if (rr.keyTypeRaw != 9U) {
+                        cr.extractionStatus = "COPY_NOT_ATTEMPTED_NOT_DIRECTORY_RECORD";
+                        cr.interpretation = "A Spotlight-related key/name was observed during bounded APFS scan, but it was not a directory-entry record with a child file ID.";
+                    } else if (cr.childFileId == 0) {
+                        cr.extractionStatus = "COPY_NOT_ATTEMPTED_NO_CHILD_FILE_ID";
+                        cr.interpretation = "A Spotlight-related directory-entry name was decoded, but the value did not provide a usable child file ID candidate.";
+                    } else if (cr.targetKind == "SPOTLIGHT_ROOT_DIRECTORY" || cr.targetKind == "SPOTLIGHT_STORE_V2_DIRECTORY" || cr.targetKind == "IOS_CORESPOTLIGHT_NAME") {
+                        cr.extractionStatus = "COPY_NOT_ATTEMPTED_DIRECTORY_RECURSION_PENDING";
+                        cr.interpretation = "A Spotlight-related directory was found through the direct AFF4/APFS map reader. The next step is path-scoped child enumeration and then file extent copy-out.";
+                    } else {
+                        cr.extractionStatus = "COPY_NOT_ATTEMPTED_FILE_EXTENTS_PENDING";
+                        cr.interpretation = "A Spotlight-related file name was found through the direct AFF4/APFS map reader. File-byte extraction remains gated until inode, xattr, and file extent provenance is resolved.";
+                    }
+                    cr.notes = "direct_aff4_map_reader=1; bounded_btree_scan=1; copy_out_intentionally_gated_for_forensic_provenance";
+                    directSpotlightCopyAttemptRows.push_back(cr);
+                };
+
+                struct DirectFsPendingNode {
+                    std::uint32_t volumeSequence = 0;
+                    std::string targetRole;
+                    std::uint64_t fsOid = 0;
+                    std::string volumeName;
+                    std::uint64_t apfsRootTreeOid = 0;
+                    std::uint64_t nodeOid = 0;
+                    std::uint64_t nodeVirtualOffset = 0;
+                    std::uint64_t targetXid = 0;
+                    std::uint32_t depth = 0;
+                    bool nodeAlreadyResolved = false;
+                };
+                std::vector<DirectFsPendingNode> directPending;
+                std::set<std::string> directSeenNodes;
+                auto enqueueDirectNode = [&](const DirectFsPendingNode& n) {
+                    if (n.nodeOid == 0) return;
+                    const std::string key = std::to_string(n.volumeSequence) + ":" + std::to_string(n.nodeOid);
+                    if (!directSeenNodes.insert(key).second) return;
+                    directPending.push_back(n);
+                };
+                for (const auto& lookup : directVolumeRootTreeLookupRows) {
+                    if (lookup.rootTreeStatus != "ROOT_TREE_BTREE_READ" || lookup.resolvedVirtualOffset == 0) continue;
+                    DirectFsPendingNode pn;
+                    pn.volumeSequence = lookup.volumeSequence;
+                    pn.targetRole = lookup.targetRole;
+                    pn.fsOid = lookup.fsOid;
+                    pn.volumeName = lookup.volumeName;
+                    pn.apfsRootTreeOid = lookup.apfsRootTreeOid;
+                    pn.nodeOid = lookup.resolvedObjectOid ? lookup.resolvedObjectOid : lookup.apfsRootTreeOid;
+                    pn.nodeVirtualOffset = lookup.resolvedVirtualOffset;
+                    pn.targetXid = lookup.targetXid;
+                    pn.depth = 0;
+                    pn.nodeAlreadyResolved = true;
+                    // Data volume first; other volumes are queued after it.
+                    if (lookup.volumeName == "Data") directPending.insert(directPending.begin(), pn);
+                    else enqueueDirectNode(pn);
+                }
+
+                constexpr std::size_t kDirectSpotlightMaxNodes = 65536U;
+                constexpr std::size_t kDirectSpotlightMaxRecords = 2000000U;
+                constexpr std::size_t kDirectSpotlightMaxNameSamples = 100000U;
+                constexpr std::uint32_t kDirectSpotlightMaxDepth = 32U;
+                for (std::size_t qi = 0; qi < directPending.size() && directSpotlightScanMetrics.nodesVisited < kDirectSpotlightMaxNodes && directSpotlightScanMetrics.recordsScanned < kDirectSpotlightMaxRecords; ++qi) {
+                    const DirectFsPendingNode pending = directPending[qi];
+                    std::vector<unsigned char> node;
+                    std::string nodeErr;
+                    std::uint64_t nodeOffset = pending.nodeVirtualOffset;
+                    std::uint64_t nodeOid = pending.nodeOid;
+                    long long nodeRead = -1;
+                    if (pending.nodeAlreadyResolved) {
+                        nodeRead = directReadVirtual(nodeOffset, directBestNx.blockSize, node, nodeErr);
+                    } else {
+                        const auto omIt = directVolumeOmapBySequence.find(pending.volumeSequence);
+                        const auto rootIt = directVolumeOmapRootBySequence.find(pending.volumeSequence);
+                        if (omIt == directVolumeOmapBySequence.end() || rootIt == directVolumeOmapRootBySequence.end()) continue;
+                        const ApfsOmapTargetResolution resolved = aff4ResolveVolumeOmapTargetObjectForProbe(
+                            omIt->second,
+                            rootIt->second,
+                            pending.nodeOid,
+                            pending.targetXid,
+                            directBestNx.blockSize,
+                            directReadVirtual,
+                            safeDirectNodeOffset,
+                            "Direct AFF4/APFS bounded filesystem-tree scan");
+                        if (resolved.objectStatus != "OMAP_TARGET_BTREE_READ" || resolved.resolvedBuffer.size() < 64U) continue;
+                        node = resolved.resolvedBuffer;
+                        nodeRead = resolved.resolvedBytesRead;
+                        nodeOffset = resolved.resolvedVirtualOffset;
+                        nodeOid = resolved.resolvedObjectOid ? resolved.resolvedObjectOid : pending.nodeOid;
+                    }
+                    if (nodeRead <= 0 || node.size() < 64U) continue;
+                    ++directSpotlightScanMetrics.nodesVisited;
+                    ++directSpotlightScanMetrics.nodesResolved;
+                    const std::uint32_t rawType = readLe32(node, 24);
+                    const std::string label = apfsObjectTypeLabel(rawType);
+                    if (label != "BTREE" && label != "BTREE_NODE") continue;
+                    const std::uint16_t btnLevel = readLe16(node, 34);
+                    const std::uint32_t nkeys = std::min<std::uint32_t>(readLe32(node, 36), 65536U);
+                    if (btnLevel == 0) ++directSpotlightScanMetrics.leafNodes;
+                    else ++directSpotlightScanMetrics.branchNodes;
+                    const std::uint32_t recordLimit = nkeys;
+                    for (std::uint32_t i = 0; i < recordLimit && directSpotlightScanMetrics.recordsScanned < kDirectSpotlightMaxRecords; ++i) {
+                        std::size_t tocAbs = 0, keyAbs = 0, keyLen = 0, valAbs = 0, valLen = 0;
+                        std::string detail;
+                        if (!aff4GenericBtreeKvAbsForProbe(node, i, tocAbs, keyAbs, keyLen, valAbs, valLen, detail)) continue;
+                        ++directSpotlightScanMetrics.recordsScanned;
+                        ApfsRootTreeRecordSampleRow rr;
+                        rr.sequence = static_cast<std::uint32_t>(directSpotlightNameSampleRows.size() + directSpotlightTargetRows.size());
+                        rr.volumeSequence = pending.volumeSequence;
+                        rr.targetRole = pending.targetRole;
+                        rr.fsOid = pending.fsOid;
+                        rr.volumeName = pending.volumeName;
+                        rr.apfsRootTreeOid = pending.apfsRootTreeOid;
+                        rr.nodeOid = nodeOid;
+                        rr.nodeVirtualOffset = nodeOffset;
+                        rr.nodeLevel = btnLevel;
+                        rr.nodeNkeys = nkeys;
+                        rr.entryIndex = i;
+                        rr.tocOffset = static_cast<std::uint32_t>(tocAbs > 0xffffffffULL ? 0xffffffffULL : tocAbs);
+                        rr.keyOffset = static_cast<std::uint16_t>(keyAbs > 0xffffU ? 0xffffU : keyAbs);
+                        rr.keyLength = static_cast<std::uint16_t>(keyLen > 0xffffU ? 0xffffU : keyLen);
+                        rr.valueOffset = static_cast<std::uint16_t>(valAbs > 0xffffU ? 0xffffU : valAbs);
+                        rr.valueLength = static_cast<std::uint16_t>(valLen > 0xffffU ? 0xffffU : valLen);
+                        if (keyLen >= 8U) {
+                            rr.keyRaw = readLe64(node, keyAbs);
+                            rr.keyObjectId = apfsFsKeyObjectId(rr.keyRaw);
+                            rr.keyTypeRaw = apfsFsKeyRecordType(rr.keyRaw);
+                            rr.keyTypeLabel = apfsFsRecordTypeLabel(rr.keyTypeRaw);
+                        }
+                        if (valLen >= 8U && valAbs + 8U <= node.size()) rr.valueU64_0 = readLe64(node, valAbs);
+                        if (valLen >= 16U && valAbs + 16U <= node.size()) rr.valueU64_1 = readLe64(node, valAbs + 8U);
+                        if (valLen >= 24U && valAbs + 24U <= node.size()) rr.valueU64_2 = readLe64(node, valAbs + 16U);
+                        if (btnLevel > 0 && valLen >= 8U && valAbs + 8U <= node.size()) {
+                            rr.branchChildOid = readLe64(node, valAbs);
+                            if (pending.depth + 1U <= kDirectSpotlightMaxDepth && rr.branchChildOid != 0) {
+                                DirectFsPendingNode child;
+                                child.volumeSequence = pending.volumeSequence;
+                                child.targetRole = pending.targetRole;
+                                child.fsOid = pending.fsOid;
+                                child.volumeName = pending.volumeName;
+                                child.apfsRootTreeOid = pending.apfsRootTreeOid;
+                                child.nodeOid = rr.branchChildOid;
+                                child.targetXid = pending.targetXid;
+                                child.depth = pending.depth + 1U;
+                                child.nodeAlreadyResolved = false;
+                                enqueueDirectNode(child);
+                                ++directSpotlightScanMetrics.branchCandidatesQueued;
+                            }
+                        }
+                        if (rr.keyTypeRaw == 9U && keyLen > 12U) {
+                            const std::uint32_t nameLenAndHash = readLe32(node, keyAbs + 8U);
+                            const std::size_t nameLen = static_cast<std::size_t>(nameLenAndHash & 0x000003ffU);
+                            rr.decodedName = safePrintableUtf8Fragment(node, keyAbs + 12U, std::min<std::size_t>(nameLen, keyLen - 12U));
+                            if (!rr.decodedName.empty()) ++directSpotlightScanMetrics.dirRecordsDecoded;
+                        }
+                        rr.keySampleHex = (keyLen > 0 && keyAbs < node.size()) ? hexSampleBytes(node.data() + keyAbs, std::min<std::size_t>(keyLen, 64U)) : std::string{};
+                        rr.valueSampleHex = (valLen > 0 && valAbs < node.size()) ? hexSampleBytes(node.data() + valAbs, std::min<std::size_t>(valLen, 64U)) : std::string{};
+                        rr.status = "DIRECT_AFF4_APFS_BTREE_SCAN_RECORD_DECODED";
+                        rr.interpretation = btnLevel == 0 ? "Leaf filesystem-tree record decoded during direct AFF4/APFS bounded Spotlight target scan." : "Branch filesystem-tree separator record decoded during direct AFF4/APFS bounded Spotlight target scan.";
+                        rr.notes = detail + "; direct_scan_depth=" + std::to_string(pending.depth);
+                        if (!rr.decodedName.empty() && directSpotlightNameSampleRows.size() < kDirectSpotlightMaxNameSamples) directSpotlightNameSampleRows.push_back(rr);
+                        if (btnLevel == 0 && directIsSpotlightTargetName(rr.decodedName)) {
+                            directSpotlightTargetRows.push_back(rr);
+                            appendDirectSpotlightCopyAttempt(rr);
+                            ++directSpotlightScanMetrics.targetNameHits;
+                        }
+                    }
+                }
+                if (directSpotlightScanMetrics.nodesVisited >= kDirectSpotlightMaxNodes || directSpotlightScanMetrics.recordsScanned >= kDirectSpotlightMaxRecords) {
+                    directSpotlightScanMetrics.nodesSkippedByLimit = directPending.size() > directSpotlightScanMetrics.nodesVisited ? (directPending.size() - directSpotlightScanMetrics.nodesVisited) : 0U;
+                }
+
                 const std::uint32_t descBlockCount = directBestNx.xpDescBlocks & ~(1U << 31);
                 const std::uint32_t descToRead = std::min<std::uint32_t>(descBlockCount, 256U);
                 for (std::uint32_t i = 0; i < descToRead; ++i) {
@@ -13811,6 +14041,11 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         out << "  \"direct_apfs_volume_root_tree_lookup_rows\": " << directVolumeRootTreeLookupRows.size() << ",\n";
         out << "  \"direct_apfs_root_tree_node_rows\": " << directRootTreeNodeRows.size() << ",\n";
         out << "  \"direct_apfs_root_tree_record_sample_rows\": " << directRootTreeRecordRows.size() << ",\n";
+        out << "  \"direct_apfs_spotlight_nodes_visited\": " << directSpotlightScanMetrics.nodesVisited << ",\n";
+        out << "  \"direct_apfs_spotlight_records_scanned\": " << directSpotlightScanMetrics.recordsScanned << ",\n";
+        out << "  \"direct_apfs_spotlight_target_hits\": " << directSpotlightTargetRows.size() << ",\n";
+        out << "  \"direct_apfs_spotlight_name_samples\": " << directSpotlightNameSampleRows.size() << ",\n";
+        out << "  \"direct_apfs_spotlight_copy_attempt_rows\": " << directSpotlightCopyAttemptRows.size() << ",\n";
         out << "  \"notes\": \"" << jsonEscape(finalNotes) << "\"\n";
         out << "}\n";
     } catch (const std::exception& ex) {
@@ -13839,8 +14074,11 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         out << "- Direct APFS resolved volume rows: `" << directResolvedVolumeRows.size() << "`\n";
         out << "- Direct APFS volume OMAP rows: `" << directVolumeOmapRows.size() << "`\n";
         out << "- Direct APFS volume root-tree lookups: `" << directVolumeRootTreeLookupRows.size() << "`\n";
-        out << "- Direct APFS root-tree node rows: `" << directRootTreeNodeRows.size() << "`\n\n";
-        out << "A successful chunk decode proves the native direct AFF4 reader path can reconstruct virtual image bytes without the blocking libaff4 open call. The sorted-map APFS path now parses container metadata, resolves APFS volume object maps, and probes filesystem root-tree records; the next phase is guided traversal to `.Spotlight-V100` and copying Spotlight Store-V2 files.\n";
+        out << "- Direct APFS root-tree node rows: `" << directRootTreeNodeRows.size() << "`\n";
+        out << "- Direct APFS Spotlight scan nodes visited: `" << directSpotlightScanMetrics.nodesVisited << "`\n";
+        out << "- Direct APFS Spotlight scan records scanned: `" << directSpotlightScanMetrics.recordsScanned << "`\n";
+        out << "- Direct APFS Spotlight target hits: `" << directSpotlightTargetRows.size() << "`\n\n";
+        out << "A successful chunk decode proves the native direct AFF4 reader path can reconstruct virtual image bytes without the blocking libaff4 open call. The sorted-map APFS path now parses container metadata, resolves APFS volume object maps, probes filesystem root-tree records, and emits bounded Spotlight target-scan outputs. Copy-out remains gated until targeted path, inode, xattr, and file-extent provenance is complete.\n";
     } catch (const std::exception& ex) {
         log.warn(std::string("Unable to write AFF4_DIRECT_MAP_READER_PROBE.md: ") + ex.what());
     }
@@ -13897,6 +14135,12 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, directVolumeRootTreeLookupRows, false, log);
         writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, directRootTreeNodeRows, directRootTreeRecordRows, false, log);
         writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, directRootTreeRecordRows, std::vector<ApfsRootTreeRecordSampleRow>{}, std::vector<ApfsRootTreeRecordSampleRow>{}, false, log);
+        writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, directSpotlightTargetRows, directSpotlightNameSampleRows, directSpotlightCopyAttemptRows, directSpotlightScanMetrics, false, log);
+        writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, directSpotlightInodeRows, false, log);
+        writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, directSpotlightXattrRows, directSpotlightCopyAttemptRows, false, log);
+        writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, false, log);
+        writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, false, log);
+        writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, false, log);
     }
     log.info("AFF4 direct map reader probe written: " + pathString(csvPath));
 }
@@ -14389,6 +14633,73 @@ bool validateRunOptions(const RunOptions& opt, std::string& error) {
     return true;
 }
 
+void writeAff4ApfsV1DiagnosticRerunPlan(const fs::path& caseDir,
+                                         const EvidenceSource& source,
+                                         const RunOptions& opt,
+                                         const fs::path& originalInput,
+                                         Logger& log) {
+    if (!isAff4SourcePath(originalInput)) return;
+    const fs::path mdPath = caseDir / "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md";
+    const fs::path csvPath = caseDir / "aff4_apfs_v1_diagnostic_checklist.csv";
+    const fs::path jsonPath = caseDir / "aff4_apfs_v1_diagnostic_plan_summary.json";
+    struct Row { const char* stage; const char* expected; const char* purpose; const char* rule; };
+    const Row rows[] = {
+        {"aff4_zip_single_file_probe", "aff4_zip_central_directory.csv; aff4_zip_probe_summary.json", "Confirm the exact selected AFF4 file is readable as the AFF4 container and no parent-folder AFF4 discovery was used.", "If this fails, fix AFF4 container access before APFS logic."},
+        {"aff4_dynamic_load_probe", "aff4_cpp_lite_dynamic_load_probe.csv; aff4_virtual_apfs_probe.csv", "Confirm the guarded AFF4 reader can perform bounded random reads from the selected image stream.", "If virtual reads fail or use the wrong object, do not interpret APFS output."},
+        {"apfs_container_checkpoint", "aff4_apfs_container_superblock.csv; aff4_apfs_checkpoint_map.csv", "Confirm APFS NXSB, latest valid checkpoint, and checkpoint-mapped ephemeral objects.", "APFS decisions must use a valid checkpoint-backed container view, not only block-zero assumptions."},
+        {"apfs_omap_volume_resolution", "aff4_apfs_omap_leaf_lookup_results.csv; aff4_apfs_resolved_volume_superblocks.csv", "Resolve container and volume object maps to the APFS volume superblocks.", "If OMAP lookups are partial, report the missing OID/XID and keep extraction gated."},
+        {"apfs_root_tree_namespace", "aff4_apfs_root_tree_*; aff4_apfs_spotlight_target_scan.csv", "Walk enough filesystem tree records to locate .Spotlight-V100 / Store-V2 targets and parent/child file IDs.", "Prefer path/object provenance over broad raw scanning; preserve volume, object ID, parent ID, and record source."},
+        {"apfs_inode_xattr_extents", "aff4_apfs_spotlight_inode_probe.csv; aff4_apfs_spotlight_xattr_probe.csv; aff4_apfs_spotlight_file_extent_probe.csv", "Correlate target directory records to inode, private data-stream ID, xattrs, resource forks, decmpfs metadata, and file extents.", "Do not treat a target as copyable until inode size, extent chain, xattr/resource-fork state, and physical reads are classified."},
+        {"apfs_copy_out", "aff4_apfs_spotlight_file_copy_out.csv; aff4_apfs_spotlight_file_copy_out_summary.json", "Assemble only files whose reconstruction status is explicit and reviewable.", "Every output row must state copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped."},
+        {"staged_storev2_parse", "aff4_apfs_extracted_storev2_stage_*.csv; aff4_apfs_staged_storev2_*", "Normalize copied Store-V2 components into staged groups and parse them through the native Store-V2 parser.", "Report parser counts separately from APFS copy counts so filesystem extraction failures are not confused with Spotlight parsing failures."},
+        {"external_compare", "aff4_apfs_external_spotlight_compare_summary.json; aff4_apfs_external_spotlight_file_compare.csv", "Compare Vestigant extraction with the known-good external Spotlight reference when available.", "Use relative path/hash status counts to select the next fix category; do not rely on visual folder inspection alone."}
+    };
+    try {
+        std::ofstream out(csvPath, std::ios::binary);
+        out << "stage,expected_outputs,purpose,interpretation_rule\n";
+        for (const auto& r : rows) {
+            out << csvEscape(r.stage) << ',' << csvEscape(r.expected) << ',' << csvEscape(r.purpose) << ',' << csvEscape(r.rule) << "\n";
+        }
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_checklist.csv: ") + ex.what());
+    }
+    try {
+        std::ofstream out(jsonPath, std::ios::binary);
+        out << "{\n";
+        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        out << "  \"app_version\": \"" << appVersion() << "\",\n";
+        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
+        out << "  \"probe_policy\": \"STRICT_SINGLE_AFF4_DIAGNOSTIC_RERUN\",\n";
+        out << "  \"container_hash_policy\": \"" << (opt.forceContainerHash ? "FORCED_BY_OPERATOR" : (opt.skipContainerHash ? "SKIPPED_BY_OPERATOR" : "DEFERRED_FOR_DEVELOPMENT_SOURCE_PROBE")) << "\",\n";
+        out << "  \"diagnostic_stage_count\": " << (sizeof(rows) / sizeof(rows[0])) << ",\n";
+        out << "  \"notes\": \"V1.0.0 prioritizes a fresh, reproducible AFF4/APFS diagnostic run before changing APFS reconstruction gates.\"\n";
+        out << "}\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_plan_summary.json: ") + ex.what());
+    }
+    try {
+        std::ofstream out(mdPath, std::ios::binary);
+        out << "# AFF4/APFS V1.0.0 Diagnostic Rerun Plan\n\n";
+        out << "Version: " << appVersion() << "\n\n";
+        out << "## Purpose\n\n";
+        out << "This V1.0.0 run is intended to recreate current AFF4/APFS evidence from the exact selected AFF4 image before any broader APFS reconstruction changes are made. The older V0.8.x external-compare bundle is useful historical evidence, but it should not be treated as the current source of truth for V1 decisions.\n\n";
+        out << "## Scope and safety policy\n\n";
+        out << "- Input is one explicit AFF4 file: `" << pathString(originalInput) << "`.\n";
+        out << "- Strict single-AFF4 mode should be used for the rerun.\n";
+        out << "- Full-container hashing is deferred by default for development speed unless `--force-container-hash` is supplied.\n";
+        out << "- No broad parent-folder AFF4 search, full raw export, or unverifiable decompression stub should be used.\n";
+        out << "- APFS copy-out must classify each target as copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped.\n\n";
+        out << "## Diagnostic checklist\n\n";
+        out << "See `aff4_apfs_v1_diagnostic_checklist.csv` for the required outputs and interpretation rules.\n\n";
+        out << "## Decision rule after upload\n\n";
+        out << "After the fresh thin upload is reviewed, choose the next implementation target from the evidence: AFF4 container access, APFS checkpoint/OMAP traversal, root-tree namespace walking, inode/xattr/extent correlation, sparse/gap handling, resource-fork/decmpfs reconstruction, staged Store-V2 parsing, or investigator-facing macOS views.\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md: ") + ex.what());
+    }
+    log.info("AFF4/APFS V1 diagnostic rerun plan written: " + pathString(mdPath));
+}
+
 RunResult runApplication(const RunOptions& opt) {
     installStructuredExceptionTranslator();
     if (toLower(opt.mode) == "self-test") {
@@ -14517,6 +14828,7 @@ RunResult runApplication(const RunOptions& opt) {
             writeImageInventoryReadinessCsv(caseDir, source, opt.input, sourceProbe, partitionProbe, nextAction, log);
             writeReaderToolReadinessArtifacts(caseDir, opt, source, opt.input, sourceProbe, log);
             if (aff4InputSource) {
+                writeAff4ApfsV1DiagnosticRerunPlan(caseDir, source, opt, opt.input, log);
                 appendRunStatus(caseDir, "aff4_zip_single_file_probe", "parse AFF4 ZIP central directory from explicit input file only");
                 writeAff4ZipSingleFileProbe(caseDir, source, opt, opt.input, log);
                 appendRunStatus(caseDir, "aff4_apfs_exact_file_scan", "scan selected ZIP member payloads from the exact AFF4 file for GPT/APFS/Spotlight signatures");

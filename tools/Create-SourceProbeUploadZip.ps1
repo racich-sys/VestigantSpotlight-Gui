@@ -20,7 +20,8 @@ function Copy-FirstExistingCaseFile {
     $candidates = @(
         (Join-Path $CaseRoot $RelativeName),
         (Join-Path (Join-Path $CaseRoot "logs") $RelativeName),
-        (Join-Path (Join-Path $CaseRoot "Upload") $RelativeName)
+        (Join-Path (Join-Path $CaseRoot "Upload") $RelativeName),
+        (Join-Path (Join-Path $CaseRoot "Upload_Thin") $RelativeName)
     )
     if (![string]::IsNullOrWhiteSpace($AdditionalOutputRoot)) {
         $candidates += (Join-Path $AdditionalOutputRoot $RelativeName)
@@ -63,6 +64,9 @@ Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $UploadRoot | Out-Null
 
 $Wanted = @(
+    "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md",
+    "aff4_apfs_v1_diagnostic_checklist.csv",
+    "aff4_apfs_v1_diagnostic_plan_summary.json",
     "run_status.txt",
     "last_stage.txt",
     "last_progress.tsv",

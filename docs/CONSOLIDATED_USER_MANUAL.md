@@ -1,6 +1,6 @@
-# Vestigant Spotlight V0_9_59 Notes
+# Vestigant Spotlight V0_9_60 Notes
 
-V0_9_59 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
+V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
 
 Key changes:
 - The Case Information bottom log is now the live processing log. It clears at run start, timestamps messages, mirrors run/progress status, and emits periodic heartbeat messages while processing continues.
@@ -18,7 +18,7 @@ Validation summary:
 
 # Vestigant Spotlight Consolidated User Manual
 
-Version: 0.9.59
+Version: 0.9.60
 
 ## Purpose
 
@@ -43,12 +43,12 @@ V0_9_37 restored historical version details from the uploaded V0_9_3 documentati
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_59.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_59" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_59.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_59\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_59_build.log"
-& "T:\VestigantSpotlightInv_V0_9_59\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_59\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_59\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_60.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_60" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_60.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_60\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_60_build.log"
+& "T:\VestigantSpotlightInv_V0_9_60\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_60\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_60\build-msvc\selftest_out"
 ```
 
 ## Standard iOS reuse-cache test
@@ -56,11 +56,11 @@ Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_59.zip -DestinationPath
 Use this for fast parser/view/export iteration while the large source ZIP and known-good cache remain unchanged.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_59\scripts\Run-V0_9_59-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_60\scripts\Run-V0_9_60-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_59_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_59_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_60_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_60_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources during development iterations.  For final forensic reporting, run an explicit container/source hash workflow and preserve the hash with the case.
@@ -123,11 +123,11 @@ Thin upload ZIPs are for review/debugging and may contain samples of large CSVs.
 
 ## Troubleshooting
 
-If a run stalls or stops writing, use the matching `Collect-V0_9_59-DBBloat-State.ps1` script before stopping/rerunning:
+If a run stalls or stops writing, use the matching `Collect-V0_9_60-DBBloat-State.ps1` script before stopping/rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_59\scripts\Collect-V0_9_59-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_59_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_60\scripts\Collect-V0_9_60-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_60_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
@@ -138,8 +138,8 @@ If MSVC reports `C2026: string too big`, the likely source is an oversized SQL r
 
 Upload:
 
-- `D:\Downloads\V0_9_59_build.log`
-- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_59_ReusedCache_Check.zip`
+- `D:\Downloads\V0_9_60_build.log`
+- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_60_ReusedCache_Check.zip`
 - stopped-state ZIP/SHA256 only if the run stalls, DB/WAL grows unexpectedly, or no writes occur for a long period.
 
 
@@ -171,9 +171,13 @@ Because reuse-cache and fresh-ZIP ingest paths are now completing successfully, 
 
 Rerun reuse-cache only when a change creates new parser output rows. Rerun fresh-ZIP only when a change affects source ZIP inventory, staging, cache creation, or app database extraction.
 
-## V0_9_59 - Windows MSVC batch-label build hotfix
+## V0_9_60 - Windows MSVC batch-label build hotfix
 
-V0_9_59 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+V0_9_60 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
 
 No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
 
+
+## V0_9_60 - Staged AFF4/raw source restoration and MB telemetry
+
+V0_9_60 restores AFF4/APFS image and Raw IMG/DD image choices in the GUI source-type selector as staged image workflows. Folder and ZIP remain the production intake paths; AFF4/APFS is kept visible for macOS forensic images, and Raw IMG/DD is kept visible for raw/external media such as exFAT devices attached to Macs that may contain Spotlight indexes. Processing telemetry now displays throughput in decimal MB and MB/s rather than MiB/MiB/s for investigator readability. No parser interpretation logic was intentionally changed.

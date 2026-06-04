@@ -3,9 +3,9 @@ $ErrorActionPreference = "Stop"
 
 Set-Location D:\Downloads
 
-$Zip = "D:\Downloads\VestigantSpotlightInv_V0_9_59.zip"
-$SourceRoot = "T:\VestigantSpotlightInv_V0_9_59"
-$BuildLog = "D:\Downloads\V0_9_59_build.log"
+$Zip = "D:\Downloads\VestigantSpotlightInv_V0_9_60.zip"
+$SourceRoot = "T:\VestigantSpotlightInv_V0_9_60"
+$BuildLog = "D:\Downloads\V0_9_60_build.log"
 $Exe = "$SourceRoot\build-msvc\Release\VestigantSpotlight.exe"
 
 Get-FileHash -LiteralPath $Zip -Algorithm SHA256 | Format-List
@@ -18,7 +18,7 @@ Write-Host "Launching GUI. Use these settings:"
 Write-Host "  Source type: ZIP"
 Write-Host "  Profile: iOS/CoreSpotlight"
 Write-Host "  Input: T:\0202_0024-IT002\00008132-000269523699001C_files_full.zip"
-Write-Host "  Case location: Q:\SpotlightCase\TestiOS_V0_9_59"
+Write-Host "  Case location: Q:\SpotlightCase\TestiOS_V0_9_60"
 Write-Host "  Mode: Process Raw Spotlight Evidence"
 Write-Host "  Full native values: enabled"
 Write-Host "  Export profile: Investigator"

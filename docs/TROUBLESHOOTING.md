@@ -1,6 +1,6 @@
-# Vestigant Spotlight V0_9_59 Notes
+# Vestigant Spotlight V0_9_60 Notes
 
-V0_9_59 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
+V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
 
 Key changes:
 - The Case Information bottom log is now the live processing log. It clears at run start, timestamps messages, mirrors run/progress status, and emits periodic heartbeat messages while processing continues.
@@ -18,7 +18,7 @@ Validation summary:
 
 # Troubleshooting
 
-Current version: 0.9.59
+Current version: 0.9.60
 
 ## Build fails before CLI/GUI link
 
@@ -29,8 +29,8 @@ Upload the build log.  Recent MSVC-specific failure classes included oversized r
 Collect state before rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_59\scripts\Collect-V0_9_59-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_59_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_60\scripts\Collect-V0_9_60-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_60_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
@@ -39,9 +39,9 @@ powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_59\scrip
 
 Check `exports/parser_limits_and_suppression_summary.csv`.  Native record count should be unlimited unless a max-record option is explicitly set.  Compact key/value and date counts are expected in normal iOS investigator mode.
 
-## V0_9_59 - Windows MSVC batch-label build hotfix
+## V0_9_60 - Windows MSVC batch-label build hotfix
 
-V0_9_59 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+V0_9_60 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
 
 No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
 

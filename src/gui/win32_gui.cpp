@@ -2742,12 +2742,12 @@ unsigned long long fileSizeBytesNoThrow(const std::wstring& path) {
 
 std::wstring formatBytesPerSecond(unsigned long long bytes, unsigned long long seconds) {
     if (bytes == 0 || seconds == 0) return L"not measurable for this source";
-    double mb = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    double mb = static_cast<double>(bytes) / 1000000.0;
     double rate = mb / static_cast<double>(seconds);
     std::wostringstream os;
     os.setf(std::ios::fixed);
     os.precision(2);
-    os << L"source size " << mb << L" MiB; elapsed average " << rate << L" MiB/s";
+    os << L"source size " << mb << L" MB; elapsed average " << rate << L" MB/s";
     return os.str();
 }
 
@@ -2777,7 +2777,7 @@ void worker() {
     const unsigned long long inputBytesForRate = fileSizeBytesNoThrow(getText(gInput));
     postStatus(L"Ingest running: initializing options.");
     postLog(L"Starting native C++ Spotlight workflow...");
-    postLog(L"Processing telemetry: elapsed time and progress stages will be mirrored here for review. Throughput is calculated when the selected source is a measurable file such as a ZIP.");
+    postLog(L"Processing telemetry: elapsed time and progress stages will be mirrored here for review. Throughput is shown in decimal MB when the selected source is a measurable file such as a ZIP, AFF4, IMG, DD, or RAW.");
     if (inputBytesForRate > 0) postLog(L"Input size for throughput estimate: " + std::to_wstring(inputBytesForRate) + L" bytes.");
     std::atomic_bool monitorDone{false};
     std::thread monitor;
@@ -2935,11 +2935,11 @@ void createProcessControls(HWND hwnd) {
 
     addProcess(CreateWindowW(L"STATIC", L"Build / Processing", WS_CHILD | WS_VISIBLE, 16, y0 + 292, 720, 24, hwnd, nullptr, gInst, nullptr));
     labelP(hwnd, L"Source type", 16, y0 + 328, 90, 22); gSourceType = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 112, y0 + 324, 180, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_TYPE)), gInst, nullptr));
-    for (const wchar_t* s : {L"Folder", L"ZIP"}) SendMessageW(gSourceType, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gSourceType, CB_SETCURSEL, 0, 0);
+    for (const wchar_t* s : {L"Folder", L"ZIP", L"AFF4/APFS image (staged)", L"Raw IMG/DD image (staged)"}) SendMessageW(gSourceType, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gSourceType, CB_SETCURSEL, 0, 0);
     labelP(hwnd, L"Raw Spotlight evidence source", 300, y0 + 328, 190, 22); gInput = editP(hwnd, 492, y0 + 324, 380, 26); gBrowseInput = buttonP(hwnd, L"Browse", ID_BROWSE_INPUT, 882, y0 + 324, 100, 28);
     labelP(hwnd, L"Evidence root / iOS cache case", 16, y0 + 364, 220, 22); gEvidenceRoot = editP(hwnd, 236, y0 + 360, 636, 26); gBrowseRoot = buttonP(hwnd, L"Browse", ID_BROWSE_ROOT, 882, y0 + 360, 100, 28);
     labelP(hwnd, L"7z.exe path (optional)", 16, y0 + 400, 210, 22); gSevenZip = editP(hwnd, 236, y0 + 396, 636, 26); gBrowse7z = buttonP(hwnd, L"Browse", ID_BROWSE_7Z, 882, y0 + 396, 100, 28);
-    addProcess(CreateWindowW(L"STATIC", L"Folder and ZIP workflows are the V1 investigator intake paths. AFF4/APFS and raw image support remain documented roadmap items.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 430, 966, 24, hwnd, nullptr, gInst, nullptr));
+    addProcess(CreateWindowW(L"STATIC", L"Source support: Folder and ZIP are production intake paths; AFF4/APFS and Raw IMG/DD are staged image workflows for macOS images and external Mac-attached media with Spotlight indexes.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 430, 966, 38, hwnd, nullptr, gInst, nullptr));
 
     labelP(hwnd, L"Profile", 16, y0 + 464, 90, 22); gProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 106, y0 + 460, 180, 160, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Auto", L"Standard macOS", L"iOS/CoreSpotlight"}) SendMessageW(gProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gProfile, CB_SETCURSEL, 0, 0);
@@ -2961,8 +2961,8 @@ void createProcessControls(HWND hwnd) {
     SendMessageW(gIngestProgress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(gIngestProgress, PBM_SETPOS, 0, 0);
     gLog = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 16, y0 + 672, 966, 184, hwnd, nullptr, gInst, nullptr));
-    appendLog(L"V0_9_57 V1 GUI polish: branded case header, processing telemetry log, custom view sets, and repaired tag-management schema handling.");
-    appendLog(L"Processing log mirrors status/progress updates with elapsed time; ZIP/file source throughput is estimated when measurable.");
+    appendLog(L"V0_9_60 V1 GUI polish: staged AFF4/raw image source selection restored, processing telemetry in MB, custom view sets, and repaired tag-management schema handling.");
+    appendLog(L"Processing log mirrors status/progress updates with elapsed time; ZIP/image/file source throughput is estimated in MB when measurable.");
 }
 
 LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
@@ -3409,7 +3409,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (HIWORD(wp) == CBN_SELCHANGE) {
                 int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
                 if (srcType == 0) postStatus(L"Source type: Folder. Loose folder sources will be preserved into a static evidence archive before working-copy parsing.");
-                else postStatus(L"Source type: ZIP. Original ZIP will be hashed/registered and extracted to a controlled working staging folder; no second evidentiary archive is created.");
+                else if (srcType == 1) postStatus(L"Source type: ZIP. Original ZIP will be hashed/registered and extracted to a controlled working staging folder; no second evidentiary archive is created.");
+                else if (srcType == 2) postStatus(L"Source type: AFF4/APFS image. Staged image workflow for macOS forensic images; current support may emit readiness/probe outputs where full extraction is not yet complete.");
+                else if (srcType == 3) postStatus(L"Source type: Raw IMG/DD image. Staged image workflow for raw/external media, including Mac-attached devices with Spotlight indexes.");
+                else postStatus(L"Source type selected.");
             }
             return 0;
         }
@@ -3444,6 +3447,8 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 }
             }
             int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
+            if (srcType == 2) postLog(L"Selected source type: AFF4/APFS image (staged). The run will preserve/register the selected evidence and perform currently implemented image/readiness/probe workflow steps.");
+            else if (srcType == 3) postLog(L"Selected source type: Raw IMG/DD image (staged). The run will preserve/register the selected evidence and perform currently implemented raw-image/readiness workflow steps.");
             postProgress(0);
             postStatus(L"Queued: ingest worker starting.");
             std::thread(worker).detach();

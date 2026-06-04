@@ -1,0 +1,30 @@
+Vestigant Spotlight V1.0.1 validation notes
+
+Input reviewed:
+- V1.0.0 Windows/MSVC build log uploaded by user.
+- V1.0.0 macOS AFF4/APFS thin repack uploaded by user.
+
+Observed V1.0.0 AFF4/APFS diagnostic state:
+- Windows/MSVC build completed for CLI, tests, and GUI.
+- The direct AFF4 map reader successfully parsed the AFF4 container central directory/map path and reached APFS metadata.
+- APFS diagnostics resolved the container NXSB, checkpoints/checkpoint map entries, six APFS volume superblocks, volume OMAP rows, and root-tree lookup rows.
+- No Store-V2 staging occurred because the filesystem namespace/target scan did not yet identify `.Spotlight-V100` or `Store-V2` targets.
+
+V1.0.1 implementation summary:
+- Added a bounded direct AFF4/APFS filesystem-tree target scan from resolved volume root-tree nodes.
+- Added volume-OMAP child-node resolution for non-root APFS B-tree traversal where possible.
+- Prioritized likely Data volumes during target scanning.
+- Added explicit target scan/name sample/copy-attempt diagnostic rows.
+- Ensured target scan, inode probe, xattr probe, file-extent probe, copy-out, and staged Store-V2 output files are written explicitly even when no target is found.
+- Preserved copy-out gates; no unverifiable reconstructed file output is produced without later inode/xattr/extent/sparse/gap/decompfs/resource-fork provenance.
+
+Validation performed in this environment:
+- Linux CMake configure/build: PASS.
+- VestigantSpotlightTests self-test: PASS.
+- CLI version check: Vestigant Spotlight v1.0.1.
+- Raw-string/long-line check for MSVC C2026 risk: PASS.
+
+Still requires user-side validation:
+- Windows/MSVC V1.0.1 CLI/tests/GUI build.
+- Live AFF4/APFS target scan against the O: evidence image.
+- Review of the resulting V1.0.1 thin upload to determine whether the next step is inode/xattr/extent/copy-out implementation or deeper APFS namespace traversal correction.

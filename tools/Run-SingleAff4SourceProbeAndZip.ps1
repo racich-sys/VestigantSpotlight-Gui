@@ -1,8 +1,8 @@
 param(
     [string]$Aff4Input = "O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4",
-    [string]$Out = "Q:\SpotlightCase\V0_8_75_SingleAff4Probe",
+    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_0_0",
     [string]$ReaderToolsRoot = "T:\VestigantReaderTools\aff4-cpp-lite",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_V0_8_75_SingleAff4Probe.zip",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_0.zip",
     [switch]$SkipUploadZip,
     [switch]$ForceContainerHash,
     [switch]$FullScan,
@@ -16,7 +16,7 @@ param(
     [string]$ExternalCompareOutRoot = "",
     [string]$UploadWorkRoot = "",
     [switch]$SkipExternalSpotlightHash,
-    [int]$CliTimeoutMinutes = 30
+    [int]$CliTimeoutMinutes = 90
 )
 
 $ErrorActionPreference = "Stop"
@@ -300,6 +300,9 @@ if ([string]::IsNullOrWhiteSpace($logPath)) {
 }
 
 $expectedRunOutputs = @(
+    "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md",
+    "aff4_apfs_v1_diagnostic_checklist.csv",
+    "aff4_apfs_v1_diagnostic_plan_summary.json",
     "aff4_apfs_spotlight_target_scan.csv",
     "aff4_apfs_spotlight_target_scan_summary.json",
     "aff4_apfs_spotlight_file_extent_probe.csv",
@@ -356,7 +359,7 @@ if (![string]::IsNullOrWhiteSpace($ExternalSpotlightRoot) -and $CanRunExternalCo
         throw "External Spotlight comparison helper not found: $ExternalCompareTool"
     }
     $compareToolText = Get-Content -LiteralPath $ExternalCompareTool -Raw
-    if ($compareToolText -notmatch "CompareOutputRoot" -or $compareToolText -notmatch "V0_8_59_HOTFIX") {
+    if ($compareToolText -notmatch "CompareOutputRoot") {
         throw "External Spotlight comparison helper appears stale or unpatched: $ExternalCompareTool. Remove the existing source folder and expand the current package cleanly."
     }
     if ([string]::IsNullOrWhiteSpace($ExternalCompareOutRoot)) {
@@ -413,6 +416,9 @@ if (!$SkipUploadZip) {
     if (![string]::IsNullOrWhiteSpace($EffectiveExternalCompareOutRoot)) { $uploadArgs["AdditionalOutputRoot"] = $EffectiveExternalCompareOutRoot }
     & $UploadTool @uploadArgs
     $expectedZipEntries = @(
+        "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md",
+        "aff4_apfs_v1_diagnostic_checklist.csv",
+        "aff4_apfs_v1_diagnostic_plan_summary.json",
         "run_status.txt",
         "aff4_apfs_spotlight_target_scan.csv",
         "aff4_apfs_spotlight_file_extent_probe.csv",
@@ -439,7 +445,8 @@ if (!$SkipUploadZip) {
         $expectedZipEntries += "aff4_apfs_remaining_mismatch_diagnostics_summary.json"
     }
     $expectedZipEntries = @($expectedZipEntries | Where-Object {
-        (Test-Path -LiteralPath (Join-Path $Out $_)) -or
+        $caseResolvedForZip = Resolve-CaseFile -RelativeName $_
+        (![string]::IsNullOrWhiteSpace($caseResolvedForZip)) -or
         (![string]::IsNullOrWhiteSpace($EffectiveExternalCompareOutRoot) -and (Test-Path -LiteralPath (Join-Path $EffectiveExternalCompareOutRoot $_)))
     })
     Assert-ZipContainsAnyRequired -ZipFile $ZipPath -EntryNames $expectedZipEntries

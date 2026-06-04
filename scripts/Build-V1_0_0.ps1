@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V0_9_59.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_59",
-  [string]$BuildLog = "D:\Downloads\V0_9_59_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_0_0.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_0_0",
+  [string]$BuildLog = "D:\Downloads\V1_0_0_build.log",
   [switch]$CleanExtract
 )
 
@@ -22,9 +22,6 @@ if (!(Test-Path -LiteralPath $SourceRoot)) {
 
 if (!(Test-Path -LiteralPath "$SourceRoot\build_windows_msvc.bat")) { throw "Build script not found: $SourceRoot\build_windows_msvc.bat" }
 
-# V0_9_59 is a V1 production-readiness cleanup. Force removal of stale GUI/link
-# outputs before building so older review-pane or hidden-control behavior cannot
-# survive an incremental or locked-output build attempt.
 Remove-Item -LiteralPath "$SourceRoot\build-msvc\obj\win32_gui.obj" -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$SourceRoot\build-msvc\obj\app_info.obj" -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlight.exe" -Force -ErrorAction SilentlyContinue
@@ -34,5 +31,7 @@ Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlightTests
 & "$SourceRoot\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath $BuildLog
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE. Log: $BuildLog" }
 
-& "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe" --version
+$version = (& "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe" --version 2>&1 | Out-String).Trim()
+if ($version -notmatch "1\.0\.0") { throw "Unexpected CLI version after build: $version" }
+Write-Host $version
 Write-Host "Build log: $BuildLog"

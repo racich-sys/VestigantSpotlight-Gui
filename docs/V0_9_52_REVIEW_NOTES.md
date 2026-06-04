@@ -1,4 +1,4 @@
-# V0_9_59 Review Notes
+# V0_9_60 Review Notes
 
 ## Scope
 GUI-only V1 usability hotfix after V0_9_51 built and the bottom details pane was visible, but the field/value rendering was still not a true left/right table.

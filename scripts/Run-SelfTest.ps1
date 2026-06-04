@@ -1,6 +1,6 @@
 param(
   [string]$SourceRoot = (Split-Path -Parent $PSScriptRoot),
-  [string]$Out = "Q:\SpotlightCase\SelfTest_V0_9_59"
+  [string]$Out = "Q:\SpotlightCase\SelfTest_V0_9_60"
 )
 $ErrorActionPreference = 'Stop'
 $exe = Join-Path $SourceRoot 'build-msvc\Release\VestigantSpotlightTests.exe'
