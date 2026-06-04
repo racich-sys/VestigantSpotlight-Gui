@@ -1,42 +1,38 @@
 # Vestigant Spotlight Project Roadmap and Continuation
 
-Current baseline: V0_9_48.
+Current baseline: V0_9_53.
 
 ## Current status
 
-V0_9_46 was validated from uploaded Windows/MSVC build log plus reuse-cache and Stage B fresh-ZIP thin outputs. Build/version consistency is fixed, both runs completed successfully, the fresh-ZIP native 7-Zip inventory path remains functional, and the app database candidate set remains narrowed to database-like entries.
+V0_9_48 reuse-cache validation completed successfully. Normal Spotlight-first mode now parses targeted already-extracted high-value app databases and produced 525,409 parsed app records in the uploaded thin result. The investigator super timeline sample is populated and time-anomaly export produced rows. The remaining near-term V1 gap addressed by V0_9_53 is GUI usability when reviewing wide result tables.
 
-## V0_9_48 focus
+## V0_9_53 focus
 
-V0_9_48 moves from inventory correctness to bounded iOS investigative value while preserving compact normal mode. It adds conservative bplist object-string extraction, KnowledgeC/CoreDuet classification and support-mode parser scaffolding, KnowledgeC interaction review views/exports, and an explicit investigator time-anomaly triage view with provenance caution.
+V0_9_53 adds a bottom details pane to the shared investigation grid. The pane displays every column for the selected row vertically, including long text and JSON-like metadata, so investigators do not need to scroll horizontally across wide Spotlight/app database views. The pane is read-only, scrollable, copy-friendly, and works for both macOS and iOS investigation views because those tabs share the review grid implementation.
 
-## Near-term priorities
+## Minimal testing loop now that reuse-cache and fresh-ZIP both complete
 
-1. Validate V0_9_48 on Windows/MSVC and run the standard iOS reuse-cache script.
-2. Run Stage B fresh-ZIP validation and confirm FFS/app-database inventory remains stable.
-3. Inspect `iOS - Bplist/NSKeyedArchiver Detail` for improved string extraction quality and confirm no DB/WAL bloat regression.
-4. Validate KnowledgeC/CoreDuet database classification/extraction in fresh-ZIP output.
-5. After normal-mode stability is confirmed, run support/full app DB materialization to validate `iOS - KnowledgeC Interaction Summary` and `iOS - KnowledgeC Interaction Events`.
-6. Continue improving iOS investigator views, especially direct messages, thread/contact summaries, timeline review, Missing From FFS text context, parser diagnostics, and bplist/NSKeyedArchiver discovery surfaces.
-7. Add full NSKeyedArchiver object-graph decoding only after bounded diagnostics identify useful target classes.
-8. Resume macOS AFF4/APFS work after iOS investigator views remain stable, with focus on APFS extraction, Store-V2 extraction/copy-out validation, LZFSE/LZVN decmpfs, group/source provenance, and external Store-V2 comparison.
+1. Build the current version.
+2. Open an existing completed case in the GUI.
+3. Test view selection, row selection, arrow-key navigation, details pane scrolling/copying, search/filter, tags/checkmarks, and exports.
+4. Run reuse-cache only when a change creates new parser rows or changes app DB parsing.
+5. Run fresh-ZIP only when a change touches ZIP inventory, staging, FFS/app database extraction, cache creation, or source/container handling.
+
+## Near-term V1 priorities
+
+1. Validate V0_9_53 Windows/MSVC GUI build.
+2. Open the latest successful completed case and test the details pane against wide iOS views such as text context, parsed app records, super timeline, Missing From FFS text detail, and bplist/NSKeyedArchiver detail.
+3. Continue refining V1 review surfaces: direct messages, contact/thread summaries, super timeline, Missing From FFS text context, KnowledgeC correlation, parser diagnostics, and provenance warnings.
+4. Keep normal mode compact and Spotlight-first. Do not reintroduce broad FFS materialization or broad app DB materialization by default.
+5. Add full NSKeyedArchiver object graph decoding only after bounded diagnostics identify useful target classes.
+6. Resume macOS AFF4/APFS work after iOS V1 investigator workflows remain stable.
 
 ## Deferred / requires external source validation
 
-- LZFSE/LZVN integration requires adding Apple/reference codec source to the build and validating license/build compatibility; do not add blind stubs that cannot decode actual data.
-- Full NSKeyedArchiver graph decoding requires a bounded, clean-room parser with cycle/depth/object-count guards.
+- LZFSE/LZVN integration requires vetted codec source and build-system/license validation.
+- Broad Win32 MainWindow/global-state refactor remains deferred unless needed to fix active defects.
+- Litigation/eDiscovery load-file exports, NSRL/hashset filtering, and broad architectural refactors remain staged after V1 usability/stability.
 
-## Backburner but useful
+## Next upload needed
 
-- Full Win32 MainWindow/global-state refactor.
-- Mass enum replacement for magic strings except active parser areas.
-- KnowledgeC.db parsing/correlation, after CoreSpotlight V1 surfaces are stable.
-- Timeline anomaly/timestomping review, after date provenance is stable enough for defensible interpretation.
-- NSRL/hashset filtering.
-- Relativity/eDiscovery load-file export.
-
-## Cleanup policy
-
-Production ZIPs should stay clean. Keep current scripts, consolidated docs, source, tests, and required build files. Avoid shipping old generated patch notes, stale version-specific wrappers, and repeated historical fragments unless they are explicitly part of maintained consolidated documentation.
-## V0_9_48 continuation note
-V0_9_48 should be tested with the normal reuse-cache and fresh-ZIP scripts. Key expected improvement: app DB parsed summaries and KnowledgeC/super-timeline outputs should no longer be empty when extracted high-value databases are available. Preserve the compact normal-mode guardrail: full FFS inventory and broad app DB parsing remain opt-in support/full behavior. Next likely work after V0_9_48 results: refine KnowledgeC field mapping from actual populated rows, correlate KnowledgeC document titles/bundle IDs with Spotlight records, and consider vetted LZFSE/LZVN integration only after codec source is supplied and license/build implications are reviewed.
+For the next review, upload `V0_9_53_build.log` and either screenshots/notes from opening an existing case or a thin upload only if an ingest/export was run.

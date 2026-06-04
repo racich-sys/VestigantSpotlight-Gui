@@ -1,4 +1,4 @@
-Vestigant Spotlight V0_9_48 validation summary
+Vestigant Spotlight V0_9_53 validation summary
 
 Reviewed inputs:
   - V0_9_46_build.log
@@ -23,7 +23,7 @@ Decision:
   - No build/runtime hotfix required.
   - Proceeded with a bounded iOS investigative-value release.
 
-Implemented in V0_9_48:
+Implemented in V0_9_53:
   - Conservative bplist00 object-string extraction for ASCII and UTF-16BE string objects, with size/object caps and fallback scanning.
   - KnowledgeC/CoreDuet database classification for knowledgeC.db, interactionC.db, and globalKnowledge.db.
   - Targeted extraction patterns for KnowledgeC/CoreDuet databases in the iOS fresh-ZIP helper path.
@@ -34,16 +34,16 @@ Implemented in V0_9_48:
 
 Validation performed here:
   - Linux changed-file syntax checks passed for native_storedb_parser.cpp, app_runner.cpp, case_db.cpp, sqlite_exporter.cpp, and app_info.cpp.
-  - SQLite smoke test passed for the new V0_9_48 views.
+  - SQLite smoke test passed for the new V0_9_53 views.
   - Raw-string size scan found 0 oversized raw literals above threshold.
   - Classifier simulation predicts KnowledgeC/CoreDuet targets will be classified without changing the 5,528 app database candidate row count.
 
 Not completed here:
-  - Windows/MSVC build of V0_9_48.
+  - Windows/MSVC build of V0_9_53.
   - GUI launch.
   - VestigantSpotlightTests.exe run.
-  - V0_9_48 reuse-cache run.
-  - V0_9_48 Stage B fresh-ZIP run.
+  - V0_9_53 reuse-cache run.
+  - V0_9_53 Stage B fresh-ZIP run.
   - Support/full materialization run to populate KnowledgeC parsed event rows.
 
 Deferred:

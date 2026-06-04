@@ -39,5 +39,18 @@ V0_9_37 improved Missing From FFS text visibility but over-expanded same-record 
 
 V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
 
-## V0_9_48
-Reviewed V0_9_47 build/reuse-cache/fresh-ZIP outputs. Both thin runs completed successfully, but normal-mode app DB parsed rows remained zero because record materialization was skipped. V0_9_48 enables targeted parsed-record extraction for already-extracted high-value databases only, adds KnowledgeC metadata joins, adds deleted/recoverable Apple Messages extraction, and adds the unified investigator super timeline. Local validation passed changed-file C++ syntax checks and SQLite smoke tests for the new views. Windows/MSVC validation remains required.
+## V0_9_53
+Reviewed V0_9_47 build/reuse-cache/fresh-ZIP outputs. Both thin runs completed successfully, but normal-mode app DB parsed rows remained zero because record materialization was skipped. V0_9_53 enables targeted parsed-record extraction for already-extracted high-value databases only, adds KnowledgeC metadata joins, adds deleted/recoverable Apple Messages extraction, and adds the unified investigator super timeline. Local validation passed changed-file C++ syntax checks and SQLite smoke tests for the new views. Windows/MSVC validation remains required.
+
+## V0_9_53
+
+GUI-only validation pass. V0_9_53 refines the V0_9_50 selected-row details pane into a Field / Value layout and adds a draggable splitter for resizing the bottom metadata area. Static structural checks passed in this environment; Windows/MSVC GUI build and runtime splitter behavior still require validation on the user's Windows system.
+
+## V0_9_53 Validation
+- Static structural check confirmed `gRowDetails` is created as a `WC_LISTVIEWW` report control.
+- Confirmed details rows use separate Field and Metadata / Value columns.
+- Confirmed custom draw handler exists for section divider rows.
+- Confirmed row details controls are explicitly hidden outside MacOS/iOS investigation tabs.
+- Brace/parenthesis/bracket balance check passed for `src/gui/win32_gui.cpp`.
+- `src/core/app_info.cpp` C++20 syntax check passed.
+- Windows/MSVC GUI compile and runtime splitter/details table behavior still require user-side validation.

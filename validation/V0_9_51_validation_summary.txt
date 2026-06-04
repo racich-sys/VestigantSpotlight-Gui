@@ -1,0 +1,34 @@
+Vestigant Spotlight V0_9_53 validation summary
+
+Change class:
+- GUI-only V1 usability refinement.
+- No intentional parser, cache, ZIP inventory, FFS staging, app DB extraction, or database classification changes.
+
+Implemented:
+- Reworked selected-row details pane from stacked field-name/value blocks to a Field / Value layout.
+- Added RichEdit tab stops so the field name appears on the left and metadata/value appears on the right.
+- Kept V0_9_50 grouping order: text first, dates second, then paths, people/apps, status, provenance, counts, and other fields.
+- Added a visible draggable splitter above the details pane so the investigator can resize the bottom metadata area versus the grid.
+- Updated no-row/help text to explain the Field / Value layout and splitter resizing.
+- Updated version metadata and scripts to V0_9_53.
+
+Validation performed in this environment:
+- Reviewed user screenshot/feedback showing V0_9_50 build succeeded and the details pane rendered, but field/value layout needed improvement.
+- Static check: win32_gui.cpp brace/parenthesis/bracket balance passed.
+- Static check: no stale V0_9_50 / 0.9.50 version tokens remain in text/source files.
+- Source package and patch package ZIP integrity checks were performed after packaging.
+
+Validation not completed in this environment:
+- Windows/MSVC GUI compile/link.
+- Runtime GUI splitter drag behavior.
+- Runtime RichEdit Field / Value tab-stop rendering.
+- VestigantSpotlightTests.exe.
+
+Recommended Windows validation:
+1. Build V0_9_53 with scripts\Build-V0_9_53.ps1.
+2. Launch GUI with scripts\Launch-V0_9_53-GUI.ps1.
+3. Open an existing completed case.
+4. Select iOS Investigation View.
+5. Select rows in text-heavy, date-heavy, and app DB views.
+6. Confirm details pane shows field names on the left and values on the right.
+7. Drag the splitter between grid and details pane up/down and confirm resizing is smooth and selection/details still refresh correctly.

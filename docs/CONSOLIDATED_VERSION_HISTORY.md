@@ -1,12 +1,14 @@
 # Vestigant Spotlight Consolidated Version History
 
-Current version: 0.9.48
+Current version: 0.9.53
 
-## V0_9_48
+## V0_9_53
 
-V0_9_48 reviewed the uploaded V0_9_46 Windows/MSVC build, reuse-cache thin upload, Stage B fresh-ZIP thin upload, and new parser recommendations. V0_9_46 was stable: source and binary versions matched, both runs completed successfully, fresh-ZIP inventory remained at 2,245,783 files, and app database candidates remained narrowed to 5,528. The next improvement class was investigative value rather than a stability hotfix.
+V0_9_53 reviewed the uploaded V0_9_48 reuse-cache thin output and the investigator-details-pane design request. The V0_9_48 reuse-cache run completed successfully with 6 valid CoreSpotlight stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 date candidates, 525,409 parsed app database records, a populated investigator super timeline sample, and 101 time-anomaly rows.
 
-This release adds conservative bplist object-string discovery for ASCII and UTF-16BE `bplist00` string objects, KnowledgeC/CoreDuet database identification and support-mode parser scaffolding, KnowledgeC summary/event review views, and an explicit investigator time-anomaly triage view. It intentionally preserves compact normal iOS mode: no broad FFS materialization and no broad app database record materialization by default. Full LZFSE/LZVN integration remains deferred until the Apple reference codec source is explicitly added and build integration can be validated.
+This release focuses on V1 investigator usability rather than ingest/parsing changes. It adds a bottom read-only **Selected Row Metadata / All Fields** details pane to the shared investigation grid used by both the macOS and iOS investigation tabs. Selecting a row now shows the view name, row number, artifact ID where available, check/tag state, and every visible result column vertically so investigators can review long Spotlight/app metadata values without horizontal scrolling. The pane supports vertical scrolling and copy/select behavior through a native Win32 multiline edit control.
+
+No parser, staging, FFS inventory, or app database classification behavior was intentionally changed in V0_9_53. Existing completed cases can be used to test this GUI feature. Reuse-cache/fresh-ZIP ingest reruns are only needed if later changes affect parser output, cache behavior, or staging.
 
 ## V0_9_45
 
@@ -25,3 +27,17 @@ Added bounded iOS CoreSpotlight bplist / NSKeyedArchiver marker discovery. The r
 ## Earlier V0_9 history
 
 Earlier V0_9 releases focused on compact normal iOS mode, DB/WAL guardrails, iOS investigator views, message/media/text review surfaces, parser limits/suppression reporting, GUI stability, CSV export optimization, reuse-cache workflows, and initial Stage B fresh-ZIP preparation. Preserve prior detailed history from earlier packages if litigation/reporting requires exact version-by-version reconstruction.
+
+## V0_9_53
+
+- Refined the selected-row metadata pane into a two-column Field / Value layout so field identifiers remain on the left and metadata values appear on the right.
+- Added a draggable splitter above the details pane so investigators can resize the grid/detail split during review.
+- Preserved the V0_9_50 grouped review order: text first, dates second, then paths, people/apps, status, provenance, counts, and other fields.
+- GUI-only update; no parser, cache, ZIP, FFS, or app database behavior changed.
+
+## V0_9_53
+- GUI-only selected-row metadata pane revision.
+- Converted the bottom details pane from formatted text to a true two-column Field / Metadata ListView table.
+- Added section-row background shading for field groups.
+- Kept drag-resizable details area.
+- Explicitly hides the row-details controls on non-investigation tabs.

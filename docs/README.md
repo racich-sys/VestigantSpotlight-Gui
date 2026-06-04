@@ -1,6 +1,6 @@
 # Vestigant Spotlight Documentation
 
-Current version: 0.9.48
+Current version: 0.9.53
 
 Primary maintained documents:
 

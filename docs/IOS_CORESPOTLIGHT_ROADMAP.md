@@ -189,7 +189,7 @@ Contact, calendar, and web review views are triage views over parsed local app d
 
 WhatsApp status remains `WHATSAPP_DB_NOT_FOUND` in the current test dataset because no iOS WhatsApp `ChatStorage.sqlite`, `ContactsV2.sqlite`, or WhatsApp `CallHistory.sqlite` was present. WhatsApp parsing still needs validation on a dataset containing those databases.
 
-## V0_9_48 iOS CoreSpotlight update
+## V0_9_53 iOS CoreSpotlight update
 
 - Added bounded `bplist00` ASCII/UTF-16BE object-string extraction for CoreSpotlight bplist/NSKeyedArchiver context rows.
 - Added KnowledgeC/CoreDuet database identification and support-mode parser scaffolding for `/app/inFocus`, `/document/open`, and `/app/intents` streams.

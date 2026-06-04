@@ -1,70 +1,74 @@
 # Vestigant Spotlight Release Notes
 
-Current version: 0.9.48
+Current version: 0.9.53
 
-## V0_9_48 - iOS investigative-value update
+## V0_9_53 - investigation details-pane usability update
 
-V0_9_48 reviews the uploaded V0_9_46 Windows/MSVC build log, reuse-cache thin upload, fresh-ZIP thin upload, and the new parser recommendations. The V0_9_46 build completed successfully, and both normal validation runs reached `complete_success`. No build/runtime hotfix was required.
-
-Changes:
-
-- Replaced the crude bounded bplist printable-token fallback with a conservative native `bplist00` object-string extractor for ASCII and UTF-16BE string objects, with size/object caps and fallback scanning for damaged/truncated blobs.
-- Preserved the bplist feature as bounded string discovery only; it does not claim full NSKeyedArchiver object-graph decoding.
-- Added KnowledgeC/CoreDuet database classification for `knowledgeC.db`, `interactionC.db`, and `globalKnowledge.db`, plus targeted extraction patterns for future support-mode app database materialization.
-- Added specialized KnowledgeC `ZOBJECT` parsing scaffolding for `/app/inFocus`, `/document/open`, and `/app/intents` streams when support/full app database record materialization is enabled.
-- Added investigator review views and exports for KnowledgeC/CoreDuet interaction summaries/events. Normal mode still skips broad app database record materialization by default.
-- Added an explicit `vw_investigator_time_anomalies` triage view/export that compares available Spotlight-derived usage/download/update fields and includes an interpretation warning.
-- Updated GUI iOS view registry entries, export package output, scripts, version metadata, and validation documentation.
-
-Validation here:
-
-- Reviewed V0_9_46 build log and confirmed source/banner/binary version consistency.
-- Reviewed V0_9_46 reuse-cache and fresh-ZIP thin outputs; both completed successfully.
-- Confirmed fresh-ZIP inventory remained at 2,245,783 files and 5,528 app database candidates.
-- Confirmed V0_9_46 already extracted/staged high-value databases but classified KnowledgeC/CoreDuet targets as generic database candidates.
-- Changed-file Linux `g++ -fsyntax-only` checks passed.
-- SQLite smoke test for new V0_9_48 views passed.
-- Raw-string size scan found no oversized raw-string literals above the configured threshold.
-
-Windows/MSVC validation still required:
-
-- Build V0_9_48 with `scripts\Build-V0_9_48.ps1`.
-- Run the reuse-cache validation.
-- Run Stage B fresh-ZIP validation.
-- For KnowledgeC parsed rows, run a support/full materialization profile after confirming normal-mode stability.
-
-## V0_9_44 - Fresh ZIP FFS inventory recovery and native parser efficiency
-
-V0_9_44 reviews the uploaded V0_9_43 build log, reuse-cache thin upload, and Stage B fresh-ZIP thin upload. The Windows/MSVC build succeeded and the Stage B fresh-ZIP run reached `complete_success`, but the fresh-ZIP iOS FFS/app-database inventory CSVs contained zero rows even though CoreSpotlight stores were extracted and parsed. The run status showed `ios_ffs_inventory_cpp_parser_complete files=0 app_databases=0 raw_records=0`, which indicates the raw 7-Zip inventory handoff did not parse correctly.
+V0_9_53 reviewed the uploaded V0_9_48 reuse-cache thin output and the investigator UI request for a bottom metadata/details window. The V0_9_48 reuse-cache run reached `complete_success`, normal mode parsed targeted high-value app databases, and the app parsed/super-timeline exports were populated. No ingest or parser hotfix was required.
 
 Changes:
 
-- Fixed the fresh-ZIP 7-Zip raw inventory handoff by avoiding Windows PowerShell UTF-16 redirection for `7z l -slt` output.
-- Added native C++ raw-listing line normalization that can decode older UTF-16LE/UTF-16BE PowerShell-redirection logs as a fallback.
-- Added a warning status if a raw 7-Zip listing exists but the C++ parser produces zero inventory records.
-- Converted the native metadata item parser to support zero-copy bounded item parsing from the decompressed metadata block payload, reducing per-item heap copying during native parse.
-- Improved bounded high-value probe deduplication and non-ASCII preservation for fallback/CoreSpotlight probes.
-- Hardened `cleanDecodedString` so trailing null/space padding does not prevent removal of the CoreSpotlight `0x16 0x02` trailer marker.
-- Updated version metadata, scripts, help, validation notes, and roadmap to V0_9_44.
+- Added a bottom read-only `Selected Row Metadata / All Fields` details pane to the shared investigation grid.
+- The pane appears in both macOS and iOS investigation review modes because those tabs share the Win32 review grid.
+- Selecting a row now displays the selected view name, row number, artifact ID when available, checked/tag state, and every visible result column vertically.
+- Long Spotlight/app metadata fields can be reviewed by vertical scrolling/copying instead of horizontal grid scrolling.
+- The pane refreshes after page loads, row selection changes, and checkmark toggles.
+- Increased ListView text retrieval for the details pane to reduce clipping of long metadata/snippet values.
+- Added an existing-case GUI test note/script so GUI-only feature testing can proceed without rerunning ingest.
+- Updated version metadata/scripts/docs to V0_9_53.
 
-Validation here:
+Reviewed V0_9_48 reuse-cache metrics:
 
-- Reviewed V0_9_43 fresh-ZIP thin output: run completed, 6 valid stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 date candidates, 438 bplist/NSKeyedArchiver detail rows, but 0 FFS inventory rows.
-- `src/app/app_runner.cpp` passed Linux `g++ -fsyntax-only` with warnings only.
-- `src/parsers/native_storedb_parser.cpp` passed Linux `g++ -fsyntax-only`.
-- Raw-string size scan found no oversized raw-string literals above the configured threshold.
-- Full Linux build was attempted; it progressed through native parser compilation and app_runner syntax, but full link/build was not completed in the available runtime window.
+- Status: `complete_success`
+- Stores / valid stores: 6 / 6
+- Raw records: 344,445
+- Raw key/value rows: 982,668
+- Raw date candidates: 336,037
+- Artifacts: 344,445
+- Timeline events: 336,037
+- Targeted app DB parser: 50 extracted/opened DBs; 525,409 parsed app records
+- `ios_app_parsed_record_summary.csv`: 16 rows
+- `investigator_super_timeline_sample.csv`: 5,000 sampled rows
+- `investigator_time_anomalies.csv`: 101 rows
+
+Validation performed here:
+
+- Static/structural validation of the Win32 details-pane symbols and event hook.
+- Brace/parenthesis balance check for `src/gui/win32_gui.cpp`.
+- `src/core/app_info.cpp` syntax check.
+- ZIP integrity checks after packaging.
 
 Windows/MSVC validation still required:
 
-- Build V0_9_44 with `scripts\Build-V0_9_44.ps1`.
-- Run the reuse-cache validation.
-- Re-run Stage B fresh-ZIP validation and confirm `ios_ffs_inventory_cpp_parser_complete` reports nonzero `raw_records` / `files`, and that `ios_ffs_file_inventory.csv` and `ios_app_database_inventory.csv` contain rows.
+- Build V0_9_53 with `scripts\Build-V0_9_53.ps1`.
+- Launch the GUI and open an existing completed case.
+- Confirm the bottom details pane updates while moving through result rows.
+- Reuse-cache/fresh-ZIP ingest reruns are optional unless later parser/staging changes are made.
 
-## V0_9_48
-- Reviewed V0_9_47 Windows build and both thin outputs; build, reuse-cache, and fresh-ZIP were stable.
-- Changed normal iOS mode to parse only already-extracted high-value app databases for investigator summaries. Full broad app DB materialization remains opt-in.
-- Added KnowledgeC/CoreDuet ZOBJECT + ZSTRUCTUREDMETADATA joined parsing where available.
-- Added deleted/recoverable Apple Messages table row extraction for tables already classified as MESSAGE_DELETED_OR_RECOVERABLE.
-- Added `vw_investigator_super_timeline`, normal export `investigator_super_timeline_sample.csv`, support/full export `investigator_super_timeline.csv`, and GUI view `iOS - Investigator Super Timeline`.
-- No LZFSE/LZVN codec was added; that remains deferred until vetted codec source is included and build-system integration can be validated.
+## V0_9_53 GUI V1 usability update
+
+- Added a platform-scoped View Set selector for MacOS and iOS investigation tabs.
+- Presets: Recommended V1, Timeline / Activity, Text / Content, App DB / KnowledgeC, Diagnostics / Coverage, Show All.
+- Added grouped RichEdit selected-row details pane with text/content first, dates second, then paths, people/apps, status, provenance, counts, and other fields.
+- Added existing-case schema/view upgrade on open so newly added SQL views can appear without re-ingest when the case DB is writable.
+- Added review_view_preferences schema table for future per-case custom view ordering/visibility.
+
+## V0_9_53
+
+GUI usability refinement for the investigation grid:
+
+- Selected-row metadata is now shown in a Field / Value layout, with the field name on the left and value on the right.
+- The details pane keeps text/content first, dates second, and grouped forensic/provenance fields after that.
+- A draggable splitter was added above the details pane so the investigator can adjust the grid/detail height while reviewing results.
+- This is a GUI-only change; no ingest, parser, cache, or export behavior was intentionally changed.
+
+## V0_9_53
+
+GUI-only correction for the selected-row details pane:
+
+- Forces selected-row details to be a real Win32 ListView report control with two columns: Field and Metadata / Value.
+- Creates details controls hidden by default and shows them only on MacOS/iOS investigation tabs.
+- Adds active-tab visibility enforcement during layout/resize so the Case Information and Tags / Notes tabs cannot show the row-details pane.
+- Removes RichEdit loading from this path to eliminate accidental/stale RichEdit rendering and make the table implementation unambiguous.
+- Updates the startup log to identify the V0_9_53 details-table build.
+- No parser, ingest, cache, export, ZIP, FFS inventory, app DB, or forensic interpretation logic changed.

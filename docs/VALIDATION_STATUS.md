@@ -1,32 +1,42 @@
 # Vestigant Spotlight Validation Status
 
-Current version: 0.9.48
+Current version: 0.9.53
 
-## Uploaded V0_9_46 results reviewed
+## V0_9_53 local validation
 
-- Windows/MSVC build log: successful; source version and binary both report 0.9.46.
-- Reuse-cache thin output: `complete_success`.
-- Fresh-ZIP thin output: `complete_success`.
-- Fresh-ZIP inventory: 2,245,783 FFS file rows and 5,528 app database candidates.
-- CoreSpotlight metrics remained stable: 6 valid stores, 344,445 raw records, 982,668 raw key/value rows, 336,037 raw date candidates, 344,445 artifacts, and 336,037 timeline events.
-- Bplist/NSKeyedArchiver detail rows remained 438 in the V0_9_46 normal run.
+Reviewed uploaded V0_9_48 reuse-cache thin output:
 
-## V0_9_48 validation performed here
+- Last stage: `complete_success`
+- Stores / valid stores: 6 / 6
+- Raw records: 344,445
+- Raw key/value rows: 982,668
+- Raw date candidates: 336,037
+- Artifacts: 344,445
+- Timeline events: 336,037
+- Targeted app DB parser: 50 extracted/opened databases; 525,409 parsed app records
+- `ios_app_parsed_record_summary.csv`: 16 rows
+- `investigator_super_timeline_sample.csv`: 5,000 sampled rows
+- `investigator_time_anomalies.csv`: 101 rows
 
-- `src/parsers/native_storedb_parser.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
-- `src/app/app_runner.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
-- `src/db/case_db.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
-- `src/export_sql/sqlite_exporter.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
-- `src/core/app_info.cpp`: Linux `g++ -std=c++20 -fsyntax-only` passed.
-- SQLite smoke test for `vw_investigator_time_anomalies`, `vw_ios_knowledgec_interaction_events`, and `vw_ios_knowledgec_interaction_summary` passed.
-- Raw-string size scan found 0 oversized raw literals above the configured threshold.
-- Classifier simulation against the V0_9_46 fresh-ZIP app database inventory predicts new KnowledgeC/CoreDuet target categories for `knowledgeC.db`, `interactionC.db`, and `globalKnowledge.db` while preserving the 5,528-row app DB candidate set.
+Changed source validation performed in this environment:
 
-## Required Windows validation
+- Reviewed and patched `src/gui/win32_gui.cpp` for the details pane.
+- Performed structural/static checks for expected Win32 symbols and details-pane event hook.
+- Verified version metadata updated to 0.9.53.
+- Verified source/patch ZIP integrity after packaging.
 
-1. Run `scripts\Build-V0_9_48.ps1`.
-2. Confirm CLI reports `Vestigant Spotlight v0.9.48`.
-3. Run `VestigantSpotlightTests.exe`.
-4. Run reuse-cache test and confirm `complete_success`.
-5. Run Stage B fresh-ZIP test and confirm FFS/app-database inventory remains nonzero and KnowledgeC/CoreDuet targets are classified/extracted.
-6. Run a support/full app DB materialization profile when ready to validate KnowledgeC parsed event rows.
+Validation limits:
+
+- Windows/MSVC GUI compile/link was not run here.
+- Native Win32 UI behavior must be validated on the Windows test system.
+- No parser or ingest behavior was intentionally changed in V0_9_53, so reuse-cache/fresh-ZIP reruns are optional unless GUI build/test exposes an issue.
+
+## V0_9_53 expected Windows verification
+
+- Build banner reports source version 0.9.53.
+- Binary reports `Vestigant Spotlight v0.9.53`.
+- GUI opens an existing completed case.
+- MacOS and iOS investigation tabs both show the bottom `Selected Row Metadata / All Fields` pane.
+- Selecting rows and using arrow keys updates the pane.
+- Long values can be reviewed vertically and copied from the pane.
+- Search/filter/sort/export/checkmark/tag workflows still operate.

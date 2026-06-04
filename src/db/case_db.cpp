@@ -1183,6 +1183,15 @@ CREATE TABLE IF NOT EXISTS investigator_notes (
 CREATE INDEX IF NOT EXISTS idx_artifact_tags_artifact ON artifact_tags(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifact_tags_tag ON artifact_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_investigator_notes_target ON investigator_notes(target_type, target_id);
+CREATE TABLE IF NOT EXISTS review_view_preferences (
+  platform TEXT NOT NULL,
+  view_name TEXT NOT NULL,
+  is_visible INTEGER NOT NULL DEFAULT 1,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  preset_name TEXT DEFAULT 'Recommended V1',
+  updated_utc TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(platform, view_name)
+);
 CREATE TABLE IF NOT EXISTS gui_checked_artifacts (
   artifact_id INTEGER PRIMARY KEY,
   checked_utc TEXT,
@@ -5617,7 +5626,7 @@ UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diag
        'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
 FROM vw_parser_diagnostics_action_summary
 UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
-       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_48 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_53 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
 FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary
 UNION ALL SELECT '09_super_timeline','timeline','iOS - Investigator Super Timeline','vw_investigator_super_timeline',CAST(COUNT(*) AS TEXT),
        'Unified chronological surface combining normalized Spotlight timeline, targeted app database events, KnowledgeC/CoreDuet rows, and usage evidence where available.'
@@ -5647,7 +5656,7 @@ SELECT kv.raw_kv_id,
        CASE WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=0')>0 THEN 'BPLIST_DETECTED_NO_NSKEYED_MARKER'
             WHEN instr(lower(kv.field_value),'nskeyedarchiver_field_count=')>0 THEN 'NSKEYEDARCHIVER_MARKER_DETECTED'
             ELSE 'BPLIST_OR_NSKEYED_CONTEXT_DETECTED' END AS bplist_detection_status,
-       'V0_9_48 bounded bplist object-string discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
+       'V0_9_53 bounded bplist object-string discovery for iOS CoreSpotlight binary plist / NSKeyedArchiver payloads. This is not a full NSKeyedArchiver object-graph decode; validate against raw field values before asserting app-specific meaning.' AS interpretation_note
 FROM raw_key_values kv
 LEFT JOIN raw_records r
   ON r.source_id=kv.source_id
@@ -5674,7 +5683,7 @@ FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail
 GROUP BY source_id,store_guid,source_db,bplist_detection_status;
 )VSQL33"}));
 
-    // V0_9_48: explicit investigator time anomaly and KnowledgeC/CoreDuet
+    // V0_9_53: explicit investigator time anomaly and KnowledgeC/CoreDuet
     // interaction views. These are triage surfaces and preserve provenance; they
     // do not assert misconduct without source-field validation.
     exec(joinSql({R"VSQL47(

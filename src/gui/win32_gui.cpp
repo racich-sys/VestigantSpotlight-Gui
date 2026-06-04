@@ -5,12 +5,17 @@
 #include "app/app_runner.h"
 #include "core/app_info.h"
 #include "db/sqlite_compat.h"
+#include "db/case_db.h"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 #include <windows.h>
 #include <windowsx.h>
 #include <commctrl.h>
+#ifndef _RICHEDIT_VER
+#define _RICHEDIT_VER 0x0500
+#endif
+#include <richedit.h>
 #include <shlobj.h>
 #include <commdlg.h>
 #include <string>
@@ -44,7 +49,7 @@ HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gNoPreserve{}, gCoreDecode{}, gIngestStatus{}, gIngestProgress{};
 HWND gFullNative{}, gMaxRecords{}, gMaxBlocks{}, gVerbose{}, gExportProfile{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 HWND gTagList{}, gTagName{}, gTagNote{}, gTaggedList{}, gTagSummary{};
 HWND gIosStatus{}, gIosReadiness{}, gIosPlan{};
 std::vector<HWND> gProcessControls;
@@ -73,7 +78,16 @@ std::thread gReviewThread;
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
 bool gIosReviewMode = false;
+int gActiveTabIndex = 0;
 HWND gReviewViewTooltip{};
+HMODULE gRichEditModule{};
+const wchar_t* gRichEditClassName = L"EDIT";
+bool gRichEditAvailable = false;
+int gReviewViewProfileMode = 0; // 0 Recommended V1, 1 Timeline, 2 Text, 3 App/KnowledgeC, 4 Diagnostics, 5 Show All
+int gReviewDetailsPaneHeight = 260;
+bool gReviewDetailsSplitterDragging = false;
+int gReviewDetailsSplitterDragStartY = 0;
+int gReviewDetailsPaneHeightAtDragStart = 260;
 std::wstring gReviewViewTooltipText;
 int gReviewViewHoverListIndex = -1;
 struct ContextTagCommand { UINT commandId; long long tagId; int operation; };
@@ -99,7 +113,7 @@ void cancelAndJoinReviewThreadNoThrow() {
 
 constexpr int ID_RUN = 1001, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006;
 constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117;
-constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112;
+constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
 constexpr int ID_CTX_SORT_ASC = 2101, ID_CTX_SORT_DESC = 2102, ID_CTX_FILTER_SEARCH = 2103, ID_CTX_CLEAR_FILTER = 2104;
 constexpr int ID_CTX_TOGGLE_CHECK = 2110, ID_CTX_APPLY_TAG_ROW = 2111, ID_CTX_APPLY_TAG_CHECKED = 2112, ID_CTX_REMOVE_TAG_ROW = 2113, ID_CTX_REMOVE_TAG_CHECKED = 2114, ID_CTX_CLEAR_CHECKED = 2115;
@@ -113,6 +127,9 @@ constexpr int WM_APPEND_LOG = WM_APP + 1;
 constexpr int WM_SET_INGEST_STATUS = WM_APP + 2;
 constexpr int WM_SET_INGEST_PROGRESS = WM_APP + 3;
 constexpr int WM_REVIEW_PAGE_RESULT = WM_APP + 4;
+constexpr int kReviewDetailsMinHeight = 120;
+constexpr int kReviewDetailsDefaultHeight = 260;
+constexpr int kReviewDetailsSplitterHeight = 8;
 
 struct ReviewPageResult {
     unsigned long long requestId = 0;
@@ -474,6 +491,18 @@ void ensureGuiReviewViews(sqlite3* db) {
     ensureGuiColumn("raw_date_candidates", "association_status", "TEXT");
     ensureGuiColumn("raw_date_candidates", "association_confidence", "TEXT");
 
+
+    execGuiSql(R"SQL(
+CREATE TABLE IF NOT EXISTS review_view_preferences (
+  platform TEXT NOT NULL,
+  view_name TEXT NOT NULL,
+  is_visible INTEGER NOT NULL DEFAULT 1,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  preset_name TEXT DEFAULT 'Recommended V1',
+  updated_utc TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(platform, view_name)
+);
+)SQL");
 
     execGuiSql(R"SQL(
 CREATE TABLE IF NOT EXISTS artifact_date_summary (
@@ -4134,6 +4163,21 @@ FROM ios_app_database_inventory;
 
 }
 
+
+void upgradeCaseSchemaForGuiNoThrow(const std::wstring& dbPath) {
+    if (dbPath.empty()) return;
+    try {
+        CaseDatabase db;
+        db.open(fs::path(dbPath));
+        db.initializeSchema();
+        db.close();
+    } catch (...) {
+        // Some evidence/case locations may be read-only. The GUI will still open the
+        // case using existing tables/views; missing newly-added views will simply be
+        // hidden by sqliteObjectExists().
+    }
+}
+
 class ReadOnlyDb {
 public:
     explicit ReadOnlyDb(const std::wstring& path) {
@@ -4234,8 +4278,112 @@ bool isIosPrimarySpotlightReviewView(const ViewSpec& v) {
     return iosPrimarySpotlightReviewRank(v) >= 0;
 }
 
+std::wstring lowerW(std::wstring s);
+bool containsAnyW(const std::wstring& haystackLower, std::initializer_list<const wchar_t*> needles);
+
+int iosReviewViewSortRank(const ViewSpec& v) {
+    const std::wstring name = v.displayName ? v.displayName : L"";
+    // V0_9_53: expose all existing iOS views, but keep the most useful V1
+    // investigative surfaces at the top so they are easy to find in mature cases.
+    static const wchar_t* kV1PriorityNames[] = {
+        L"iOS - Investigator Overview",
+        L"iOS - Investigator Super Timeline",
+        L"iOS - Investigator Time Anomalies",
+        L"iOS - Unified Keyword Search Surface",
+        L"iOS - Spotlight Text Context Review",
+        L"iOS - High-Value Spotlight Text Context",
+        L"iOS - Missing From FFS Text Detail",
+        L"iOS - High-Value Missing From FFS",
+        L"iOS - Direct User Message Review",
+        L"iOS - User-Focus Message Body Review",
+        L"iOS - Spotlight Message Body Review",
+        L"iOS - Spotlight Message Text Review",
+        L"iOS - Spotlight Communications Investigator Review",
+        L"iOS - Communications Review Records",
+        L"iOS - KnowledgeC Interaction Events",
+        L"iOS - Parsed App Records",
+        L"iOS - Apple Messages Parsed Records",
+        L"iOS - WhatsApp Parsed Records",
+        L"iOS - Web History Review",
+        L"iOS - Calendar Review",
+        L"iOS - Contact Identity Review",
+        L"iOS - Bplist/NSKeyedArchiver Detail",
+        L"iOS - Store Parse Summary"
+    };
+    for (int i = 0; i < static_cast<int>(sizeof(kV1PriorityNames) / sizeof(kV1PriorityNames[0])); ++i) {
+        if (name == kV1PriorityNames[i]) return i;
+    }
+    const int primaryRank = iosPrimarySpotlightReviewRank(v);
+    if (primaryRank >= 0) return 200 + primaryRank;
+    if (name.find(L"Summary") != std::wstring::npos || name.find(L"Dashboard") != std::wstring::npos) return 500;
+    if (name.find(L"Parsed") != std::wstring::npos || name.find(L"Review") != std::wstring::npos) return 650;
+    if (name.find(L"Timeline") != std::wstring::npos || name.find(L"Date") != std::wstring::npos) return 700;
+    if (name.find(L"Inventory") != std::wstring::npos || name.find(L"Diagnostics") != std::wstring::npos) return 900;
+    return 800;
+}
+
+
+int macReviewViewSortRank(const ViewSpec& v) {
+    const std::wstring name = v.displayName ? v.displayName : L"";
+    static const wchar_t* kV1PriorityNames[] = {
+        L"Investigator - Keyword Search Values",
+        L"Investigator - Usage Timeline",
+        L"Investigator - Usage Artifacts",
+        L"Investigator - Object Usage Summary",
+        L"Investigator - Path Reconstruction",
+        L"Investigator - WhereFroms / Downloads",
+        L"Investigator - All Artifact Dates",
+        L"Investigator - Date Attribution",
+        L"Investigator - Snapshot Date Warnings",
+        L"Investigator - Content Type Summary"
+    };
+    for (int i = 0; i < static_cast<int>(sizeof(kV1PriorityNames) / sizeof(kV1PriorityNames[0])); ++i) {
+        if (name == kV1PriorityNames[i]) return i;
+    }
+    const std::wstring n = lowerW(name);
+    if (containsAnyW(n, {L"timeline", L"usage", L"date"})) return 300;
+    if (containsAnyW(n, {L"path", L"wherefrom", L"download"})) return 400;
+    if (containsAnyW(n, {L"summary", L"dashboard"})) return 500;
+    if (containsAnyW(n, {L"diagnostic", L"coverage", L"parser", L"raw", L"inventory"})) return 900;
+    return 700;
+}
+
+bool reviewViewMatchesProfile(const ViewSpec& v) {
+    if (gReviewViewProfileMode == 5) return true; // Show All
+    const std::wstring name = v.displayName ? v.displayName : L"";
+    const std::wstring n = lowerW(name);
+    switch (gReviewViewProfileMode) {
+    case 1: // Timeline / Activity
+        return containsAnyW(n, {L"timeline", L"date", L"time", L"usage", L"used", L"knowledgec", L"interaction", L"anomal"});
+    case 2: // Text / Content
+        return containsAnyW(n, {L"text", L"message", L"content", L"keyword", L"entity", L"human", L"bplist", L"url", L"contact"});
+    case 3: // App DB / KnowledgeC
+        return containsAnyW(n, {L"app", L"knowledgec", L"parsed", L"messages", L"whatsapp", L"web", L"calendar", L"contact", L"database", L"interaction"});
+    case 4: // Diagnostics / Coverage
+        return containsAnyW(n, {L"diagnostic", L"coverage", L"parser", L"parse", L"inventory", L"summary", L"target", L"gap", L"dbstr", L"dictionary", L"field", L"decode"});
+    case 0: // Recommended V1
+    default:
+        if (gIosReviewMode) return iosReviewViewSortRank(v) < 850;
+        return macReviewViewSortRank(v) < 850;
+    }
+}
+
+const wchar_t* reviewViewProfileDescription() {
+    switch (gReviewViewProfileMode) {
+    case 1: return L"Timeline / Activity";
+    case 2: return L"Text / Content";
+    case 3: return L"App DB / KnowledgeC";
+    case 4: return L"Diagnostics / Coverage";
+    case 5: return L"Show All";
+    default: return L"Recommended V1";
+    }
+}
+
 bool viewVisibleForCurrentInvestigationTab(const ViewSpec& v) {
-    if (gIosReviewMode) return isIosReviewView(v) && isIosPrimarySpotlightReviewView(v);
+    // V0_9_53: the iOS tab is now mature enough to show every useful iOS review
+    // surface that exists in the case DB. The macOS tab remains isolated from iOS
+    // and shared iOS-only views.
+    if (gIosReviewMode) return isIosReviewView(v) || isIosOnlySharedReviewView(v);
     return !isIosReviewView(v) && !isIosOnlySharedReviewView(v);
 }
 
@@ -4246,21 +4394,24 @@ void populateViewList(sqlite3* db = nullptr) {
     std::vector<size_t> candidates;
     for (size_t i = 0; i < views().size(); ++i) {
         if (!viewVisibleForCurrentInvestigationTab(views()[i])) continue;
+        if (!reviewViewMatchesProfile(views()[i])) continue;
         if (!db || sqliteObjectExists(db, views()[i].tableName)) candidates.push_back(i);
     }
     if (candidates.empty()) {
+        // Fallback: if a profile is too narrow for this database, show every
+        // platform-appropriate existing view instead of leaving the investigator
+        // with an empty list.
         for (size_t i = 0; i < views().size(); ++i) {
-            if (viewVisibleForCurrentInvestigationTab(views()[i])) candidates.push_back(i);
+            if (!viewVisibleForCurrentInvestigationTab(views()[i])) continue;
+            if (!db || sqliteObjectExists(db, views()[i].tableName)) candidates.push_back(i);
         }
     }
-    if (gIosReviewMode) {
-        std::stable_sort(candidates.begin(), candidates.end(), [](size_t a, size_t b) {
-            const int ra = iosPrimarySpotlightReviewRank(views()[a]);
-            const int rb = iosPrimarySpotlightReviewRank(views()[b]);
-            if (ra != rb) return ra < rb;
-            return a < b;
-        });
-    }
+    std::stable_sort(candidates.begin(), candidates.end(), [](size_t a, size_t b) {
+        const int ra = gIosReviewMode ? iosReviewViewSortRank(views()[a]) : macReviewViewSortRank(views()[a]);
+        const int rb = gIosReviewMode ? iosReviewViewSortRank(views()[b]) : macReviewViewSortRank(views()[b]);
+        if (ra != rb) return ra < rb;
+        return wcscmp(views()[a].displayName, views()[b].displayName) < 0;
+    });
     for (size_t i : candidates) {
         gVisibleViews.push_back(i);
         SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(views()[i].displayName));
@@ -5157,6 +5308,9 @@ void setReviewLoadingState(bool loading) {
     if (gExportChecked) EnableWindow(gExportChecked, loading ? FALSE : TRUE);
 }
 
+void updateRowDetailsPanel();
+void layoutControls(HWND hwnd);
+
 void populateReviewListFromResult(const ReviewPageResult& result) {
     if (result.viewIndex < 0 || result.viewIndex >= static_cast<int>(views().size())) {
         throw std::runtime_error("review result references an invalid view index");
@@ -5220,15 +5374,18 @@ void completeReviewPageLoad(ReviewPageResult* result) {
             gCurrentRowArtifactIds.clear();
             gCurrentHasNext = false;
             setReviewSummary(L"ERROR loading review page: " + result->error);
+            updateRowDetailsPanel();
         } else {
             populateReviewListFromResult(*result);
             setReviewSummary(result->summary);
+            updateRowDetailsPanel();
         }
     } catch (const std::exception& ex) {
         clearListColumns();
         gCurrentRowArtifactIds.clear();
         gCurrentHasNext = false;
         setReviewSummary(L"ERROR applying review page result: " + widen(ex.what()));
+        updateRowDetailsPanel();
     }
     setReviewLoadingState(false);
     delete result;
@@ -5600,11 +5757,240 @@ void exportTaggedArtifacts(HWND owner) {
 }
 
 
+
 std::wstring listViewText(HWND list, int row, int col) {
-    wchar_t buf[4096]{};
-    ListView_GetItemText(list, row, col, buf, 4096);
-    return buf;
+    if (!list || row < 0 || col < 0) return L"";
+    std::vector<wchar_t> buf(65536);
+    ListView_GetItemText(list, row, col, buf.data(), static_cast<int>(buf.size()));
+    return std::wstring(buf.data());
 }
+
+std::wstring lowerW(std::wstring s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+    return s;
+}
+
+bool containsAnyW(const std::wstring& haystackLower, std::initializer_list<const wchar_t*> needles) {
+    for (const wchar_t* n : needles) {
+        if (n && haystackLower.find(n) != std::wstring::npos) return true;
+    }
+    return false;
+}
+
+bool looksEmptyDetailsValue(const std::wstring& value) {
+    if (value.empty()) return true;
+    const std::wstring v = lowerW(value);
+    return v == L"(empty)" || v == L"null" || v == L"<null>";
+}
+
+enum class DetailGroup {
+    Header = -1,
+    Text = 0,
+    Dates,
+    Paths,
+    PeopleApps,
+    StatusInterpretation,
+    IdentifiersProvenance,
+    CountsSizes,
+    Other
+};
+
+struct DetailField {
+    std::wstring column;
+    std::wstring value;
+    DetailGroup group = DetailGroup::Other;
+    std::size_t originalIndex = 0;
+};
+
+DetailGroup classifyDetailField(const std::wstring& columnName) {
+    const std::wstring c = lowerW(columnName);
+    if (containsAnyW(c, {L"text", L"snippet", L"body", L"message", L"details", L"summary", L"sample", L"value", L"title", L"subject", L"content", L"searchable"})) return DetailGroup::Text;
+    if (containsAnyW(c, {L"utc", L"date", L"time", L"timestamp", L"created", L"modified", L"accessed", L"downloaded", L"used", L"event_utc", L"start", L"end"})) return DetailGroup::Dates;
+    if (containsAnyW(c, {L"path", L"url", L"file", L"folder", L"directory", L"source_db", L"database", L"normalized_path", L"zip_entry", L"location"})) return DetailGroup::Paths;
+    if (containsAnyW(c, {L"contact", L"participant", L"thread", L"sender", L"recipient", L"phone", L"email", L"bundle", L"app", L"domain", L"category", L"source_module", L"target"})) return DetailGroup::PeopleApps;
+    if (containsAnyW(c, {L"status", L"confidence", L"interpretation", L"warning", L"reason", L"anomaly", L"note", L"residency", L"deleted", L"missing", L"matched"})) return DetailGroup::StatusInterpretation;
+    if (containsAnyW(c, {L"id", L"guid", L"inode", L"store", L"row", L"primary", L"source", L"table", L"locator", L"provenance", L"hash", L"sha"})) return DetailGroup::IdentifiersProvenance;
+    if (containsAnyW(c, {L"count", L"bytes", L"size", L"rows", L"records", L"duration", L"score"})) return DetailGroup::CountsSizes;
+    return DetailGroup::Other;
+}
+
+const wchar_t* detailGroupTitle(DetailGroup g) {
+    switch (g) {
+    case DetailGroup::Text: return L"TEXT / HUMAN-READABLE CONTENT";
+    case DetailGroup::Dates: return L"DATES / TIME PROVENANCE";
+    case DetailGroup::Paths: return L"PATHS / URLS / DATABASE LOCATIONS";
+    case DetailGroup::PeopleApps: return L"PEOPLE / APPS / RECORD CONTEXT";
+    case DetailGroup::StatusInterpretation: return L"STATUS / INTERPRETATION / WARNINGS";
+    case DetailGroup::IdentifiersProvenance: return L"IDENTIFIERS / PROVENANCE";
+    case DetailGroup::CountsSizes: return L"COUNTS / SIZES / METRICS";
+    default: return L"OTHER VISIBLE FIELDS";
+    }
+}
+
+COLORREF detailGroupColor(DetailGroup g) {
+    switch (g) {
+    case DetailGroup::Text: return RGB(232, 241, 252);
+    case DetailGroup::Dates: return RGB(252, 244, 228);
+    case DetailGroup::Paths: return RGB(230, 246, 241);
+    case DetailGroup::PeopleApps: return RGB(242, 236, 250);
+    case DetailGroup::StatusInterpretation: return RGB(252, 232, 232);
+    case DetailGroup::IdentifiersProvenance: return RGB(241, 241, 241);
+    case DetailGroup::CountsSizes: return RGB(235, 248, 235);
+    default: return RGB(248, 248, 248);
+    }
+}
+
+int selectedOrFocusedReviewRow() {
+    if (!gList) return -1;
+    int sel = ListView_GetNextItem(gList, -1, LVNI_SELECTED);
+    if (sel >= 0) return sel;
+    sel = ListView_GetNextItem(gList, -1, LVNI_FOCUSED);
+    if (sel >= 0) return sel;
+    return -1;
+}
+
+std::wstring normalizeDetailValueForTable(std::wstring value) {
+    if (value.empty()) return L"(empty)";
+    std::wstring out;
+    out.reserve(value.size() + 32);
+    bool lastWasSpace = false;
+    for (wchar_t ch : value) {
+        if (ch == L'\r') continue;
+        if (ch == L'\n' || ch == L'\t') ch = L' ';
+        if (ch == L' ') {
+            if (lastWasSpace) continue;
+            lastWasSpace = true;
+        } else {
+            lastWasSpace = false;
+        }
+        out += ch;
+    }
+    while (!out.empty() && out.front() == L' ') out.erase(out.begin());
+    while (!out.empty() && out.back() == L' ') out.pop_back();
+    if (out.empty()) return L"(empty)";
+    return out;
+}
+
+void ensureDetailsListColumns() {
+    if (!gRowDetails) return;
+    HWND header = ListView_GetHeader(gRowDetails);
+    if (header && Header_GetItemCount(header) >= 2) return;
+    LVCOLUMNW col{};
+    col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+    col.pszText = const_cast<LPWSTR>(L"Field");
+    col.cx = 260;
+    col.iSubItem = 0;
+    ListView_InsertColumn(gRowDetails, 0, &col);
+    col.pszText = const_cast<LPWSTR>(L"Metadata / Value");
+    col.cx = 900;
+    col.iSubItem = 1;
+    ListView_InsertColumn(gRowDetails, 1, &col);
+}
+
+void resizeDetailsListColumns() {
+    if (!gRowDetails) return;
+    RECT rc{};
+    GetClientRect(gRowDetails, &rc);
+    int width = std::max(500, static_cast<int>(rc.right - rc.left) - GetSystemMetrics(SM_CXVSCROLL) - 8);
+    int fieldW = std::min(360, std::max(210, width / 4));
+    ListView_SetColumnWidth(gRowDetails, 0, fieldW);
+    ListView_SetColumnWidth(gRowDetails, 1, std::max(260, width - fieldW - 4));
+}
+
+void clearDetailsList() {
+    if (!gRowDetails) return;
+    ensureDetailsListColumns();
+    ListView_DeleteAllItems(gRowDetails);
+}
+
+void addDetailsListRow(const std::wstring& field, const std::wstring& value, bool section, DetailGroup group = DetailGroup::Other) {
+    if (!gRowDetails) return;
+    ensureDetailsListColumns();
+    const int row = ListView_GetItemCount(gRowDetails);
+    LVITEMW item{};
+    item.mask = LVIF_TEXT | LVIF_PARAM;
+    item.iItem = row;
+    item.iSubItem = 0;
+    item.pszText = const_cast<LPWSTR>(field.c_str());
+    item.lParam = section ? (1000 + static_cast<LPARAM>(group)) : 0;
+    ListView_InsertItem(gRowDetails, &item);
+    std::wstring v = section ? L"" : normalizeDetailValueForTable(value);
+    ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(v.c_str()));
+}
+
+void setDetailsPaneMessage(const std::wstring& message) {
+    clearDetailsList();
+    addDetailsListRow(L"Status", message, false);
+}
+
+void appendDetailsSectionToList(DetailGroup g, const std::vector<DetailField>& fields) {
+    addDetailsListRow(detailGroupTitle(g), L"", true, g);
+    if (fields.empty()) {
+        addDetailsListRow(L"(No visible fields)", L"", false);
+        return;
+    }
+    for (const auto& f : fields) {
+        addDetailsListRow(f.column, f.value, false, f.group);
+    }
+}
+
+void updateRowDetailsPanel() {
+    if (!gRowDetails) return;
+    if (!gList) {
+        setDetailsPaneMessage(L"Open a case and select an investigation row to view all fields here.");
+        return;
+    }
+
+    const int sel = selectedOrFocusedReviewRow();
+    if (sel < 0) {
+        setDetailsPaneMessage(L"Select a row to view all fields for the current investigation result. This pane is a two-column Field / Metadata table and can be resized by dragging the divider above it.");
+        return;
+    }
+
+    const int viewIdx = selectedViewIndex();
+    if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) {
+        setDetailsPaneMessage(L"Selected view is unavailable.");
+        return;
+    }
+    const auto& v = views()[static_cast<std::size_t>(viewIdx)];
+
+    std::map<DetailGroup, std::vector<DetailField>> grouped;
+    for (std::size_t c = 0; c < v.columns.size(); ++c) {
+        DetailField f;
+        f.column = widen(v.columns[c]);
+        f.value = listViewText(gList, sel, static_cast<int>(c + 2));
+        if (f.value.empty()) f.value = L"(empty)";
+        f.group = classifyDetailField(f.column);
+        f.originalIndex = c;
+        grouped[f.group].push_back(std::move(f));
+    }
+
+    const DetailGroup groupOrder[] = {
+        DetailGroup::Text,
+        DetailGroup::Dates,
+        DetailGroup::Paths,
+        DetailGroup::PeopleApps,
+        DetailGroup::StatusInterpretation,
+        DetailGroup::IdentifiersProvenance,
+        DetailGroup::CountsSizes,
+        DetailGroup::Other
+    };
+
+    clearDetailsList();
+    const std::wstring viewName = v.displayName ? v.displayName : L"";
+    const std::wstring artifactId = (sel < static_cast<int>(gCurrentRowArtifactIds.size())) ? widen(gCurrentRowArtifactIds[static_cast<std::size_t>(sel)]) : L"";
+    addDetailsListRow(L"View", viewName, false);
+    addDetailsListRow(L"Row", std::to_wstring(sel + 1), false);
+    if (!artifactId.empty()) addDetailsListRow(L"Artifact ID", artifactId, false);
+    addDetailsListRow(L"Checked", listViewText(gList, sel, 0), false);
+    const std::wstring tags = listViewText(gList, sel, 1);
+    if (!tags.empty()) addDetailsListRow(L"Tags", tags, false);
+
+    for (DetailGroup g : groupOrder) appendDetailsSectionToList(g, grouped[g]);
+    resizeDetailsListColumns();
+    if (ListView_GetItemCount(gRowDetails) > 0) ListView_EnsureVisible(gRowDetails, 0, FALSE);
+}
+
 std::string selectedArtifactIdFromReview() {
     std::vector<std::string> ids = selectedArtifactIdsFromReview(false);
     return ids.front();
@@ -5920,13 +6306,26 @@ void worker() {
     EnableWindow(gRun, TRUE);
 }
 
+bool isInvestigationTabIndex(int index) {
+    return index == 1 || index == 2;
+}
+
+void enforceDetailsPaneTabVisibility() {
+    const int cmd = isInvestigationTabIndex(gActiveTabIndex) ? SW_SHOW : SW_HIDE;
+    if (gRowDetailsSplitter) ShowWindow(gRowDetailsSplitter, cmd);
+    if (gRowDetailsLabel) ShowWindow(gRowDetailsLabel, cmd);
+    if (gRowDetails) ShowWindow(gRowDetails, cmd);
+}
+
 void showTab(int index) {
+    gActiveTabIndex = index;
     if (index == 1) gIosReviewMode = false;
     else if (index == 2) gIosReviewMode = true;
     for (HWND h : gProcessControls) ShowWindow(h, index == 0 ? SW_SHOW : SW_HIDE);
-    const bool showSharedReview = (index == 1) || (index == 2 && gIosReviewMode);
+    const bool showSharedReview = isInvestigationTabIndex(index);
     for (HWND h : gReviewControls) ShowWindow(h, showSharedReview ? SW_SHOW : SW_HIDE);
-    for (HWND h : gIosControls) ShowWindow(h, (index == 2 && !gIosReviewMode) ? SW_SHOW : SW_HIDE);
+    enforceDetailsPaneTabVisibility();
+    for (HWND h : gIosControls) ShowWindow(h, SW_HIDE);
     for (HWND h : gTagControls) ShowWindow(h, index == 3 ? SW_SHOW : SW_HIDE);
     if (index == 1 || index == 2) populateViewListForCurrentContextNoThrow();
     if (index == 3) refreshTagList();
@@ -5976,7 +6375,7 @@ void createProcessControls(HWND hwnd) {
     SendMessageW(gIngestProgress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(gIngestProgress, PBM_SETPOS, 0, 0);
     gLog = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 16, y0 + 624, 966, 184, hwnd, nullptr, gInst, nullptr));
-    appendLog(L"V0_9_6 iOS investigation build: adds reusable iOS cache/intake support for very large FFS ZIP tests. For iOS/CoreSpotlight runs, the Evidence root / iOS cache case box may point to a prior completed case such as Q:\\SpotlightCase\\TestiOS_WhatsApp_V0_9_4 to skip large ZIP re-inventory/extraction.");
+    appendLog(L"V0_9_53 investigation build: forces selected-row details to a real two-column ListView table on MacOS/iOS investigation tabs only; Case Information and Tags tabs do not show row details.");
     appendLog(L"Default export profile is Investigator; use Full CSV only when needed.");
 }
 
@@ -5987,6 +6386,7 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             toggleReviewRowsAsBatch(rows);
             if (rows.size() == 1) focusReviewRow(rows.front() + 1, true);
             setReviewSummary(L"Toggled selected row checkmark(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())));
+            updateRowDetailsPanel();
             return 0;
         }
     }
@@ -5998,8 +6398,44 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             toggleReviewRowChecked(hit.iItem);
             focusReviewRow(hit.iItem + 1, true);
             setReviewSummary(L"Toggled checked state. Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())));
+            updateRowDetailsPanel();
             return 0;
         }
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+
+LRESULT CALLBACK ReviewDetailsSplitterSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    switch (msg) {
+    case WM_SETCURSOR:
+        SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+        return TRUE;
+    case WM_LBUTTONDOWN: {
+        POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        ClientToScreen(hwnd, &pt);
+        gReviewDetailsSplitterDragging = true;
+        gReviewDetailsSplitterDragStartY = pt.y;
+        gReviewDetailsPaneHeightAtDragStart = gReviewDetailsPaneHeight;
+        SetCapture(hwnd);
+        SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+        if (gReviewDetailsSplitterDragging && (wp & MK_LBUTTON)) {
+            POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            ClientToScreen(hwnd, &pt);
+            const int delta = pt.y - gReviewDetailsSplitterDragStartY;
+            gReviewDetailsPaneHeight = std::max(kReviewDetailsMinHeight, gReviewDetailsPaneHeightAtDragStart - delta);
+            if (HWND parent = GetParent(hwnd)) layoutControls(parent);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+    case WM_CAPTURECHANGED:
+        gReviewDetailsSplitterDragging = false;
+        if (GetCapture() == hwnd) ReleaseCapture();
+        return 0;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -6007,8 +6443,18 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 void createReviewControls(HWND hwnd) {
     const int y0 = 58;
     addReview(CreateWindowW(L"STATIC", L"Investigation Results Grid: choose a platform-scoped review view from the left, then search/filter/sort/export database-backed results.", WS_CHILD | WS_VISIBLE, 16, y0, 960, 22, hwnd, nullptr, gInst, nullptr));
-    labelR(hwnd, L"Views", 16, y0 + 32, 220, 22);
-    gReviewView = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 58, 230, 610, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW)), gInst, nullptr));
+    labelR(hwnd, L"View Set", 16, y0 + 32, 90, 22);
+    gReviewViewProfile = addReview(CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 86, y0 + 28, 160, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW_PROFILE)), gInst, nullptr));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Recommended V1"));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Timeline / Activity"));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Text / Content"));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"App DB / KnowledgeC"));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Diagnostics / Coverage"));
+    SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Show All"));
+    SendMessageW(gReviewViewProfile, CB_SETCURSEL, 0, 0);
+    applyUiFont(gReviewViewProfile);
+    labelR(hwnd, L"Views", 16, y0 + 62, 220, 22);
+    gReviewView = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 88, 230, 580, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW)), gInst, nullptr));
     SetWindowSubclass(gReviewView, ReviewViewListSubclassProc, 2, 0);
     // V0_9_17: do not create balloon tooltips for the view list. Hover updates
     // the help/summary panel above the table instead, which is less intrusive.
@@ -6034,6 +6480,17 @@ void createReviewControls(HWND hwnd) {
     gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     SetWindowSubclass(gList, ReviewListSubclassProc, 1, 0);
+    gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"↕ Drag to resize selected-row details", WS_CHILD | SS_CENTER | SS_NOTIFY, 262, y0 + 666, 720, 8, hwnd, nullptr, gInst, nullptr));
+    SetWindowSubclass(gRowDetailsSplitter, ReviewDetailsSplitterSubclassProc, 1, 0);
+    gRowDetailsLabel = addReview(CreateWindowW(L"STATIC", L"Selected Row Details - true two-column Field / Metadata table", WS_CHILD, 262, y0 + 674, 720, 20, hwnd, nullptr, gInst, nullptr));
+    gRowDetails = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr,
+        WS_CHILD | WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS,
+        262, y0 + 696, 720, 130, hwnd, nullptr, gInst, nullptr));
+    if (gRowDetails) {
+        ListView_SetExtendedListViewStyle(gRowDetails, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+        ensureDetailsListColumns();
+        setDetailsPaneMessage(L"Select a row to view all fields for the current investigation result. Field names are shown in the left column and metadata values are shown in the right column.");
+    }
 }
 
 void createTagControls(HWND hwnd) {
@@ -6136,13 +6593,29 @@ void layoutControls(HWND hwnd) {
     moveIf(gIngestProgress, 140, y0 + 584, right - 140, 30);
     moveIf(gLog, 16, y0 + 624, right - 16, std::max(120, bottom - (y0 + 624)));
 
-    moveIf(gReviewView, 16, y0 + 58, 230, std::max(220, bottom - (y0 + 58) - 20));
+    moveIf(gReviewViewProfile, 86, y0 + 28, 160, 160);
+    moveIf(gReviewView, 16, y0 + 88, 230, std::max(220, bottom - (y0 + 88) - 20));
     const int reviewX = 262;
     const int reviewW = right - reviewX;
     // Keep the search box from expanding over the Update/Cancel/Rows controls on wide windows.
     moveIf(gSearch, 326, y0 + 30, 250, 26);
     moveIf(gReviewSummary, reviewX, y0 + 136, reviewW, 58);
-    moveIf(gList, reviewX, y0 + 206, reviewW, std::max(240, bottom - (y0 + 206) - 20));
+    const int reviewBodyY = y0 + 206;
+    const int reviewBodyH = std::max(300, bottom - reviewBodyY - 20);
+    const int detailsLabelH = 20;
+    const int detailGap = 6;
+    const int splitterH = kReviewDetailsSplitterHeight;
+    const int maxDetailsPaneH = std::max(kReviewDetailsMinHeight, reviewBodyH - 170 - detailsLabelH - splitterH - detailGap);
+    if (gReviewDetailsPaneHeight <= 0) gReviewDetailsPaneHeight = kReviewDetailsDefaultHeight;
+    gReviewDetailsPaneHeight = std::min(std::max(gReviewDetailsPaneHeight, kReviewDetailsMinHeight), maxDetailsPaneH);
+    const int listH = std::max(150, reviewBodyH - gReviewDetailsPaneHeight - detailsLabelH - splitterH - detailGap);
+    const int splitterY = reviewBodyY + listH + detailGap;
+    moveIf(gList, reviewX, reviewBodyY, reviewW, listH);
+    moveIf(gRowDetailsSplitter, reviewX, splitterY, reviewW, splitterH);
+    moveIf(gRowDetailsLabel, reviewX, splitterY + splitterH, reviewW, detailsLabelH);
+    moveIf(gRowDetails, reviewX, splitterY + splitterH + detailsLabelH, reviewW, gReviewDetailsPaneHeight);
+    resizeDetailsListColumns();
+    enforceDetailsPaneTabVisibility();
     moveIf(gOpenDashboard, right - 248, y0 + 102, 116, 26);
     moveIf(gOpenReviewIndex, right - 126, y0 + 102, 126, 26);
 
@@ -6182,6 +6655,10 @@ void openCaseFromPath() {
         if (getText(gOut).empty()) setText(gOut, gCrashCaseDir);
     }
     gCurrentPage = 0;
+    // Opening an older completed case should make newly-added GUI review views
+    // available without requiring a re-ingest. This runs schema/view upgrades only;
+    // it does not alter parsed evidence rows.
+    upgradeCaseSchemaForGuiNoThrow(gOpenedCaseDb);
     try {
         ReadOnlyDb db(gOpenedCaseDb);
         populateViewList(db.get());
@@ -6219,6 +6696,29 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_NOTIFY: {
         LPNMHDR hdr = reinterpret_cast<LPNMHDR>(lp);
+        if (hdr && hdr->hwndFrom == gList && hdr->code == LVN_ITEMCHANGED) {
+            auto* pnmv = reinterpret_cast<LPNMLISTVIEW>(lp);
+            if ((pnmv->uChanged & LVIF_STATE) && ((pnmv->uNewState ^ pnmv->uOldState) & LVIS_SELECTED)) {
+                updateRowDetailsPanel();
+            }
+            return 0;
+        }
+        if (hdr && hdr->hwndFrom == gRowDetails && hdr->code == NM_CUSTOMDRAW) {
+            auto* cd = reinterpret_cast<NMLVCUSTOMDRAW*>(lp);
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                const LPARAM rowType = cd->nmcd.lItemlParam;
+                if (rowType >= 1000) {
+                    DetailGroup g = static_cast<DetailGroup>(rowType - 1000);
+                    cd->clrTextBk = detailGroupColor(g);
+                    cd->clrText = RGB(20, 20, 20);
+                    return CDRF_NEWFONT;
+                }
+                if ((cd->nmcd.dwItemSpec % 2) == 0) cd->clrTextBk = RGB(252, 252, 252);
+                else cd->clrTextBk = RGB(246, 246, 246);
+                return CDRF_DODEFAULT;
+            }
+        }
         if (gReviewViewTooltip && hdr->hwndFrom == gReviewViewTooltip && hdr->code == TTN_GETDISPINFOW) {
             auto* di = reinterpret_cast<NMTTDISPINFOW*>(lp);
             updateReviewViewTooltipTextFromCursor();
@@ -6358,6 +6858,18 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_OPEN_CASE_FOLDER: { openCaseFolderAction(hwnd); return 0; }
         case ID_OPEN_UPLOAD_FOLDER: { openUploadFolderAction(hwnd); return 0; }
         case ID_OPEN_LOGS_FOLDER: { openLogsFolderAction(hwnd); return 0; }
+        case ID_REVIEW_VIEW_PROFILE: {
+            if (HIWORD(wp) == CBN_SELCHANGE) {
+                int sel = static_cast<int>(SendMessageW(gReviewViewProfile, CB_GETCURSEL, 0, 0));
+                if (sel < 0) sel = 0;
+                gReviewViewProfileMode = sel;
+                gCurrentPage = 0; gSortColumn = -1; gFilterColumn = -1; gFilterValue.clear();
+                populateViewListForCurrentContextNoThrow();
+                setReviewSummary(std::wstring(L"View Set: ") + reviewViewProfileDescription() + L". Select a view or click Update to load results.");
+                loadReviewPage();
+            }
+            return 0;
+        }
         case ID_REVIEW_VIEW: { if (HIWORD(wp) == LBN_SELCHANGE) { gCurrentPage = 0; gSortColumn = -1; gFilterColumn = -1; gFilterValue.clear(); loadReviewPage(); } return 0; }
         case ID_REVIEW_REFRESH: { gCurrentPage = 0; loadReviewPage(); return 0; }
         case ID_REVIEW_CANCEL_LOAD: { cancelAndJoinReviewThreadNoThrow(); gReviewLoadInProgress = false; setReviewLoadingState(false); setReviewSummary(L"Cancelled current review-page load. Start another view/search when ready."); return 0; }
@@ -6368,7 +6880,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_CTX_TOGGLE_CHECK: { if (gContextRow >= 0) toggleReviewRowChecked(gContextRow); setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
         case ID_CTX_CHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), true); setReviewSummary(L"Checked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
         case ID_CTX_UNCHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), false); setReviewSummary(L"Unchecked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
-        case ID_CTX_TOGGLE_SELECTED: { toggleReviewRowsAsBatch(selectedReviewRows()); setReviewSummary(L"Toggled selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
+        case ID_CTX_TOGGLE_SELECTED: { toggleReviewRowsAsBatch(selectedReviewRows()); setReviewSummary(L"Toggled selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); updateRowDetailsPanel(); return 0; }
         case ID_CTX_APPLY_TAG_ROW: { try { if (gContextRow >= 0 && gContextRow < static_cast<int>(gCurrentRowArtifactIds.size())) applyTagToArtifacts(selectedTagId(), std::vector<std::string>{gCurrentRowArtifactIds[static_cast<size_t>(gContextRow)]}, true); } catch (const std::exception& ex) { setTagSummary(L"ERROR applying row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_REMOVE_TAG_ROW: { try { if (gContextRow >= 0 && gContextRow < static_cast<int>(gCurrentRowArtifactIds.size())) removeTagFromArtifacts(selectedTagId(), std::vector<std::string>{gCurrentRowArtifactIds[static_cast<size_t>(gContextRow)]}, true); } catch (const std::exception& ex) { setTagSummary(L"ERROR removing row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_APPLY_TAG_SELECTED: { try { applyTagToArtifacts(selectedTagId(), selectedArtifactIdsFromReview(false), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR applying selected-row tag: " + widen(ex.what())); } return 0; }
