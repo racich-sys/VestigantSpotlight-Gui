@@ -1,11 +1,11 @@
-V0_9_53 existing-case GUI test
+V0_9_57 existing-case GUI test
 
 Purpose:
 Test GUI/view/export usability without rerunning iOS ingest.
 
-1. Build V0_9_53.
+1. Build V0_9_57.
 2. Start the GUI:
-   T:\VestigantSpotlightInv_V0_9_53\build-msvc\Release\VestigantSpotlight.exe
+   T:\VestigantSpotlightInv_V0_9_57\build-msvc\Release\VestigantSpotlight.exe
 3. In Case Information, open an existing completed case database, for example:
    Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_48_ReusedCache\VestigantSpotlight.case.sqlite
 4. Go to MacOS Investigation View or iOS Investigation View.

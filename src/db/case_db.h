@@ -43,6 +43,7 @@ public:
     void open(const fs::path& dbPath);
     void close();
     void initializeSchema();
+    void ensureGuiReviewViews();
     void exec(const std::string& sql);
     SqlStatement prepare(const std::string& sql);
     void begin();

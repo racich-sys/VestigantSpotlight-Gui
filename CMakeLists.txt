@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 0.9.53 LANGUAGES CXX)
+project(VestigantSpotlightInv VERSION 0.9.57 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,7 +21,6 @@ set(CORE_SOURCES
   src/ingest/source_profiles.cpp
   src/ingest/store_discovery.cpp src/ingest/evidence_preservation.cpp
   src/parsers/native_storedb_parser.cpp
-  src/parsers/v7_output_importer.cpp
   src/enrich_sql/sqlite_enrichment.cpp
   src/export_sql/sqlite_exporter.cpp
   src/app/case_store.cpp
@@ -46,4 +45,6 @@ target_link_libraries(VestigantSpotlightTests PRIVATE vestigant_spotlight_core)
 if(WIN32)
   add_executable(VestigantSpotlight WIN32 src/gui/win32_gui.cpp)
   target_link_libraries(VestigantSpotlight PRIVATE vestigant_spotlight_core comctl32 shell32 ole32 user32 comdlg32 gdi32)
+  add_custom_command(TARGET VestigantSpotlight POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/resources $<TARGET_FILE_DIR:VestigantSpotlight>/resources)
 endif()

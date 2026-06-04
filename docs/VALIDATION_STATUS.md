@@ -1,42 +1,42 @@
-# Vestigant Spotlight Validation Status
+# Validation Status
 
-Current version: 0.9.53
+## V0_9_57 - Windows GUI forward-declaration compile hotfix
 
-## V0_9_53 local validation
+V0_9_57 is a focused Windows/MSVC GUI build hotfix after V0_9_56 reached the GUI compile stage and failed with `C3861: setReviewSummary identifier not found` in `src\gui\win32_gui.cpp`. The fix adds a forward declaration for `setReviewSummary(const std::wstring&)` before the custom view-set helper functions that call it. No parser, ingest, cache, ZIP, FFS inventory, app DB, export, or forensic interpretation behavior was intentionally changed.
 
-Reviewed uploaded V0_9_48 reuse-cache thin output:
+Current version: 0.9.57
 
-- Last stage: `complete_success`
-- Stores / valid stores: 6 / 6
-- Raw records: 344,445
-- Raw key/value rows: 982,668
-- Raw date candidates: 336,037
-- Artifacts: 344,445
-- Timeline events: 336,037
-- Targeted app DB parser: 50 extracted/opened databases; 525,409 parsed app records
-- `ios_app_parsed_record_summary.csv`: 16 rows
-- `investigator_super_timeline_sample.csv`: 5,000 sampled rows
-- `investigator_time_anomalies.csv`: 101 rows
+## V0_9_57 - Windows MSVC batch-label build hotfix
 
-Changed source validation performed in this environment:
+V0_9_57 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
 
-- Reviewed and patched `src/gui/win32_gui.cpp` for the details pane.
-- Performed structural/static checks for expected Win32 symbols and details-pane event hook.
-- Verified version metadata updated to 0.9.53.
-- Verified source/patch ZIP integrity after packaging.
+No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
 
-Validation limits:
 
-- Windows/MSVC GUI compile/link was not run here.
-- Native Win32 UI behavior must be validated on the Windows test system.
-- No parser or ingest behavior was intentionally changed in V0_9_53, so reuse-cache/fresh-ZIP reruns are optional unless GUI build/test exposes an issue.
+## V0_9_55 local validation
 
-## V0_9_53 expected Windows verification
+Passed in this environment:
 
-- Build banner reports source version 0.9.53.
-- Binary reports `Vestigant Spotlight v0.9.53`.
-- GUI opens an existing completed case.
-- MacOS and iOS investigation tabs both show the bottom `Selected Row Metadata / All Fields` pane.
-- Selecting rows and using arrow keys updates the pane.
-- Long values can be reviewed vertically and copied from the pane.
-- Search/filter/sort/export/checkmark/tag workflows still operate.
+- Static balance check for `src/gui/win32_gui.cpp`.
+- CMake configure.
+- Linux CMake build for core library, CLI, and tests.
+- `VestigantSpotlightTests` self-test.
+- Verified removed V1-blocker GUI controls remain absent from GUI source.
+- Verified legacy V7 importer source/build references remain absent.
+
+Not validated in this environment:
+
+- Windows/MSVC GUI compile and link.
+- Runtime GUI logo/layout behavior.
+- Runtime custom view set save/hide/move/reset behavior.
+- Runtime tag-management repair on an existing case database.
+- Runtime processing telemetry during ingest.
+
+## Expected Windows validation
+
+- Build banner reports source version `0.9.55`.
+- Binary reports `Vestigant Spotlight v0.9.55`.
+- Case Information tab shows the logo/header and cleaner processing layout.
+- Tags button opens Tags / Notes and tags can be created/applied/removed.
+- Custom view sets persist for macOS and iOS tabs.
+- Bottom Case Information log shows elapsed-time processing status during runs.

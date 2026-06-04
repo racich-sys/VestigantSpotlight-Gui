@@ -1,14 +1,25 @@
 # Vestigant Spotlight Project Roadmap and Continuation
 
-Current baseline: V0_9_53.
+## V0_9_57 - Windows GUI forward-declaration compile hotfix
+
+V0_9_57 is a focused Windows/MSVC GUI build hotfix after V0_9_56 reached the GUI compile stage and failed with `C3861: setReviewSummary identifier not found` in `src\gui\win32_gui.cpp`. The fix adds a forward declaration for `setReviewSummary(const std::wstring&)` before the custom view-set helper functions that call it. No parser, ingest, cache, ZIP, FFS inventory, app DB, export, or forensic interpretation behavior was intentionally changed.
+
+Current baseline: V0_9_57.
+
+## V0_9_57 - Windows MSVC batch-label build hotfix
+
+V0_9_57 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+
+No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
+
 
 ## Current status
 
-V0_9_48 reuse-cache validation completed successfully. Normal Spotlight-first mode now parses targeted already-extracted high-value app databases and produced 525,409 parsed app records in the uploaded thin result. The investigator super timeline sample is populated and time-anomaly export produced rows. The remaining near-term V1 gap addressed by V0_9_53 is GUI usability when reviewing wide result tables.
+V0_9_48 reuse-cache validation completed successfully. Normal Spotlight-first mode now parses targeted already-extracted high-value app databases and produced 525,409 parsed app records in the uploaded thin result. The investigator super timeline sample is populated and time-anomaly export produced rows. The remaining near-term V1 gap addressed by V0_9_55 is GUI usability when reviewing wide result tables.
 
-## V0_9_53 focus
+## V0_9_55 focus
 
-V0_9_53 adds a bottom details pane to the shared investigation grid. The pane displays every column for the selected row vertically, including long text and JSON-like metadata, so investigators do not need to scroll horizontally across wide Spotlight/app database views. The pane is read-only, scrollable, copy-friendly, and works for both macOS and iOS investigation views because those tabs share the review grid implementation.
+V0_9_55 adds a bottom details pane to the shared investigation grid. The pane displays every column for the selected row vertically, including long text and JSON-like metadata, so investigators do not need to scroll horizontally across wide Spotlight/app database views. The pane is read-only, scrollable, copy-friendly, and works for both macOS and iOS investigation views because those tabs share the review grid implementation.
 
 ## Minimal testing loop now that reuse-cache and fresh-ZIP both complete
 
@@ -20,7 +31,7 @@ V0_9_53 adds a bottom details pane to the shared investigation grid. The pane di
 
 ## Near-term V1 priorities
 
-1. Validate V0_9_53 Windows/MSVC GUI build.
+1. Validate V0_9_55 Windows/MSVC GUI build.
 2. Open the latest successful completed case and test the details pane against wide iOS views such as text context, parsed app records, super timeline, Missing From FFS text detail, and bplist/NSKeyedArchiver detail.
 3. Continue refining V1 review surfaces: direct messages, contact/thread summaries, super timeline, Missing From FFS text context, KnowledgeC correlation, parser diagnostics, and provenance warnings.
 4. Keep normal mode compact and Spotlight-first. Do not reintroduce broad FFS materialization or broad app DB materialization by default.
@@ -35,4 +46,4 @@ V0_9_53 adds a bottom details pane to the shared investigation grid. The pane di
 
 ## Next upload needed
 
-For the next review, upload `V0_9_53_build.log` and either screenshots/notes from opening an existing case or a thin upload only if an ingest/export was run.
+For the next review, upload `V0_9_55_build.log` and either screenshots/notes from opening an existing case or a thin upload only if an ingest/export was run.

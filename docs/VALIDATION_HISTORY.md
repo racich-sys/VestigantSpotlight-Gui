@@ -1,5 +1,16 @@
 # Validation History
 
+## V0_9_57 - Windows GUI forward-declaration compile hotfix
+
+V0_9_57 is a focused Windows/MSVC GUI build hotfix after V0_9_56 reached the GUI compile stage and failed with `C3861: setReviewSummary identifier not found` in `src\gui\win32_gui.cpp`. The fix adds a forward declaration for `setReviewSummary(const std::wstring&)` before the custom view-set helper functions that call it. No parser, ingest, cache, ZIP, FFS inventory, app DB, export, or forensic interpretation behavior was intentionally changed.
+
+## V0_9_57 - Windows MSVC batch-label build hotfix
+
+V0_9_57 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+
+No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
+
+
 ## V0_9_37
 
 - Reviewed uploaded V0_9_3 historical documentation archive (`Docs.zip`).
@@ -39,14 +50,14 @@ V0_9_37 improved Missing From FFS text visibility but over-expanded same-record 
 
 V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
 
-## V0_9_53
-Reviewed V0_9_47 build/reuse-cache/fresh-ZIP outputs. Both thin runs completed successfully, but normal-mode app DB parsed rows remained zero because record materialization was skipped. V0_9_53 enables targeted parsed-record extraction for already-extracted high-value databases only, adds KnowledgeC metadata joins, adds deleted/recoverable Apple Messages extraction, and adds the unified investigator super timeline. Local validation passed changed-file C++ syntax checks and SQLite smoke tests for the new views. Windows/MSVC validation remains required.
+## V0_9_55
+Reviewed V0_9_47 build/reuse-cache/fresh-ZIP outputs. Both thin runs completed successfully, but normal-mode app DB parsed rows remained zero because record materialization was skipped. V0_9_55 enables targeted parsed-record extraction for already-extracted high-value databases only, adds KnowledgeC metadata joins, adds deleted/recoverable Apple Messages extraction, and adds the unified investigator super timeline. Local validation passed changed-file C++ syntax checks and SQLite smoke tests for the new views. Windows/MSVC validation remains required.
 
-## V0_9_53
+## V0_9_55
 
-GUI-only validation pass. V0_9_53 refines the V0_9_50 selected-row details pane into a Field / Value layout and adds a draggable splitter for resizing the bottom metadata area. Static structural checks passed in this environment; Windows/MSVC GUI build and runtime splitter behavior still require validation on the user's Windows system.
+GUI-only validation pass. V0_9_55 refines the V0_9_50 selected-row details pane into a Field / Value layout and adds a draggable splitter for resizing the bottom metadata area. Static structural checks passed in this environment; Windows/MSVC GUI build and runtime splitter behavior still require validation on the user's Windows system.
 
-## V0_9_53 Validation
+## V0_9_55 Validation
 - Static structural check confirmed `gRowDetails` is created as a `WC_LISTVIEWW` report control.
 - Confirmed details rows use separate Field and Metadata / Value columns.
 - Confirmed custom draw handler exists for section divider rows.

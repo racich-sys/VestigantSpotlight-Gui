@@ -52,22 +52,20 @@ void usage() {
               << "  VestigantSpotlightCli --mode discover --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--full-scan]\n"
               << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
               << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"
-              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--no-preserve] [--decode-core-native-values] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"
+              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"
               << "  VestigantSpotlightCli --full-validation --input <raw-spotlight-root-or-zip> --out <case-folder>\n"
               << "Workflow:\n"
               << "  identify Spotlight store.db/.store.db evidence -> preserve static case copy -> native C++ decode into SQLite -> enrich -> review/export.\n\n"
               << "Notes:\n"
               << "  --mode diagnostics skips 7z preservation by default for fast parser diagnostics and enables safe core native probes.\n"
               << "  --preserve can be added to diagnostics mode when archive-first testing is needed.\n"
-              << "  --no-preserve skips static evidence preservation in run mode and should be used only for temporary parser testing.\n"
               << "  Active filesystem comparison is tabled for this build; --evidence-root is accepted for compatibility but ignored.\n"
               << "  Stable native header-only parsing is the default in run mode. Use --decode-core-native-values to test safe native string/path probe decoding.\n"
               << "  --full-validation is an operator-safe shortcut for --mode run --profile auto --experimental-full-native-values --export-profile investigator --verbose.\n"
               << "  --diagnostic-full-native-exports enables support/diagnostic CSV exports that are intentionally skipped in normal investigator runs.\n"
               << "  --diagnostic-full-native-db enables full raw native key/value persistence; use only for bounded support runs because iOS CoreSpotlight dbStr parsing can create millions of rows.\n"
               << "  Normal iOS Spotlight-first runs do not materialize full FFS inventory rows or broad app DB parsed-record rows into the active case DB; use --materialize-ios-ffs-inventory and --materialize-ios-app-db-records only for bounded support/correlation runs.\n"
-              << "  --reuse-ios-cache reuses a prior completed iOS ZIP intake/cache folder to avoid relisting a very large FFS ZIP; source path/size are recorded in source_cache_manifest.json and mismatches are warned.\n  --mode source-probe registers and reports source readiness. AFF4/APFS is prioritized for image-backed file inventory and active-file comparison readiness; extraction is not implemented yet. AFF4 source-probe defers full-container hashing by default for development speed; use --force-container-hash when an evidentiary hash is needed or --skip-container-hash explicitly for any large container. Use --reader-tools to point at aff4-cpp-lite/libaff4, fsapfs, and fshfs helper binaries. aff4-cpp-lite is the primary AFF4 direction; WinPmem/c-aff4 aff4imager remains fallback only. No full AFF4-to-RAW export is performed by default. Dynamic libaff4 open/read and external aff4imager stream listing are opt-in because they may cause third-party readers to open other AFF4-related files from the same evidence drive. Use --strict-single-aff4 to require one explicit .aff4 file and suppress reader-driven discovery.\n"
-              << "  Legacy V7 import/compare code is deprecated and hidden from normal workflow; current operation is native Store-V2/APFS/iOS-first.\n";
+              << "  --reuse-ios-cache reuses a prior completed iOS ZIP intake/cache folder to avoid relisting a very large FFS ZIP; source path/size are recorded in source_cache_manifest.json and mismatches are warned.\n  --mode source-probe registers and reports source readiness. AFF4/APFS is prioritized for image-backed file inventory and active-file comparison readiness; extraction is not implemented yet. AFF4 source-probe defers full-container hashing by default for development speed; use --force-container-hash when an evidentiary hash is needed or --skip-container-hash explicitly for any large container. Use --reader-tools to point at aff4-cpp-lite/libaff4, fsapfs, and fshfs helper binaries. aff4-cpp-lite is the primary AFF4 direction; WinPmem/c-aff4 aff4imager remains fallback only. No full AFF4-to-RAW export is performed by default. Dynamic libaff4 open/read and external aff4imager stream listing are opt-in because they may cause third-party readers to open other AFF4-related files from the same evidence drive. Use --strict-single-aff4 to require one explicit .aff4 file and suppress reader-driven discovery.\n";
 }
 }
 
@@ -109,9 +107,6 @@ int main(int argc, char** argv) {
             else if (a == "--company") opt.company = need(a);
             else if (a == "--investigator") opt.investigator = need(a);
             else if (a == "--7z" || a == "--sevenzip") opt.sevenZipPath = need(a);
-            else if (a == "--v7-output") { opt.v7OutputPath = need(a); }
-            else if (a == "--legacy-v7-compare") { opt.legacyV7Compare = true; opt.importV7Output = true; opt.compareV7Output = true; }
-            else if (a == "--legacy-v7-output") { opt.v7OutputPath = need(a); opt.legacyV7Compare = true; opt.importV7Output = true; opt.compareV7Output = true; }
             else if (a == "--no-preserve") { opt.preserveEvidence = false; opt.preserveEvidenceExplicit = true; }
             else if (a == "--preserve") { opt.preserveEvidence = true; opt.preserveEvidenceExplicit = true; }
             else if (a == "--decode-core-native-values") opt.decodeCoreNativeValues = true;

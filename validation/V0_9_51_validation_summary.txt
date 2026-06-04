@@ -1,4 +1,4 @@
-Vestigant Spotlight V0_9_53 validation summary
+Vestigant Spotlight V0_9_57 validation summary
 
 Change class:
 - GUI-only V1 usability refinement.
@@ -10,7 +10,7 @@ Implemented:
 - Kept V0_9_50 grouping order: text first, dates second, then paths, people/apps, status, provenance, counts, and other fields.
 - Added a visible draggable splitter above the details pane so the investigator can resize the bottom metadata area versus the grid.
 - Updated no-row/help text to explain the Field / Value layout and splitter resizing.
-- Updated version metadata and scripts to V0_9_53.
+- Updated version metadata and scripts to V0_9_57.
 
 Validation performed in this environment:
 - Reviewed user screenshot/feedback showing V0_9_50 build succeeded and the details pane rendered, but field/value layout needed improvement.
@@ -25,8 +25,8 @@ Validation not completed in this environment:
 - VestigantSpotlightTests.exe.
 
 Recommended Windows validation:
-1. Build V0_9_53 with scripts\Build-V0_9_53.ps1.
-2. Launch GUI with scripts\Launch-V0_9_53-GUI.ps1.
+1. Build V0_9_57 with scripts\Build-V0_9_57.ps1.
+2. Launch GUI with scripts\Launch-V0_9_57-GUI.ps1.
 3. Open an existing completed case.
 4. Select iOS Investigation View.
 5. Select rows in text-heavy, date-heavy, and app DB views.

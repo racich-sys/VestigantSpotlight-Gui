@@ -1,0 +1,31 @@
+Vestigant Spotlight V0_9_57 validation summary
+
+Purpose:
+- Focused Windows/MSVC GUI compile hotfix after V0_9_56 reached GUI compilation and failed with C3861: setReviewSummary identifier not found in src\gui\win32_gui.cpp.
+
+Observed failure basis:
+- V0_9_56 build progressed through common objects, CLI link, self-test link, then failed compiling src\gui\win32_gui.cpp.
+- MSVC reported C3861 at custom view-set helper call sites because setReviewSummary was defined later in the translation unit and had no prior declaration.
+
+Changes made:
+- Updated version metadata and scripts from 0.9.56 / V0_9_56 to 0.9.57 / V0_9_57.
+- Added a forward declaration for setReviewSummary(const std::wstring&) near the Win32 GUI globals before custom view-set helper functions call it.
+- No parser, ingest, cache, FFS, ZIP staging, app DB, export, or forensic interpretation behavior was intentionally changed.
+
+Validation performed in this environment:
+- Confirmed active version metadata, app_info.cpp, build scripts, and V0_9_57 scripts use 0.9.57 / V0_9_57. Older V0_9_56 references remain only as historical documentation where appropriate.
+- CMake configure completed successfully.
+- Linux CMake build completed successfully for core library, CLI, and tests.
+- VestigantSpotlightTests self-test passed.
+- Full source ZIP integrity test passed.
+- Patch ZIP integrity test passed.
+
+Validation not performed here:
+- Windows/MSVC batch execution.
+- GUI compile/link on Windows after the forward-declaration fix.
+- Runtime GUI validation for custom view sets, tags, Case Information layout, and details pane.
+
+Next Windows validation:
+- Run scripts\Build-V0_9_57.ps1.
+- Confirm the build reaches GUI link and prints Build complete.
+- Launch GUI and retest Case Information, Tags, Custom View Sets, and selected-row details pane.

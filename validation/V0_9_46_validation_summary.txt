@@ -1,4 +1,4 @@
-Vestigant Spotlight V0_9_53 validation summary
+Vestigant Spotlight V0_9_57 validation summary
 
 Input reviewed:
 - V0_9_45_build.log
@@ -14,8 +14,8 @@ Review findings:
 - Fresh-ZIP native C++ 7-Zip inventory parser reported files=2245783 app_databases=5528 raw_records=2245783.
 - V0_9_45 app DB inventory was much improved from V0_9_44, but still had category false positives: generic *signals* database names were categorized as SIGNAL and generic *history* databases were categorized as CHROME_WEB.
 
-Changes made in V0_9_53:
-- Updated VERSION, VERSION.txt, CMake project version, app version, scripts, and current documentation references to 0.9.53.
+Changes made in V0_9_57:
+- Updated VERSION, VERSION.txt, CMake project version, app version, scripts, and current documentation references to 0.9.57.
 - Tightened Signal classification in PowerShell and native C++ app database inventory helpers to require stronger path/app indicators: org.whispersystems.signal, signal.messenger, or /signal/ path component.
 - Tightened Chrome/Web classification in PowerShell and native C++ app database inventory helpers to require stronger Chrome path/app indicators: com.google.chrome, /chrome/, or /google/chrome.
 - Removed generic filename-only *history* matching from Chrome/Web classification.
@@ -33,10 +33,10 @@ Validation not performed here:
 - Windows/MSVC build.
 - GUI launch.
 - VestigantSpotlightTests.exe self-test on Windows.
-- V0_9_53 reuse-cache run.
-- V0_9_53 fresh-ZIP run.
+- V0_9_57 reuse-cache run.
+- V0_9_57 fresh-ZIP run.
 
 Next Windows checks:
-- Build V0_9_53 and verify the build banner says source version 0.9.53 and binary version says v0.9.53.
+- Build V0_9_57 and verify the build banner says source version 0.9.57 and binary version says v0.9.57.
 - Run reuse-cache and fresh-ZIP scripts.
 - Confirm fresh-ZIP app database row count remains 5528, with substantially fewer SIGNAL and CHROME_WEB category labels.

@@ -12,7 +12,6 @@
 #include "ingest/source_profiles.h"
 #include "ingest/store_discovery.h"
 #include "parsers/native_storedb_parser.h"
-#include "parsers/v7_output_importer.h"
 #include <fstream>
 #include <array>
 #include <stdexcept>
@@ -142,7 +141,6 @@ int stagePercent(const std::string& stage) {
     if (stage == "native_parse_start") return 35;
     if (stage == "native_parse_call") return 36;
     if (stage == "native_parse_complete") return 75;
-    if (stage == "legacy_v7_compare_start") return 78;
     if (stage == "enrichment_start") return 82;
     if (stage == "enrichment_complete") return 88;
     if (stage == "export_start") return 90;
@@ -674,11 +672,6 @@ std::size_t countValidDatabaseCandidates(const std::vector<StoreInfo>& stores) {
     std::size_t n = 0;
     for (const auto& s : stores) if (s.isValid) ++n;
     return n;
-}
-
-std::string firstSourceIdOrDefault(CaseDatabase& db) {
-    try { auto st = db.prepare("SELECT source_id FROM evidence_sources ORDER BY added_utc LIMIT 1"); if (st.stepRow()) return st.colText(0); } catch (...) {}
-    return "v7_import";
 }
 
 void insertSelfTestRaw(CaseDatabase& db, const EvidenceSource& source) {
@@ -14464,7 +14457,6 @@ void writeAff4ZipSingleFileProbe(const fs::path& caseDir,
 bool validateRunOptions(const RunOptions& opt, std::string& error) {
     const auto mode = toLower(opt.mode.empty() ? "run" : opt.mode);
     if (mode == "self-test") return true;
-    if (mode == "import-v7") { if (opt.v7OutputPath.empty()) { error = "--v7-output is required for import-v7"; return false; } if (opt.output.empty() && opt.caseDir.empty()) { error = "--out or --case is required"; return false; } return true; }
     if (opt.input.empty() && mode != "init-case") { error = "--input is required"; return false; }
     if (opt.output.empty() && opt.caseDir.empty()) { error = "--out or --case is required"; return false; }
     if (opt.strictSingleAff4) {
@@ -14509,42 +14501,6 @@ RunResult runApplication(const RunOptions& opt) {
     if (sourceProbeMode) {
         appendRunStatus(caseDir, "source_probe_start", "source intake/readiness probe only; no parsing/enrichment will be run");
         log.info("Source-probe mode enabled: source will be identified, registered, and reported without running parser/enrichment.");
-    }
-    if (topModeLower == "import-v7") {
-        appendRunStatus(caseDir, "open_sqlite");
-        CaseDatabase db; db.open(caseDir / "VestigantSpotlight.case.sqlite"); db.initializeSchema();
-        const std::string sourceId = firstSourceIdOrDefault(db);
-        appendRunStatus(caseDir, "v7_import_start");
-        V7OutputImporter importer; importer.importDirectory(opt.v7OutputPath, sourceId, db, log);
-        appendRunStatus(caseDir, "enrichment_start");
-        EvidenceSource existingSource;
-        bool activeFilesystemComparisonEnabled = false;
-        existingSource.sourceId = sourceId;
-        try {
-            auto st = db.prepare("SELECT profile,input_path,evidence_root,source_kind,added_utc,notes FROM evidence_sources WHERE source_id=? LIMIT 1");
-            st.bind(1, sourceId);
-            if (st.stepRow()) {
-                existingSource.profile = st.colText(0);
-                existingSource.inputPath = fs::path(st.colText(1));
-                existingSource.evidenceRoot = fs::path(st.colText(2));
-                existingSource.sourceKind = st.colText(3);
-                existingSource.addedUtc = st.colText(4);
-                existingSource.notes = st.colText(5);
-            }
-        } catch (...) { }
-        SqliteEnrichment enrichment;
-        if (!activeFilesystemComparisonEnabled) existingSource.evidenceRoot.clear();
-        const auto counts = enrichment.run(db, existingSource, log);
-        appendRunStatus(caseDir, "enrichment_complete", "artifacts=" + std::to_string(counts.artifacts) + " timeline=" + std::to_string(counts.timeline) + " usage=" + std::to_string(counts.usage));
-        purgeOrphanSourceRows(db, caseDir, log);
-        appendRunStatus(caseDir, "export_start");
-        SqliteExporter exporter; exporter.exportReviewPackage(db, caseDir / "exports", log, opt.exportProfile);
-        writeUiAndIosPlanningFiles(caseDir);
-        createUploadBundle(caseDir);
-        appendRunStatus(caseDir, "complete_success");
-        refreshUploadRunDiagnostics(caseDir);
-        result.messages = log.messages();
-        return result;
     }
     try {
         appendRunStatus(caseDir, "initialize_case");
@@ -14839,12 +14795,6 @@ RunResult runApplication(const RunOptions& opt) {
             result.messages.push_back("referenced_ios_ffs_lookup_hits=" + std::to_string(referencedHits));
         }
 
-        if (!opt.v7OutputPath.empty() && opt.legacyV7Compare) {
-            appendRunStatus(caseDir, "legacy_v7_compare_start");
-            V7OutputImporter importer; importer.importDirectory(opt.v7OutputPath, source.sourceId, db, log);
-        } else if (!opt.v7OutputPath.empty()) {
-            log.warn("V7 output path was supplied but ignored because legacy V7 comparison was not explicitly enabled. Normal processing is native-first; legacy V7 comparison is deprecated and disabled unless explicitly requested.");
-        }
         appendRunStatus(caseDir, "enrichment_start");
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;

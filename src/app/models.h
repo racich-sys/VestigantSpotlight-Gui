@@ -19,7 +19,7 @@ enum class FileExistenceStatus {
 };
 
 struct RunOptions {
-    std::string mode = "run";          // run, discover, self-test, init-case
+    std::string mode = "run";          // run, discover, diagnostics, init-case
     std::string profile = "auto";      // auto, macos, ios
     fs::path input;
     fs::path output;
@@ -55,10 +55,6 @@ struct RunOptions {
     bool parseDotStoreCopies = false;
     std::size_t dbBatchRows = 50000;
     fs::path sevenZipPath;
-    fs::path v7OutputPath;
-    bool importV7Output = false;
-    bool compareV7Output = false;
-    bool legacyV7Compare = false;
 };
 
 struct RunResult {

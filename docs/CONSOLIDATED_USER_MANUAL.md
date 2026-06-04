@@ -1,6 +1,6 @@
 # Vestigant Spotlight Consolidated User Manual
 
-Version: 0.9.53
+Version: 0.9.57
 
 ## Purpose
 
@@ -25,12 +25,12 @@ V0_9_37 restored historical version details from the uploaded V0_9_3 documentati
 
 ```powershell
 Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V0_9_53.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_53" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_53.zip -DestinationPath T:\ -Force
-& "T:\VestigantSpotlightInv_V0_9_53\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_53_build.log"
-& "T:\VestigantSpotlightInv_V0_9_53\build-msvc\Release\VestigantSpotlightCli.exe" --version
-& "T:\VestigantSpotlightInv_V0_9_53\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_53\build-msvc\selftest_out"
+Get-FileHash .\VestigantSpotlightInv_V0_9_57.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V0_9_57" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_57.zip -DestinationPath T:\ -Force
+& "T:\VestigantSpotlightInv_V0_9_57\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath "D:\Downloads\V0_9_57_build.log"
+& "T:\VestigantSpotlightInv_V0_9_57\build-msvc\Release\VestigantSpotlightCli.exe" --version
+& "T:\VestigantSpotlightInv_V0_9_57\build-msvc\Release\VestigantSpotlightTests.exe" "T:\VestigantSpotlightInv_V0_9_57\build-msvc\selftest_out"
 ```
 
 ## Standard iOS reuse-cache test
@@ -38,11 +38,11 @@ Expand-Archive -LiteralPath .\VestigantSpotlightInv_V0_9_53.zip -DestinationPath
 Use this for fast parser/view/export iteration while the large source ZIP and known-good cache remain unchanged.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_53\scripts\Run-V0_9_53-iOS-ReuseCache-CLI-AndZip.ps1" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_57\scripts\Run-V0_9_57-iOS-ReuseCache-CLI-AndZip.ps1" `
   -InputZip "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip" `
   -ReuseCache "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_4" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_53_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_53_ReusedCache_Check.zip"
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_57_ReusedCache" `
+  -OutZip "D:\Downloads\Upload_Thin_iOS_GUI_V0_9_57_ReusedCache_Check.zip"
 ```
 
 The reuse-cache script passes `--skip-container-hash` by default to avoid rereading very large ZIP sources during development iterations.  For final forensic reporting, run an explicit container/source hash workflow and preserve the hash with the case.
@@ -105,11 +105,11 @@ Thin upload ZIPs are for review/debugging and may contain samples of large CSVs.
 
 ## Troubleshooting
 
-If a run stalls or stops writing, use the matching `Collect-V0_9_53-DBBloat-State.ps1` script before stopping/rerunning:
+If a run stalls or stops writing, use the matching `Collect-V0_9_57-DBBloat-State.ps1` script before stopping/rerunning:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_53\scripts\Collect-V0_9_53-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_53_ReusedCache" `
+powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_57\scripts\Collect-V0_9_57-DBBloat-State.ps1" `
+  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_57_ReusedCache" `
   -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
   -StopVestigant
 ```
@@ -120,8 +120,8 @@ If MSVC reports `C2026: string too big`, the likely source is an oversized SQL r
 
 Upload:
 
-- `D:\Downloads\V0_9_53_build.log`
-- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_53_ReusedCache_Check.zip`
+- `D:\Downloads\V0_9_57_build.log`
+- `D:\Downloads\Upload_Thin_iOS_GUI_V0_9_57_ReusedCache_Check.zip`
 - stopped-state ZIP/SHA256 only if the run stalls, DB/WAL grows unexpectedly, or no writes occur for a long period.
 
 
@@ -147,8 +147,15 @@ After V0_9_42 is validated with the standard reuse-cache script, run the new Sta
 
 V0_9_42 reviewed the successful V0_9_41 reuse-cache run and carries forward the V1-readiness performance work. The CSV exporter fast path remains in place. The iOS focused ZIP workflow now lets 7-Zip dump `-slt` output to raw text and then rebuilds FFS/app database inventory CSVs using native C++ parsing rather than the PowerShell raw-listing parser. This is intended to make the Stage B fresh-ZIP test faster and closer to the 60-120 MB/s target where hardware permits.
 
-## V0_9_53 existing-case GUI feature test
+## V0_9_55 existing-case GUI feature test
 
-Because reuse-cache and fresh-ZIP ingest paths are now completing successfully, GUI/view/export-only changes can be tested against an existing completed case. Build V0_9_53, start the GUI, open the existing case database from the Case Information tab, then use the macOS or iOS Investigation tab. Select any row in the results grid. The bottom `Selected Row Metadata / All Fields` pane should populate with the selected row's fields in vertical form so long text, metadata, and provenance values can be reviewed without horizontal scrolling.
+Because reuse-cache and fresh-ZIP ingest paths are now completing successfully, GUI/view/export-only changes can be tested against an existing completed case. Build V0_9_55, start the GUI, open the existing case database from the Case Information tab, then use the macOS or iOS Investigation tab. Select any row in the results grid. The bottom `Selected Row Metadata / All Fields` pane should populate with the selected row's fields in vertical form so long text, metadata, and provenance values can be reviewed without horizontal scrolling.
 
 Rerun reuse-cache only when a change creates new parser output rows. Rerun fresh-ZIP only when a change affects source ZIP inventory, staging, cache creation, or app database extraction.
+
+## V0_9_57 - Windows MSVC batch-label build hotfix
+
+V0_9_57 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+
+No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
+

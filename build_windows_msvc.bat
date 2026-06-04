@@ -88,40 +88,54 @@ if exist "%OUT%\VestigantSpotlightTests.exe" del /q "%OUT%\VestigantSpotlightTes
 if exist "%OUT%\VestigantSpotlight.exe" del /q "%OUT%\VestigantSpotlight.exe" >nul 2>nul
 if exist "%COMMON_RSP%" del /q "%COMMON_RSP%" >nul 2>nul
 
-call :CompileCommon "src\core\app_info.cpp" "app_info.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\core\csv.cpp" "csv.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\core\hash.cpp" "hash.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\core\logger.cpp" "logger.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\core\path_utils.cpp" "path_utils.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\db\case_db.cpp" "case_db.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\ingest\source_profiles.cpp" "source_profiles.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\ingest\store_discovery.cpp" "store_discovery.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\ingest\evidence_preservation.cpp" "evidence_preservation.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\parsers\native_storedb_parser.cpp" "native_storedb_parser.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommonQuiet "src\parsers\v7_output_importer.cpp" "legacy_importer.obj" "legacy compatibility component"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\enrich_sql\sqlite_enrichment.cpp" "sqlite_enrichment.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\export_sql\sqlite_exporter.cpp" "sqlite_exporter.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\app\case_store.cpp" "case_store.obj"
-if errorlevel 1 exit /b !errorlevel!
-call :CompileCommon "src\app\app_runner.cpp" "app_runner.obj"
-if errorlevel 1 exit /b !errorlevel!
+REM ---------------------------------------------------------------------------
+REM Compile common objects without CALL labels.  V0_9_57 avoids batch subroutine
+REM labels because Windows CMD can intermittently fail with "cannot find the
+REM batch label specified" when line endings or label-cache state are damaged.
+REM ---------------------------------------------------------------------------
+(
+  echo src\core\app_info.cpp^|app_info.obj
+  echo src\core\csv.cpp^|csv.obj
+  echo src\core\hash.cpp^|hash.obj
+  echo src\core\logger.cpp^|logger.obj
+  echo src\core\path_utils.cpp^|path_utils.obj
+  echo src\db\case_db.cpp^|case_db.obj
+  echo src\ingest\source_profiles.cpp^|source_profiles.obj
+  echo src\ingest\store_discovery.cpp^|store_discovery.obj
+  echo src\ingest\evidence_preservation.cpp^|evidence_preservation.obj
+  echo src\parsers\native_storedb_parser.cpp^|native_storedb_parser.obj
+  echo src\enrich_sql\sqlite_enrichment.cpp^|sqlite_enrichment.obj
+  echo src\export_sql\sqlite_exporter.cpp^|sqlite_exporter.obj
+  echo src\app\case_store.cpp^|case_store.obj
+  echo src\app\app_runner.cpp^|app_runner.obj
+) > "%OBJ%\common_compile_manifest.txt"
 
-call :RequireObject "case_db.obj"
-call :RequireObject "case_store.obj"
-call :RequireObject "app_runner.obj"
+type nul > "%COMMON_RSP%"
+for /f "usebackq tokens=1,2 delims=|" %%A in ("%OBJ%\common_compile_manifest.txt") do (
+  echo.
+  echo Compiling %%A...
+  cl %CXXFLAGS% /c "%%A" /Fo:"%OBJ%\%%B"
+  if errorlevel 1 exit /b 1
+  if not exist "%OBJ%\%%B" (
+    echo ERROR: Expected object was not created: %OBJ%\%%B
+    exit /b 1
+  )
+  echo "%OBJ%\%%B" >> "%COMMON_RSP%"
+)
+
+if not exist "%OBJ%\case_db.obj" (
+  echo ERROR: Required object is missing: %OBJ%\case_db.obj
+  exit /b 1
+)
+if not exist "%OBJ%\case_store.obj" (
+  echo ERROR: Required object is missing: %OBJ%\case_store.obj
+  exit /b 1
+)
+if not exist "%OBJ%\app_runner.obj" (
+  echo ERROR: Required object is missing: %OBJ%\app_runner.obj
+  exit /b 1
+)
+
 
 if not exist "%COMMON_RSP%" (
   echo ERROR: common object response file was not created: %COMMON_RSP%
@@ -189,6 +203,12 @@ echo Built binary version check:
 if errorlevel 1 exit /b !errorlevel!
 
 echo.
+if exist "resources" (
+  if not exist "%OUT%\resources" mkdir "%OUT%\resources"
+  copy /Y "resources\vestigant_logo.bmp" "%OUT%\resources\vestigant_logo.bmp" >nul 2>nul
+  copy /Y "resources\vestigant_logo.jpg" "%OUT%\resources\vestigant_logo.jpg" >nul 2>nul
+)
+
 echo Build complete:
 echo   %OUT%\VestigantSpotlight.exe
 echo   %OUT%\VestigantSpotlightCli.exe
@@ -196,28 +216,5 @@ echo   %OUT%\VestigantSpotlightTests.exe
 echo.
 echo Optional self-test:
 echo   "%OUT%\VestigantSpotlightTests.exe" "%CD%\build-msvc\selftest_out"
-exit /b 0
-
-:CompileCommon
-echo.
-echo Compiling %~1...
-cl %CXXFLAGS% /c "%~1" /Fo:"%OBJ%\%~2"
-if errorlevel 1 exit /b !errorlevel!
-echo "%OBJ%\%~2" >> "%COMMON_RSP%"
-exit /b 0
-
-:CompileCommonQuiet
-echo.
-echo Compiling %~3...
-cl %CXXFLAGS% /c "%~1" /Fo:"%OBJ%\%~2"
-if errorlevel 1 exit /b !errorlevel!
-echo "%OBJ%\%~2" >> "%COMMON_RSP%"
-exit /b 0
-
-:RequireObject
-if not exist "%OBJ%\%~1" (
-  echo ERROR: Required object is missing: %OBJ%\%~1
-  exit /b 1
-)
 exit /b 0
 
