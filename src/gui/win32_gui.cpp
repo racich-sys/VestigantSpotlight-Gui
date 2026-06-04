@@ -48,8 +48,8 @@ using namespace vestigant::spotlight;
 namespace {
 HINSTANCE gInst{};
 HWND gTab{};
-HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCoreDecode{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
-HWND gFullNative{}, gVerbose{}, gExportProfile{};
+HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
+HWND gVerbose{}, gExportProfile{};
 HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
@@ -2837,8 +2837,8 @@ void worker() {
         opt.investigator = narrow(getText(gInvestigator));
         opt.preserveEvidence = true;
         opt.preserveEvidenceExplicit = true;
-        opt.decodeCoreNativeValues = SendMessageW(gCoreDecode, BM_GETCHECK, 0, 0) == BST_CHECKED;
-        opt.experimentalFullNativeValues = SendMessageW(gFullNative, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        opt.decodeCoreNativeValues = true;
+        opt.experimentalFullNativeValues = true;
         opt.maxNativeRecords = 0;
         opt.maxNativeBlocks = 0;
         opt.verbose = SendMessageW(gVerbose, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -2946,9 +2946,7 @@ void createProcessControls(HWND hwnd) {
     labelP(hwnd, L"Mode", 300, y0 + 464, 56, 22); gMode = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 356, y0 + 460, 270, 140, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Process Raw Spotlight Evidence", L"Diagnostics / Bounded Native Parse", L"Discover Stores Only"}) SendMessageW(gMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gMode, CB_SETCURSEL, 0, 0);
     gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 740, y0 + 456, 240, 36);
-    gCoreDecode = addProcess(CreateWindowW(L"BUTTON", L"Enable safe core string/path probe", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 420, y0 + 500, 270, 24, hwnd, nullptr, gInst, nullptr));
-    gFullNative = addProcess(CreateWindowW(L"BUTTON", L"Full native metadata values", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 700, y0 + 500, 250, 24, hwnd, nullptr, gInst, nullptr));
-    SendMessageW(gFullNative, BM_SETCHECK, BST_CHECKED, 0);
+    addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 420, y0 + 500, 540, 24, hwnd, nullptr, gInst, nullptr));
     gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 106, y0 + 530, 120, 24, hwnd, nullptr, gInst, nullptr));
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
     labelP(hwnd, L"Export profile", 715, y0 + 534, 100, 22); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 815, y0 + 530, 154, 130, hwnd, nullptr, gInst, nullptr));
@@ -3432,19 +3430,6 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 if (p.empty()) { postStatus(L"Waiting: case location selection was cancelled."); return 0; }
                 setText(gOut, p);
                 setText(gCaseDbPath, p + L"\\VestigantSpotlight.case.sqlite");
-            }
-            const bool fullNativeChecked = SendMessageW(gFullNative, BM_GETCHECK, 0, 0) == BST_CHECKED;
-            const int exportProfileSel = gExportProfile ? static_cast<int>(SendMessageW(gExportProfile, CB_GETCURSEL, 0, 0)) : 1;
-            const int modeSel = gMode ? static_cast<int>(SendMessageW(gMode, CB_GETCURSEL, 0, 0)) : 0;
-            if (!fullNativeChecked && modeSel == 0 && (exportProfileSel == 1 || exportProfileSel == 3)) {
-                const int rc = MessageBoxW(hwnd,
-                    L"Full native metadata values are not enabled. Investigator/full exports will be header/core limited and may not show usage, WhereFroms, paths, or tag support details. Continue anyway?",
-                    L"Vestigant Spotlight - Full Metadata Disabled",
-                    MB_OKCANCEL | MB_ICONWARNING);
-                if (rc != IDOK) {
-                    postStatus(L"Waiting: full native metadata values were disabled and ingest was cancelled by operator.");
-                    return 0;
-                }
             }
             int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
             if (srcType == 2) postLog(L"Selected source type: AFF4/APFS image (staged). The run will preserve/register the selected evidence and perform currently implemented image/readiness/probe workflow steps.");

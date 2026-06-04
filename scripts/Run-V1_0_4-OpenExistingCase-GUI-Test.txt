@@ -1,0 +1,5 @@
+Set-Location D:\Downloads
+Get-FileHash .\VestigantSpotlightInv_V1_0_4.zip -Algorithm SHA256
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_0_4.zip -DestinationPath T:\ -Force
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_0_4\scripts\Build-V1_0_4.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_0_4\scripts\Launch-V1_0_4-GUI.ps1

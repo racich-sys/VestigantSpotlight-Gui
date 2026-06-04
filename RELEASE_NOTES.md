@@ -1,3 +1,15 @@
+## V1.0.4 - AFF4/APFS direct traversal limit cleanup and Store-V2 namespace seeding
+
+V1.0.4 fixes the stale build-script version check from V1.0.3 and cleans up the direct AFF4/APFS traversal behavior. The direct APFS root-tree scan now terminates by queue exhaustion and visited-node cycle protection instead of the prior node/record/depth hard caps. It also records direct directory entries independent from the bounded upload name-sample CSV and uses those entries to recursively seed Store-V2 child copy-attempt rows with group and APFS path context. Full target-guided INODE/FILE_EXTENT copy-out is deferred to V1.0.5 and should be moved out of `app_runner.cpp` into a dedicated APFS lookup module before implementation.
+
+# Release Notes
+
+## V1.0.4 - AFF4/APFS target correlation and production cleanup
+
+V1.0.4 continues the macOS AFF4/APFS transition from diagnostic probe toward extraction. It removes the named hard traversal/copy caps from the Spotlight filesystem-tree target scan, adds scanned-INODE target correlation, records APFS absolute path context for Store-V2 attempts, adds explicit sparse/zero-region copy-out provenance, removes the app-runner self-test/fake case data, removes deprecated GUI native-decoding toggles, and purges stale V0.9 production-package artifacts.
+
+Delayed items: vetted LZFSE/LZVN integration, full `discoverStores()` promotion, and diagnostic-view separation are documented with benchmarks in `docs/V1_0_4_AFF4_APFS_EXTRACTION_AND_CLEANUP.md`.
+
 # Vestigant Spotlight Release Notes
 
 ## V1.0.1 - AFF4/APFS direct filesystem-tree target scan

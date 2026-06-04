@@ -677,43 +677,6 @@ std::size_t countValidDatabaseCandidates(const std::vector<StoreInfo>& stores) {
     return n;
 }
 
-void insertSelfTestRaw(CaseDatabase& db, const EvidenceSource& source) {
-    db.begin();
-    try {
-        auto rec = db.prepare("INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,flags,last_updated_raw,last_updated_utc,file_name,content_type,content_type_tree,where_froms,display_name,full_path,record_state,logical_size_bytes,physical_size_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        auto putRec = [&](const std::string& inode, const std::string& parent, const std::string& name, const std::string& path, const std::string& ctype) {
-            rec.bind(1, source.sourceId); rec.bind(2, "SELFTEST"); rec.bind(3, "selftest"); rec.bind(4, "selftest"); rec.bind(5, inode); rec.bind(6, inode); rec.bind(7, parent); rec.bind(8, ""); rec.bind(9, ""); rec.bind(10, "2026-04-01T00:00:00Z"); rec.bind(11, name); rec.bind(12, ctype); rec.bind(13, ""); rec.bind(14, ""); rec.bind(15, name); rec.bind(16, path); rec.bind(17, path.empty() ? "PARTIAL_OR_NO_PATH" : "ACTIVE_OR_RESOLVED"); rec.bind(18, ""); rec.bind(19, ""); rec.stepDone(); rec.reset();
-        };
-        putRec("1", "", "Users", "/Users", "public.folder");
-        putRec("2", "1", "alice", "/Users/alice", "public.folder");
-        putRec("3", "2", "present.txt", "/Users/alice/Documents/present.txt", "public.plain-text");
-        putRec("4", "2", "deleted_message", "", "com.apple.MobileSMS.message");
-        putRec("5", "2", "missing.docx", "/Users/alice/Documents/missing.docx", "org.openxmlformats.wordprocessingml.document");
-
-        auto kv = db.prepare("INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,full_path,record_state,field_name,field_value) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
-        auto putKv = [&](const std::string& inode, const std::string& field, const std::string& value) {
-            kv.bind(1, source.sourceId); kv.bind(2, "SELFTEST"); kv.bind(3, "selftest"); kv.bind(4, "selftest"); kv.bind(5, inode); kv.bind(6, inode); kv.bind(7, ""); kv.bind(8, ""); kv.bind(9, ""); kv.bind(10, field); kv.bind(11, value); kv.stepDone(); kv.reset();
-        };
-        putKv("3", "kMDItemUseCount", "2");
-        putKv("3", "kMDItemLastUsedDate", "2026-04-01T10:00:00Z");
-        putKv("4", "kMDItemTextContent", "Message body text preserved in Spotlight index after source app content may no longer exist.");
-        putKv("5", "kMDItemWhereFroms", "https://example.test/file");
-
-        auto dt = db.prepare("INSERT INTO raw_date_candidates(source_id,store_guid,store_path,source_db,inode_num,store_id,field_name,field_value,parsed_utc,parse_method) VALUES(?,?,?,?,?,?,?,?,?,?)");
-        auto putDt = [&](const std::string& inode, const std::string& field, const std::string& value) {
-            dt.bind(1, source.sourceId); dt.bind(2, "SELFTEST"); dt.bind(3, "selftest"); dt.bind(4, "selftest"); dt.bind(5, inode); dt.bind(6, inode); dt.bind(7, field); dt.bind(8, value); dt.bind(9, value); dt.bind(10, "selftest_iso"); dt.stepDone(); dt.reset();
-        };
-        putDt("3", "kMDItemContentCreationDate", "2026-03-31T09:00:00Z");
-        putDt("5", "kMDItemDownloadedDate", "2026-04-02T11:00:00Z");
-        db.commit();
-    } catch (...) {
-        db.rollbackNoThrow();
-        throw;
-    }
-}
-
-
-
 bool hasExtensionInsensitive(const fs::path& p, const std::string& ext) {
     std::string e = p.extension().string();
     std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
@@ -4955,49 +4918,6 @@ void registerOriginalContainerSource(CaseDatabase& db,
              " sha256=" + (sha.empty() ? std::string("<not available>") : sha));
 }
 
-RunResult selfTest(const RunOptions& opt) {
-    installStructuredExceptionTranslator();
-    fs::path base = opt.output.empty() ? fs::temp_directory_path() / "VestigantSpotlight_selftest" : opt.output;
-    fs::remove_all(base);
-    fs::create_directories(base / "evidence" / "Users" / "alice" / "Documents");
-    std::ofstream(base / "evidence" / "Users" / "alice" / "Documents" / "present.txt") << "present\n";
-    RunOptions t = opt;
-    t.input = base / "selftest_source";
-    t.evidenceRoot.clear();// active filesystem comparison is tabled in v0.6.4
-    t.caseDir = base / "case";
-    t.output = base / "case";
-    t.caseName = "Self Test";
-    fs::create_directories(t.input);
-    Logger log(t.caseDir / "logs", t.verbose);
-    RunResult result;
-    CaseStore store(t.caseDir);
-    store.initialize(t, log);
-    EvidenceSource source = store.addSource(t, log);
-    appendRunStatus(t.caseDir, "open_sqlite");
-    CaseDatabase db;
-    db.open(t.caseDir / "VestigantSpotlight.case.sqlite");
-    db.initializeSchema();
-    db.insertCaseInfo(t);
-    db.insertEvidenceSource(source);
-    insertSelfTestRaw(db, source);
-    appendRunStatus(t.caseDir, "enrichment_start");
-    SqliteEnrichment enrichment;
-    auto counts = enrichment.run(db, source, log);
-    appendRunStatus(t.caseDir, "enrichment_complete", "artifacts=" + std::to_string(counts.artifacts) + " timeline=" + std::to_string(counts.timeline) + " usage=" + std::to_string(counts.usage));
-    purgeOrphanSourceRows(db, t.caseDir, log);
-    appendRunStatus(t.caseDir, "export_start");
-    SqliteExporter exporter;
-    exporter.exportReviewPackage(db, t.caseDir / "exports", log, t.exportProfile);
-    writeUiAndIosPlanningFiles(t.caseDir);
-    result.sourceCount = 1;
-    result.artifactCount = counts.artifacts;
-    result.usageCount = counts.usage;
-    result.timelineCount = counts.timeline;
-    result.orphanCandidateCount = counts.orphanCandidates;
-    store.writeSummary(result);
-    result.messages = log.messages();
-    return result;
-}
 } // namespace
 
 std::string hexSampleBytes(const unsigned char* data, std::size_t n) {
@@ -11035,7 +10955,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                     };
 
                     std::vector<ApfsSpotlightFileExtentProbeRow> allSpotlightScanFileExtents;
-                    constexpr std::size_t kMaxSpotlightScanFileExtentCandidates = 250000;
+                    std::vector<ApfsSpotlightInodeProbeRow> allSpotlightScanInodes;
 
                     auto previewStatusForBytes = [&](const std::vector<unsigned char>& bytes) -> std::string {
                         if (bytes.size() >= 16 && std::memcmp(bytes.data(), "SQLite format 3", 15) == 0) return "PREVIEW_SQLITE_HEADER";
@@ -11114,17 +11034,9 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                     seedSpotlightQueueForVolume(4);
                     for (const auto& lookup : apfsVolumeRootTreeLookupRows) if (lookup.volumeSequence != 4) seedSpotlightQueueForVolume(lookup.volumeSequence);
 
-                    constexpr std::size_t kMaxSpotlightScanNodes = 131072;
-                    constexpr std::size_t kMaxSpotlightDecodedNameSamples = 50000;
-                    constexpr std::uint32_t kMaxSpotlightScanRecordsPerNode = 4096;
-                    constexpr std::uint32_t kMaxSpotlightScanDepth = 14;
                     for (std::size_t qi = 0; qi < spotlightQueue.size(); ++qi) {
-                        if (apfsSpotlightTargetScanMetrics.nodesVisited >= kMaxSpotlightScanNodes) {
-                            apfsSpotlightTargetScanMetrics.nodesSkippedByLimit = spotlightQueue.size() - qi;
-                            break;
-                        }
                         const SpotlightScanPendingNode pending = spotlightQueue[qi];
-                        if (pending.branchOid == 0 || pending.targetXid == 0 || pending.depth > kMaxSpotlightScanDepth) continue;
+                        if (pending.branchOid == 0 || pending.targetXid == 0) continue;
                         auto omIt = apfsVolumeOmapRowsByVolumeSequence.find(pending.volumeSequence);
                         auto rootIt = apfsVolumeOmapRootNodesByVolumeSequence.find(pending.volumeSequence);
                         if (omIt == apfsVolumeOmapRowsByVolumeSequence.end() || rootIt == apfsVolumeOmapRootNodesByVolumeSequence.end()) continue;
@@ -11136,7 +11048,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                         else ++apfsSpotlightTargetScanMetrics.leafNodes;
 
                         const std::vector<unsigned char>& scanNode = resolved.resolvedBuffer;
-                        const std::uint32_t limit = std::min<std::uint32_t>(resolved.resolvedBtnNkeys, kMaxSpotlightScanRecordsPerNode);
+                        const std::uint32_t limit = resolved.resolvedBtnNkeys;
                         for (std::uint32_t i = 0; i < limit; ++i) {
                             std::size_t tocAbs = 0, keyAbs = 0, keyLen = 0, valAbs = 0, valLen = 0;
                             std::string detail;
@@ -11175,7 +11087,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 ++apfsSpotlightTargetScanMetrics.branchCandidatesQueued;
                                 if (rr.branchChildOid != 0) enqueueSpotlightNode(rr, pending.depth + 1U);
                             }
-                            if (rr.keyTypeRaw == 8U && keyLen >= 16U && valLen >= 16U && allSpotlightScanFileExtents.size() < kMaxSpotlightScanFileExtentCandidates) {
+                            if (rr.keyTypeRaw == 8U && keyLen >= 16U && valLen >= 16U) {
                                 ApfsSpotlightFileExtentProbeRow er;
                                 er.sequence = static_cast<std::uint32_t>(allSpotlightScanFileExtents.size());
                                 er.volumeSequence = rr.volumeSequence;
@@ -11202,7 +11114,47 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 er.notes = detail + "; scan_depth=" + std::to_string(pending.depth) + "; key_object_id_is_file_id";
                                 allSpotlightScanFileExtents.push_back(er);
                             }
-                            if (rr.keyTypeRaw == 4U && keyLen >= 10U && valLen >= 4U && apfsSpotlightXattrProbeRows.size() < 250000U) {
+                            if (rr.keyTypeRaw == 3U && valLen >= 8U) {
+                                ApfsSpotlightInodeProbeRow ir;
+                                ir.sequence = static_cast<std::uint32_t>(allSpotlightScanInodes.size());
+                                ir.volumeSequence = rr.volumeSequence;
+                                ir.targetRole = rr.targetRole;
+                                ir.fsOid = rr.fsOid;
+                                ir.volumeName = rr.volumeName;
+                                ir.inodeObjectId = rr.keyObjectId;
+                                if (valLen >= 8U && valAbs + 8U <= scanNode.size()) ir.inodeParentId = readLe64(scanNode, valAbs + 0U);
+                                if (valLen >= 16U && valAbs + 16U <= scanNode.size()) ir.inodePrivateId = readLe64(scanNode, valAbs + 8U);
+                                if (valLen >= 24U && valAbs + 24U <= scanNode.size()) ir.inodeCreateTimeRaw = readLe64(scanNode, valAbs + 16U);
+                                if (valLen >= 32U && valAbs + 32U <= scanNode.size()) ir.inodeModTimeRaw = readLe64(scanNode, valAbs + 24U);
+                                if (valLen >= 40U && valAbs + 40U <= scanNode.size()) ir.inodeChangeTimeRaw = readLe64(scanNode, valAbs + 32U);
+                                if (valLen >= 48U && valAbs + 48U <= scanNode.size()) ir.inodeAccessTimeRaw = readLe64(scanNode, valAbs + 40U);
+                                if (valLen >= 56U && valAbs + 56U <= scanNode.size()) ir.inodeInternalFlags = readLe64(scanNode, valAbs + 48U);
+                                if (valLen >= 60U && valAbs + 60U <= scanNode.size()) ir.inodeNchildrenOrNlink = readLe32(scanNode, valAbs + 56U);
+                                if (valLen >= 84U && valAbs + 84U <= scanNode.size()) ir.inodeModeCandidate = readLe16(scanNode, valAbs + 82U);
+                                if (valLen >= 92U && valAbs + 92U <= scanNode.size()) ir.inodeUncompressedSize = readLe64(scanNode, valAbs + 84U);
+                                const ApfsInodeExtendedFieldDecode xf = decodeApfsInodeExtendedFieldsForProbe(scanNode, valAbs, valLen);
+                                ir.inodeXfieldStatus = xf.status;
+                                if (xf.sawDstream) {
+                                    ir.inodeDstreamSize = xf.dstreamSize;
+                                    ir.inodeDstreamAllocedSize = xf.dstreamAllocedSize;
+                                    ir.inodeDstreamDefaultCryptoId = xf.dstreamDefaultCryptoId;
+                                }
+                                ir.nodeOid = rr.nodeOid;
+                                ir.nodeVirtualOffset = rr.nodeVirtualOffset;
+                                ir.nodeLevel = rr.nodeLevel;
+                                ir.nodeNkeys = rr.nodeNkeys;
+                                ir.entryIndex = rr.entryIndex;
+                                ir.inodeStatus = "SCANNED_INODE_CANDIDATE";
+                                ir.interpretation = "APFS INODE record decoded during filesystem-tree traversal and cached for later target-guided Store-V2 correlation.";
+                                if (valLen > 0 && valAbs < scanNode.size()) {
+                                    const std::size_t avail = std::min<std::size_t>(scanNode.size() - valAbs, valLen);
+                                    ir.valueSampleHex = hexSampleBytes(scanNode.data() + valAbs, std::min<std::size_t>(avail, 96U));
+                                }
+                                ir.notes = detail + "; scan_depth=" + std::to_string(pending.depth) + "; cached_for_target_correlation=1";
+                                if (!xf.notes.empty()) ir.notes += "; xfields=" + xf.notes;
+                                allSpotlightScanInodes.push_back(std::move(ir));
+                            }
+                            if (rr.keyTypeRaw == 4U && keyLen >= 10U && valLen >= 4U) {
                                 const std::uint16_t xnameLenRaw = readLe16(scanNode, keyAbs + 8U);
                                 std::size_t xnameLen = static_cast<std::size_t>(xnameLenRaw);
                                 if (xnameLen > keyLen - 10U) xnameLen = keyLen - 10U;
@@ -11268,11 +11220,11 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                     ns.name = rr.decodedName;
                                     apfsDirectoryRecordEntries.push_back(std::move(ns));
                                 }
-                                if (apfsSpotlightNameScanSampleRows.size() < kMaxSpotlightDecodedNameSamples) {
+                                {
                                     ApfsRootTreeRecordSampleRow sample = rr;
                                     sample.sequence = static_cast<std::uint32_t>(apfsSpotlightNameScanSampleRows.size());
-                                    sample.status = "DECODED_DIRECTORY_NAME_SAMPLE";
-                                    sample.interpretation = "Decoded APFS directory-record name encountered during the targeted Spotlight scan. This is a bounded diagnostic sample to verify scan coverage.";
+                                    sample.status = "DECODED_DIRECTORY_NAME";
+                                    sample.interpretation = "Decoded APFS directory-record name encountered during the Store-V2 filesystem-tree traversal.";
                                     sample.notes = detail + "; scan_depth=" + std::to_string(pending.depth) + "; parent_node_oid=" + std::to_string(pending.parentNodeOid);
                                     apfsSpotlightNameScanSampleRows.push_back(sample);
                                 }
@@ -11293,14 +11245,15 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                     // other ordinary names underneath the Store-V2 UUID directory.  Directory records are collected during
                     // the same bounded APFS filesystem-tree traversal above; this pass walks only from Store-V2 roots and
                     // keeps the single-AFF4/no-full-image-export policy intact.
-                    {
-                        std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<std::size_t>> childrenByParent;
+                    std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<std::size_t>> childrenByParent;
                         std::map<std::pair<std::uint32_t, std::uint64_t>, std::string> directoryNameByObject;
+                        std::map<std::pair<std::uint32_t, std::uint64_t>, std::uint64_t> parentByObject;
                         std::set<std::pair<std::uint32_t, std::uint64_t>> directoriesSeen;
                         for (std::size_t i = 0; i < apfsDirectoryRecordEntries.size(); ++i) {
                             const auto& e = apfsDirectoryRecordEntries[i];
                             childrenByParent[std::make_pair(e.volumeSequence, e.parentObjectId)].push_back(i);
                             directoriesSeen.insert(std::make_pair(e.volumeSequence, e.parentObjectId));
+                            if (e.childFileId != 0 && e.parentObjectId != 0) parentByObject[std::make_pair(e.volumeSequence, e.childFileId)] = e.parentObjectId;
                             if (!e.name.empty()) {
                                 const auto childKey = std::make_pair(e.volumeSequence, e.childFileId);
                                 if (!directoryNameByObject.count(childKey) || isLikelyStoreV2GroupDirectoryName(e.name)) {
@@ -11317,6 +11270,42 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                             const std::string dirName = directoryNameForObject(volumeSequence, dirObjectId);
                             if (isLikelyStoreV2GroupDirectoryName(dirName)) return dirName;
                             return {};
+                        };
+                        auto apfsPathComponent = [](const std::string& value) -> std::string {
+                            std::string out;
+                            out.reserve(value.size());
+                            for (const unsigned char ch : value) {
+                                if (ch < 0x20 || ch == '/' || ch == '\\' || ch == ':' || ch == '*' || ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|') {
+                                    out.push_back('_');
+                                } else {
+                                    out.push_back(static_cast<char>(ch));
+                                }
+                            }
+                            while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+                            return out.empty() ? std::string("volume_") : out;
+                        };
+                        auto apfsAbsolutePathForObject = [&](std::uint32_t volumeSequence, std::uint64_t objectId) -> std::string {
+                            std::vector<std::string> parts;
+                            std::set<std::uint64_t> seenIds;
+                            std::uint64_t cur = objectId;
+                            for (;;) {
+                                if (cur == 0 || !seenIds.insert(cur).second) break;
+                                const auto nameIt = directoryNameByObject.find(std::make_pair(volumeSequence, cur));
+                                if (nameIt != directoryNameByObject.end() && !nameIt->second.empty()) parts.push_back(nameIt->second);
+                                if (cur == 2) break;
+                                const auto parentIt = parentByObject.find(std::make_pair(volumeSequence, cur));
+                                if (parentIt == parentByObject.end() || parentIt->second == cur) break;
+                                cur = parentIt->second;
+                            }
+                            std::string prefix = (volumeSequence == 4) ? "/System/Volumes/Data" : ("/" + apfsPathComponent(directoryNameForObject(volumeSequence, 2)));
+                            if (prefix == "/volume_") prefix = "/volume_" + std::to_string(volumeSequence);
+                            std::string path = prefix;
+                            for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+                                if (*it == "/" || it->empty()) continue;
+                                if (path.empty() || path.back() != '/') path += "/";
+                                path += *it;
+                            }
+                            return path;
                         };
                         std::set<std::tuple<std::uint32_t, std::uint64_t, std::uint64_t, std::string>> attemptSeen;
                         for (const auto& cr : apfsSpotlightCopyAttemptRows) {
@@ -11356,15 +11345,13 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 enqueueDir(e.volumeSequence, e.parentObjectId, e.parentObjectId, parentGroupName, "", 0);
                             }
                         }
-                        constexpr std::size_t kMaxRecursiveStoreV2CopyAttempts = 40000U;
-                        constexpr std::uint32_t kMaxRecursiveStoreV2Depth = 12U;
                         std::size_t recursiveAttemptsAdded = 0;
-                        for (std::size_t qi = 0; qi < queue.size() && recursiveAttemptsAdded < kMaxRecursiveStoreV2CopyAttempts; ++qi) {
+                        std::set<std::pair<std::uint32_t, std::uint64_t>> recursiveDirsSeen;
+                        for (std::size_t qi = 0; qi < queue.size(); ++qi) {
                             const auto item = queue[qi];
                             const auto childIt = childrenByParent.find(std::make_pair(item.volumeSequence, item.dirObjectId));
                             if (childIt == childrenByParent.end()) continue;
                             for (const std::size_t idx : childIt->second) {
-                                if (recursiveAttemptsAdded >= kMaxRecursiveStoreV2CopyAttempts) break;
                                 const auto& e = apfsDirectoryRecordEntries[idx];
                                 const std::string lname = asciiLower(e.name);
                                 if (lname == ".spotlight-v100" || lname == "store-v2") continue;
@@ -11386,7 +11373,8 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 }
                                 const std::string relPath = relPrefix.empty() ? e.name : (relPrefix + "/" + e.name);
                                 if (childIsDirectory) {
-                                    if (item.depth < kMaxRecursiveStoreV2Depth) {
+                                    const auto dirKey = std::make_pair(e.volumeSequence, e.childFileId);
+                                    if (recursiveDirsSeen.insert(dirKey).second) {
                                         enqueueDir(e.volumeSequence, e.childFileId, groupRoot, groupName, relPath, item.depth + 1U);
                                     }
                                     continue;
@@ -11408,15 +11396,48 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 cr.storeV2RelativePath = relPath;
                                 cr.extractionStatus = "COPY_NOT_ATTEMPTED_FILE_EXTENTS_NOT_RESOLVED";
                                 cr.interpretation = "Recursive Store-V2 namespace seeding added this ordinary-named file under a Store-V2 group directory so cache/content files can be compared against the external reference extraction.";
-                                cr.notes = "V0_8_62 recursive Store-V2 seed with UUID group-name preservation; group_root_object_id=" + std::to_string(groupRoot) + "; group_name=" + groupName + "; rel_path=" + relPath;
+                                cr.notes = "V1_0_4 recursive Store-V2 seed with UUID group-name preservation and APFS catalog path context; group_root_object_id=" + std::to_string(groupRoot) + "; group_name=" + groupName + "; rel_path=" + relPath + "; apfs_absolute_path=" + apfsAbsolutePathForObject(e.volumeSequence, e.childFileId);
                                 apfsSpotlightCopyAttemptRows.push_back(std::move(cr));
                                 ++recursiveAttemptsAdded;
                             }
                         }
-                    }
 
                     std::map<std::uint32_t, std::uint64_t> spotlightLogicalSizeByTargetSequence;
                     std::map<std::uint32_t, std::string> spotlightLogicalSizeSourceByTargetSequence;
+                    std::map<std::uint32_t, std::uint64_t> spotlightPrivateIdByTargetSequence;
+
+                    auto materializeScannedInodeForCopyAttempt = [&](const ApfsSpotlightCopyAttemptRow& cr, const ApfsSpotlightInodeProbeRow& cached) -> bool {
+                        if (cr.childFileId == 0 || cached.volumeSequence != cr.volumeSequence || cached.inodeObjectId != cr.childFileId) return false;
+                        ApfsSpotlightInodeProbeRow ir = cached;
+                        ir.sequence = static_cast<std::uint32_t>(apfsSpotlightInodeProbeRows.size());
+                        ir.targetSequence = cr.sequence;
+                        ir.targetRole = cr.targetRole;
+                        ir.fsOid = cr.fsOid;
+                        ir.volumeName = cr.volumeName;
+                        ir.targetParentObjectId = cr.parentObjectId;
+                        ir.targetChildFileId = cr.childFileId;
+                        ir.targetName = cr.targetName;
+                        ir.targetKind = cr.targetKind;
+                        ir.inodeStatus = "TARGET_INODE_SCAN_CORRELATION_HIT";
+                        ir.interpretation = "Previously scanned APFS INODE row matched this Store-V2 target child file ID. This avoids relying only on later point lookups and enables private-id/dstream extent correlation.";
+                        ir.notes += "; correlated_target_sequence=" + std::to_string(cr.sequence) + "; target_apfs_path=" + apfsAbsolutePathForObject(cr.volumeSequence, cr.childFileId);
+                        if (ir.inodePrivateId != 0 && cr.targetKind != "APFS_RESOURCE_FORK_STREAM") spotlightPrivateIdByTargetSequence[cr.sequence] = ir.inodePrivateId;
+                        if (ir.inodeDstreamSize != 0 && ir.inodeDstreamSize <= ir.inodeDstreamAllocedSize) {
+                            spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeDstreamSize;
+                            spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "INO_EXT_TYPE_DSTREAM.size.scan_correlation";
+                        } else if (ir.inodeUncompressedSize != 0 && ir.inodeUncompressedSize <= (512ULL * 1024ULL * 1024ULL)) {
+                            spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeUncompressedSize;
+                            spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "j_inode_val.uncompressed_size.scan_correlation";
+                        }
+                        apfsSpotlightInodeProbeRows.push_back(std::move(ir));
+                        return true;
+                    };
+                    for (const auto& cr : apfsSpotlightCopyAttemptRows) {
+                        if (cr.targetKind == "APFS_RESOURCE_FORK_STREAM") continue;
+                        for (const auto& cached : allSpotlightScanInodes) {
+                            if (materializeScannedInodeForCopyAttempt(cr, cached)) break;
+                        }
+                    }
 
                     // V0_8_63: add bounded resource-fork stream copy attempts for Store-V2 files that have
                     // com.apple.decmpfs resource-fork compression markers plus a stream-backed com.apple.ResourceFork
@@ -11567,8 +11588,6 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                         er.notes = detail;
                         apfsSpotlightFileExtentProbeRows.push_back(er);
                     };
-
-                    std::map<std::uint32_t, std::uint64_t> spotlightPrivateIdByTargetSequence;
 
                     auto appendGuidedNoMatchInodeRow = [&](const ApfsSpotlightCopyAttemptRow& cr,
                                                            const std::string& status,
@@ -12057,7 +12076,6 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                     };
 
                     constexpr std::uint64_t kMaxSingleCopyOutBytes = 512ULL * 1024ULL * 1024ULL;
-                    constexpr std::size_t kMaxCopyOutFiles = 20000U;
                     std::size_t copiedOutFileCount = 0;
                     const fs::path extractedRoot = caseDir / "ExtractedSpotlight" / "aff4_apfs";
 
@@ -12109,7 +12127,6 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                     };
 
                     for (const auto& cr : apfsSpotlightCopyAttemptRows) {
-                        if (copiedOutFileCount >= kMaxCopyOutFiles) break;
                         if (cr.childFileId == 0) continue;
                         if (!(cr.extractionStatus == "COPY_NOT_ATTEMPTED_EXTENTS_FOUND_FULL_ASSEMBLY_NOT_READY" || cr.extractionStatus == "COPY_NOT_ATTEMPTED_FILE_EXTENTS_NOT_RESOLVED")) continue;
                         std::vector<ApfsSpotlightFileExtentProbeRow> extentsForTarget;
@@ -12203,20 +12220,29 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                             }
                         }
 
-                        bool gapless = true;
-                        bool nonzeroPhysical = true;
+                        bool hasSparseGap = false;
+                        bool hasZeroPhysicalExtent = false;
+                        bool hasOverlapOrInvalidOrder = false;
                         bool saneLengths = true;
                         std::uint64_t expected = 0;
+                        std::uint64_t syntheticZeroBytesPlanned = 0;
                         for (const auto& er : extentsForTarget) {
-                            if (er.extentLogicalOffset != expected) gapless = false;
                             if (er.extentLengthBytes == 0 || er.extentLengthBytes > kMaxSingleCopyOutBytes) saneLengths = false;
-                            if (er.physicalBlock == 0 || er.physicalOffset == 0) nonzeroPhysical = false;
+                            if (er.extentLogicalOffset < expected) hasOverlapOrInvalidOrder = true;
+                            if (er.extentLogicalOffset > expected) {
+                                hasSparseGap = true;
+                                syntheticZeroBytesPlanned += (er.extentLogicalOffset - expected);
+                                expected = er.extentLogicalOffset;
+                            }
+                            if (er.physicalBlock == 0 || er.physicalOffset == 0) {
+                                hasZeroPhysicalExtent = true;
+                                syntheticZeroBytesPlanned += er.extentLengthBytes;
+                            }
                             if (er.extentLengthBytes > std::numeric_limits<std::uint64_t>::max() - expected) saneLengths = false;
                             expected += er.extentLengthBytes;
                         }
-                        if (!gapless) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_EXTENT_GAP", "NOT_GAPLESS", "Logical FILE_EXTENT rows do not form a gapless chain from offset zero."); continue; }
-                        if (!nonzeroPhysical) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_ZERO_PHYSICAL_BLOCK", "UNSAFE_PHYSICAL_BLOCK", "One or more FILE_EXTENT rows had physical_block/physical_offset equal to zero; extraction is deferred until sparse/zero-block semantics are explicitly handled."); continue; }
-                        if (!saneLengths || expected == 0 || expected > kMaxSingleCopyOutBytes) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH", "SIZE_GATE_FAILED", "The extent chain length is zero, invalid, or exceeds the bounded development copy-out limit."); continue; }
+                        if (hasOverlapOrInvalidOrder) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS", "OVERLAP_ORDER_GATE_FAILED", "Logical FILE_EXTENT rows overlap or move backwards; extraction is deferred to avoid producing shifted data."); continue; }
+                        if (!saneLengths || expected == 0 || expected > kMaxSingleCopyOutBytes) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH", "SIZE_GATE_FAILED", "The extent chain length is zero, invalid, or exceeds the bounded per-file copy-out limit."); continue; }
 
                         std::uint64_t logicalSize = expected;
                         std::string logicalSizeSource = "extent_chain_allocated_size";
@@ -12257,9 +12283,37 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                         std::string copyNotes;
                         std::vector<unsigned char> firstBytes;
                         std::uint64_t remainingToWrite = logicalSize;
+                        std::uint64_t logicalCursor = 0;
+                        std::uint64_t syntheticZeroBytesWritten = 0;
+                        auto writeZeroRegion = [&](std::uint64_t count, const std::string& reason) -> bool {
+                            static const std::vector<unsigned char> zeros(1024 * 1024, 0);
+                            std::uint64_t left = count;
+                            while (left != 0) {
+                                const std::size_t chunk = static_cast<std::size_t>(std::min<std::uint64_t>(left, zeros.size()));
+                                if (firstBytes.empty()) firstBytes.assign(zeros.begin(), zeros.begin() + std::min<std::size_t>(chunk, 96U));
+                                outFile.write(reinterpret_cast<const char*>(zeros.data()), static_cast<std::streamsize>(chunk));
+                                if (!outFile) { copyNotes = "write failed while zero-filling " + reason; return false; }
+                                left -= chunk;
+                            }
+                            syntheticZeroBytesWritten += count;
+                            return true;
+                        };
                         for (const auto& er : extentsForTarget) {
                             if (remainingToWrite == 0) break;
+                            if (er.extentLogicalOffset > logicalCursor) {
+                                const std::uint64_t gap = std::min<std::uint64_t>(er.extentLogicalOffset - logicalCursor, remainingToWrite);
+                                if (!writeZeroRegion(gap, "logical_sparse_gap")) { copyOk = false; break; }
+                                logicalCursor += gap;
+                                remainingToWrite -= gap;
+                                if (remainingToWrite == 0) break;
+                            }
                             const std::uint64_t bytesWanted = std::min<std::uint64_t>(er.extentLengthBytes, remainingToWrite);
+                            if (er.physicalBlock == 0 || er.physicalOffset == 0) {
+                                if (!writeZeroRegion(bytesWanted, "zero_physical_block")) { copyOk = false; break; }
+                                logicalCursor += bytesWanted;
+                                remainingToWrite -= bytesWanted;
+                                continue;
+                            }
                             std::vector<unsigned char> extentBytes;
                             std::string readErr;
                             const long long bytesReadExtent = readVirtual(er.physicalOffset, bytesWanted, extentBytes, readErr);
@@ -12271,6 +12325,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                             if (firstBytes.empty()) firstBytes.assign(extentBytes.begin(), extentBytes.begin() + std::min<std::size_t>(extentBytes.size(), 96U));
                             outFile.write(reinterpret_cast<const char*>(extentBytes.data()), static_cast<std::streamsize>(extentBytes.size()));
                             if (!outFile) { copyOk = false; copyNotes = "write failed while copying extent data"; break; }
+                            logicalCursor += bytesWanted;
                             remainingToWrite -= bytesWanted;
                         }
                         if (copyOk && remainingToWrite != 0) { copyOk = false; copyNotes = "logical file size was not fully written from available extents"; }
@@ -12318,9 +12373,16 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 row.notes = "decoded_logical_size=" + std::to_string(decodedLogicalSize) + "; assembled_extent_bytes=" + std::to_string(expected) + "; source=" + decodedLogicalSizeSource + "; APFS compressed/resource-fork/xattr handling is required for full logical-file reconstruction";
                                 row.interpretation = "APFS FILE_EXTENT rows copied a validated data-fork extent chain, but the decoded inode logical/uncompressed size is larger than the assembled normal extents. Treat this as a compressed/resource-fork candidate, not a complete logical file copy.";
                             } else {
-                                row.copyStatus = "COPIED_GAPLESS_EXTENT_CHAIN";
-                                row.validationStatus = (row.outputSizeBytes == logicalSize && logicalSize < expected) ? "TRIMMED_TO_INODE_LOGICAL_SIZE" : ((row.outputSizeBytes == expected) ? "SIZE_MATCHES_EXTENT_CHAIN" : "SIZE_MISMATCH_AFTER_COPY");
-                                row.interpretation = "APFS FILE_EXTENT rows formed a gapless nonzero physical chain and were assembled into a staged copy-out file. Treat this as development-stage extracted evidence until inode/dstream size and full path reconstruction are also validated.";
+                                if (hasSparseGap || hasZeroPhysicalExtent || syntheticZeroBytesWritten != 0) {
+                                    row.copyStatus = "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS";
+                                    row.validationStatus = (row.outputSizeBytes == logicalSize) ? "SIZE_MATCH_WITH_ZERO_FILL_PROVENANCE" : "SIZE_MISMATCH_AFTER_ZERO_FILL_COPY";
+                                    row.notes += (row.notes.empty() ? std::string{} : "; ") + std::string("synthetic_zero_bytes=") + std::to_string(syntheticZeroBytesWritten) + "; planned_zero_bytes=" + std::to_string(syntheticZeroBytesPlanned) + "; sparse_gap=" + (hasSparseGap ? "true" : "false") + "; zero_physical_extent=" + (hasZeroPhysicalExtent ? "true" : "false");
+                                    row.interpretation = "APFS FILE_EXTENT rows were assembled with explicit synthetic zero regions for sparse gaps and/or zero physical extents. The zero-filled regions are recorded in notes and the output hash is calculated over the reconstructed logical byte stream.";
+                                } else {
+                                    row.copyStatus = "COPIED_GAPLESS_EXTENT_CHAIN";
+                                    row.validationStatus = (row.outputSizeBytes == logicalSize && logicalSize < expected) ? "TRIMMED_TO_INODE_LOGICAL_SIZE" : ((row.outputSizeBytes == expected) ? "SIZE_MATCHES_EXTENT_CHAIN" : "SIZE_MISMATCH_AFTER_COPY");
+                                    row.interpretation = "APFS FILE_EXTENT rows formed a gapless nonzero physical chain and were assembled into a staged copy-out file with inode/dstream-aware logical-size validation.";
+                                }
                             }
                             ++copiedOutFileCount;
                         }
@@ -12590,18 +12652,19 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
     writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, nxSummary, apfsVolumeRows, log);
     writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, nxSummary, apfsCheckpointMapRows, apfsCheckpointMappedObjectRows, log);
     writeObjectResolutionOutputs();
-    writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, nxSummary, apfsResolvedVolumeSuperblockRows, apfsVolumeOmapProbeRows, apfsVolumeRootTreeLookupRows, opt.strictSingleAff4, log);
-    writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, apfsVolumeRootTreeLookupRows, opt.strictSingleAff4, log);
-    writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeNodeProbeRows, apfsRootTreeRecordSampleRows, opt.strictSingleAff4, log);
-    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, "child", opt.strictSingleAff4, log);
-    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, "descendant", opt.strictSingleAff4, log);
-    writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, apfsRootTreeRecordSampleRows, apfsRootTreeChildRecordSampleRows, apfsRootTreeDescendantRecordSampleRows, opt.strictSingleAff4, log);
-    writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, apfsSpotlightTargetScanRows, apfsSpotlightNameScanSampleRows, apfsSpotlightCopyAttemptRows, apfsSpotlightTargetScanMetrics, opt.strictSingleAff4, log);
-    writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, apfsSpotlightInodeProbeRows, opt.strictSingleAff4, log);
-    writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, apfsSpotlightXattrProbeRows, apfsSpotlightCopyAttemptRows, opt.strictSingleAff4, log);
-    writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, apfsSpotlightFileExtentProbeRows, opt.strictSingleAff4, log);
-    writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, opt.strictSingleAff4, log);
-    writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, opt.strictSingleAff4, log);
+    const bool strictAff4PolicyForOutputs = opt.strictSingleAff4 || isAff4SourcePath(originalInput);
+    writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, nxSummary, apfsResolvedVolumeSuperblockRows, apfsVolumeOmapProbeRows, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeNodeProbeRows, apfsRootTreeRecordSampleRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, "child", strictAff4PolicyForOutputs, log);
+    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, "descendant", strictAff4PolicyForOutputs, log);
+    writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, apfsRootTreeRecordSampleRows, apfsRootTreeChildRecordSampleRows, apfsRootTreeDescendantRecordSampleRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, apfsSpotlightTargetScanRows, apfsSpotlightNameScanSampleRows, apfsSpotlightCopyAttemptRows, apfsSpotlightTargetScanMetrics, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, apfsSpotlightInodeProbeRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, apfsSpotlightXattrProbeRows, apfsSpotlightCopyAttemptRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, apfsSpotlightFileExtentProbeRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
+    writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
     log.info("AFF4 CPP Lite dynamic-load probe written: " + pathString(csvPath));
     log.info("AFF4 virtual APFS probe written: " + pathString(apfsCsvPath));
     log.info("AFF4 APFS container view written: " + pathString(caseDir / "aff4_apfs_container_superblock.csv"));
@@ -12928,6 +12991,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
     std::vector<ApfsSpotlightXattrProbeRow> directSpotlightXattrRows;
     std::vector<ApfsSpotlightFileExtentProbeRow> directSpotlightFileExtentRows;
     std::vector<ApfsSpotlightFileCopyOutRow> directSpotlightFileCopyOutRows;
+    std::vector<ApfsDirectoryRecordEntry> directDirectoryRecordEntries;
     ApfsSpotlightTargetScanMetrics directSpotlightScanMetrics;
     std::map<std::uint32_t, ApfsVolumeOmapProbeRow> directVolumeOmapBySequence;
     std::map<std::uint32_t, std::vector<unsigned char>> directVolumeOmapRootBySequence;
@@ -13735,11 +13799,8 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                     else enqueueDirectNode(pn);
                 }
 
-                constexpr std::size_t kDirectSpotlightMaxNodes = 65536U;
-                constexpr std::size_t kDirectSpotlightMaxRecords = 2000000U;
-                constexpr std::size_t kDirectSpotlightMaxNameSamples = 100000U;
-                constexpr std::uint32_t kDirectSpotlightMaxDepth = 32U;
-                for (std::size_t qi = 0; qi < directPending.size() && directSpotlightScanMetrics.nodesVisited < kDirectSpotlightMaxNodes && directSpotlightScanMetrics.recordsScanned < kDirectSpotlightMaxRecords; ++qi) {
+                constexpr std::size_t kDirectSpotlightDiagnosticNameSampleLimit = 200000U;
+                for (std::size_t qi = 0; qi < directPending.size(); ++qi) {
                     const DirectFsPendingNode pending = directPending[qi];
                     std::vector<unsigned char> node;
                     std::string nodeErr;
@@ -13778,7 +13839,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                     if (btnLevel == 0) ++directSpotlightScanMetrics.leafNodes;
                     else ++directSpotlightScanMetrics.branchNodes;
                     const std::uint32_t recordLimit = nkeys;
-                    for (std::uint32_t i = 0; i < recordLimit && directSpotlightScanMetrics.recordsScanned < kDirectSpotlightMaxRecords; ++i) {
+                    for (std::uint32_t i = 0; i < recordLimit; ++i) {
                         std::size_t tocAbs = 0, keyAbs = 0, keyLen = 0, valAbs = 0, valLen = 0;
                         std::string detail;
                         if (!aff4GenericBtreeKvAbsForProbe(node, i, tocAbs, keyAbs, keyLen, valAbs, valLen, detail)) continue;
@@ -13811,7 +13872,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         if (valLen >= 24U && valAbs + 24U <= node.size()) rr.valueU64_2 = readLe64(node, valAbs + 16U);
                         if (btnLevel > 0 && valLen >= 8U && valAbs + 8U <= node.size()) {
                             rr.branchChildOid = readLe64(node, valAbs);
-                            if (pending.depth + 1U <= kDirectSpotlightMaxDepth && rr.branchChildOid != 0) {
+                            if (rr.branchChildOid != 0) {
                                 DirectFsPendingNode child;
                                 child.volumeSequence = pending.volumeSequence;
                                 child.targetRole = pending.targetRole;
@@ -13830,14 +13891,27 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                             const std::uint32_t nameLenAndHash = readLe32(node, keyAbs + 8U);
                             const std::size_t nameLen = static_cast<std::size_t>(nameLenAndHash & 0x000003ffU);
                             rr.decodedName = safePrintableUtf8Fragment(node, keyAbs + 12U, std::min<std::size_t>(nameLen, keyLen - 12U));
-                            if (!rr.decodedName.empty()) ++directSpotlightScanMetrics.dirRecordsDecoded;
+                            if (!rr.decodedName.empty()) {
+                                ++directSpotlightScanMetrics.dirRecordsDecoded;
+                                if (rr.valueU64_0 != 0) {
+                                    ApfsDirectoryRecordEntry de;
+                                    de.volumeSequence = rr.volumeSequence;
+                                    de.targetRole = rr.targetRole;
+                                    de.fsOid = rr.fsOid;
+                                    de.volumeName = rr.volumeName;
+                                    de.parentObjectId = rr.keyObjectId;
+                                    de.childFileId = rr.valueU64_0;
+                                    de.name = rr.decodedName;
+                                    directDirectoryRecordEntries.push_back(std::move(de));
+                                }
+                            }
                         }
                         rr.keySampleHex = (keyLen > 0 && keyAbs < node.size()) ? hexSampleBytes(node.data() + keyAbs, std::min<std::size_t>(keyLen, 64U)) : std::string{};
                         rr.valueSampleHex = (valLen > 0 && valAbs < node.size()) ? hexSampleBytes(node.data() + valAbs, std::min<std::size_t>(valLen, 64U)) : std::string{};
                         rr.status = "DIRECT_AFF4_APFS_BTREE_SCAN_RECORD_DECODED";
                         rr.interpretation = btnLevel == 0 ? "Leaf filesystem-tree record decoded during direct AFF4/APFS bounded Spotlight target scan." : "Branch filesystem-tree separator record decoded during direct AFF4/APFS bounded Spotlight target scan.";
                         rr.notes = detail + "; direct_scan_depth=" + std::to_string(pending.depth);
-                        if (!rr.decodedName.empty() && directSpotlightNameSampleRows.size() < kDirectSpotlightMaxNameSamples) directSpotlightNameSampleRows.push_back(rr);
+                        if (!rr.decodedName.empty() && directSpotlightNameSampleRows.size() < kDirectSpotlightDiagnosticNameSampleLimit) directSpotlightNameSampleRows.push_back(rr);
                         if (btnLevel == 0 && directIsSpotlightTargetName(rr.decodedName)) {
                             directSpotlightTargetRows.push_back(rr);
                             appendDirectSpotlightCopyAttempt(rr);
@@ -13845,8 +13919,118 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         }
                     }
                 }
-                if (directSpotlightScanMetrics.nodesVisited >= kDirectSpotlightMaxNodes || directSpotlightScanMetrics.recordsScanned >= kDirectSpotlightMaxRecords) {
-                    directSpotlightScanMetrics.nodesSkippedByLimit = directPending.size() > directSpotlightScanMetrics.nodesVisited ? (directPending.size() - directSpotlightScanMetrics.nodesVisited) : 0U;
+                directSpotlightScanMetrics.nodesSkippedByLimit = 0;
+
+                // V1.0.4: The direct AFF4/APFS path now walks the APFS root-tree queue to exhaustion
+                // using the visited-node set as the cycle guard.  It also keeps directory-record rows
+                // separately from the bounded diagnostic name-sample CSV, so recursive Store-V2 child
+                // discovery is no longer blocked by the upload sample size.
+                {
+                    std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<std::size_t>> childrenByParent;
+                    std::map<std::pair<std::uint32_t, std::uint64_t>, std::string> nameByObject;
+                    std::map<std::pair<std::uint32_t, std::uint64_t>, std::uint64_t> parentByObject;
+                    for (std::size_t i = 0; i < directDirectoryRecordEntries.size(); ++i) {
+                        const auto& e = directDirectoryRecordEntries[i];
+                        childrenByParent[std::make_pair(e.volumeSequence, e.parentObjectId)].push_back(i);
+                        if (e.childFileId != 0 && e.parentObjectId != 0) parentByObject[std::make_pair(e.volumeSequence, e.childFileId)] = e.parentObjectId;
+                        if (e.childFileId != 0 && !e.name.empty()) nameByObject[std::make_pair(e.volumeSequence, e.childFileId)] = e.name;
+                    }
+                    auto directPathForObject = [&](std::uint32_t volumeSequence, std::uint64_t objectId) -> std::string {
+                        std::vector<std::string> parts;
+                        std::set<std::uint64_t> seen;
+                        std::uint64_t cur = objectId;
+                        while (cur != 0 && seen.insert(cur).second) {
+                            const auto nameIt = nameByObject.find(std::make_pair(volumeSequence, cur));
+                            if (nameIt != nameByObject.end() && !nameIt->second.empty()) parts.push_back(nameIt->second);
+                            if (cur == 2) break;
+                            const auto parentIt = parentByObject.find(std::make_pair(volumeSequence, cur));
+                            if (parentIt == parentByObject.end() || parentIt->second == cur) break;
+                            cur = parentIt->second;
+                        }
+                        std::string path = (volumeSequence == 4) ? "/System/Volumes/Data" : ("/vol_" + std::to_string(volumeSequence));
+                        for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+                            if (it->empty() || *it == "/") continue;
+                            if (path.empty() || path.back() != '/') path += "/";
+                            path += *it;
+                        }
+                        return path;
+                    };
+                    std::set<std::tuple<std::uint32_t, std::uint64_t, std::uint64_t, std::string>> seenAttempts;
+                    for (const auto& cr : directSpotlightCopyAttemptRows) {
+                        seenAttempts.insert(std::make_tuple(cr.volumeSequence, cr.parentObjectId, cr.childFileId, asciiLower(cr.targetName)));
+                    }
+                    struct DirectStoreWalkItem {
+                        std::uint32_t volumeSequence = 0;
+                        std::uint64_t dirObjectId = 0;
+                        std::uint64_t groupRootObjectId = 0;
+                        std::string groupName;
+                        std::string relPrefix;
+                    };
+                    std::vector<DirectStoreWalkItem> storeWalk;
+                    std::set<std::pair<std::uint32_t, std::uint64_t>> queuedStoreDirs;
+                    auto enqueueStoreDir = [&](std::uint32_t vol, std::uint64_t dir, std::uint64_t root, const std::string& group, const std::string& rel) {
+                        if (dir == 0) return;
+                        auto key = std::make_pair(vol, dir);
+                        if (!childrenByParent.count(key)) return;
+                        if (!queuedStoreDirs.insert(key).second) return;
+                        DirectStoreWalkItem wi;
+                        wi.volumeSequence = vol;
+                        wi.dirObjectId = dir;
+                        wi.groupRootObjectId = root ? root : dir;
+                        wi.groupName = group;
+                        wi.relPrefix = rel;
+                        storeWalk.push_back(std::move(wi));
+                    };
+                    auto directGroupNameForDir = [&](std::uint32_t vol, std::uint64_t dir) -> std::string {
+                        const auto it = nameByObject.find(std::make_pair(vol, dir));
+                        if (it == nameByObject.end()) return {};
+                        return isLikelyStoreV2GroupDirectoryName(it->second) ? it->second : std::string{};
+                    };
+                    for (const auto& e : directDirectoryRecordEntries) {
+                        const std::string lname = asciiLower(e.name);
+                        if (lname == "store-v2") enqueueStoreDir(e.volumeSequence, e.childFileId, e.childFileId, "", "");
+                        if (directIsSpotlightStoreV2TopLevelComponentName(lname)) enqueueStoreDir(e.volumeSequence, e.parentObjectId, e.parentObjectId, directGroupNameForDir(e.volumeSequence, e.parentObjectId), "");
+                    }
+                    for (std::size_t qi = 0; qi < storeWalk.size(); ++qi) {
+                        const auto item = storeWalk[qi];
+                        const auto childIt = childrenByParent.find(std::make_pair(item.volumeSequence, item.dirObjectId));
+                        if (childIt == childrenByParent.end()) continue;
+                        for (const std::size_t idx : childIt->second) {
+                            const auto& e = directDirectoryRecordEntries[idx];
+                            const std::string lname = asciiLower(e.name);
+                            if (lname == ".spotlight-v100" || lname == "store-v2") continue;
+                            const bool childIsDir = childrenByParent.count(std::make_pair(e.volumeSequence, e.childFileId)) != 0;
+                            std::uint64_t groupRoot = item.groupRootObjectId;
+                            std::string groupName = item.groupName;
+                            std::string relPrefix = item.relPrefix;
+                            if (groupName.empty() && childIsDir && isLikelyStoreV2GroupDirectoryName(e.name)) {
+                                groupRoot = e.childFileId;
+                                groupName = e.name;
+                                relPrefix.clear();
+                            }
+                            const std::string relPath = relPrefix.empty() ? e.name : (relPrefix + "/" + e.name);
+                            if (childIsDir) { enqueueStoreDir(e.volumeSequence, e.childFileId, groupRoot, groupName, relPath); continue; }
+                            const auto dedupe = std::make_tuple(e.volumeSequence, e.parentObjectId, e.childFileId, lname);
+                            if (!seenAttempts.insert(dedupe).second) continue;
+                            ApfsSpotlightCopyAttemptRow cr;
+                            cr.sequence = static_cast<std::uint32_t>(directSpotlightCopyAttemptRows.size());
+                            cr.volumeSequence = e.volumeSequence;
+                            cr.targetRole = e.targetRole;
+                            cr.fsOid = e.fsOid;
+                            cr.volumeName = e.volumeName;
+                            cr.parentObjectId = e.parentObjectId;
+                            cr.childFileId = e.childFileId;
+                            cr.targetName = e.name;
+                            cr.targetKind = directSpotlightTargetKind(e.name);
+                            cr.storeV2RootObjectId = groupRoot;
+                            cr.storeV2GroupName = groupName;
+                            cr.storeV2RelativePath = relPath;
+                            cr.extractionStatus = "COPY_NOT_ATTEMPTED_FILE_EXTENTS_PENDING";
+                            cr.interpretation = "Direct AFF4/APFS Store-V2 recursive namespace row. This ordinary-named file is under a Store-V2 directory/group and is eligible for target-guided inode/extent lookup.";
+                            cr.notes = "direct_aff4_v1_0_4_recursive_storev2_seed=1; group_root_object_id=" + std::to_string(groupRoot) + "; group_name=" + groupName + "; rel_path=" + relPath + "; apfs_absolute_path=" + directPathForObject(e.volumeSequence, e.childFileId);
+                            directSpotlightCopyAttemptRows.push_back(std::move(cr));
+                        }
+                    }
                 }
 
                 const std::uint32_t descBlockCount = directBestNx.xpDescBlocks & ~(1U << 31);
@@ -14131,16 +14315,16 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, directBestNx, directDescriptorRows, log);
         writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, directBestNx, directVolumeRows, log);
         writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, directBestNx, directCheckpointMapRows, directCheckpointObjectRows, log);
-        writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, directBestNx, directResolvedVolumeRows, directVolumeOmapRows, directVolumeRootTreeLookupRows, false, log);
-        writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, directVolumeRootTreeLookupRows, false, log);
-        writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, directRootTreeNodeRows, directRootTreeRecordRows, false, log);
-        writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, directRootTreeRecordRows, std::vector<ApfsRootTreeRecordSampleRow>{}, std::vector<ApfsRootTreeRecordSampleRow>{}, false, log);
-        writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, directSpotlightTargetRows, directSpotlightNameSampleRows, directSpotlightCopyAttemptRows, directSpotlightScanMetrics, false, log);
-        writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, directSpotlightInodeRows, false, log);
-        writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, directSpotlightXattrRows, directSpotlightCopyAttemptRows, false, log);
-        writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, false, log);
-        writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, false, log);
-        writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, false, log);
+        writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, directBestNx, directResolvedVolumeRows, directVolumeOmapRows, directVolumeRootTreeLookupRows, true, log);
+        writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, directVolumeRootTreeLookupRows, true, log);
+        writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, directRootTreeNodeRows, directRootTreeRecordRows, true, log);
+        writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, directRootTreeRecordRows, std::vector<ApfsRootTreeRecordSampleRow>{}, std::vector<ApfsRootTreeRecordSampleRow>{}, true, log);
+        writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, directSpotlightTargetRows, directSpotlightNameSampleRows, directSpotlightCopyAttemptRows, directSpotlightScanMetrics, true, log);
+        writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, directSpotlightInodeRows, true, log);
+        writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, directSpotlightXattrRows, directSpotlightCopyAttemptRows, true, log);
+        writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, true, log);
+        writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, true, log);
+        writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, true, log);
     }
     log.info("AFF4 direct map reader probe written: " + pathString(csvPath));
 }
@@ -14611,9 +14795,6 @@ void writeAff4ZipSingleFileProbe(const fs::path& caseDir,
     log.info("AFF4 ZIP single-file probe written: " + pathString(csvPath));
 }
 
-RunResult runAutomatedSelfTest(const RunOptions& opt) {
-    return selfTest(opt);
-}
 
 bool validateRunOptions(const RunOptions& opt, std::string& error) {
     const auto mode = toLower(opt.mode.empty() ? "run" : opt.mode);
