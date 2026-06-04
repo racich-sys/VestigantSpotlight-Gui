@@ -1,0 +1,23 @@
+Vestigant Spotlight V0_9_59 validation notes
+
+Purpose
+- Focused Windows/MSVC GUI compile hotfix after V0_9_58 failed in win32_gui.cpp with C3861: setDetailsPaneMessage identifier not found.
+- Preserve all V0_9_58 V1 polish and telemetry changes without changing parser, ingest, cache, ZIP, FFS inventory, app DB classification, export, or forensic interpretation logic.
+
+Implemented
+- Added a forward declaration for setDetailsPaneMessage(const std::wstring& message) before loadReviewPage and other review-loading helpers call it.
+- Updated version metadata, scripts, and documentation references to 0.9.59 / V0_9_59.
+
+Validation performed
+- Reviewed uploaded V0_9_58_build.log failure point: GUI compilation failed at src\\gui\\win32_gui.cpp(1962) because setDetailsPaneMessage was not declared before use.
+- Static check confirmed setDetailsPaneMessage forward declaration now appears before the first operational call site.
+- CMake configure passed on Linux.
+- Linux CMake build completed for core library, CLI, and tests.
+- VestigantSpotlightTests automated self-test passed.
+- Static grep confirmed no active V0_9_58 / 0.9.58 version tokens remain in normal source/docs/scripts, excluding historical patch artifacts if any.
+- Full ZIP integrity test passed.
+- Patch ZIP integrity test passed.
+
+Validation limits
+- Windows/MSVC GUI compile/link still requires user-side validation.
+- Runtime verification still needed for the Case Information live log, review-view marquee loading indicator, and existing-case GUI workflow introduced in V0_9_58.

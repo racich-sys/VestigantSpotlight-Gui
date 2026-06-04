@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     opt.mode = "self-test";
     opt.output = out;
     opt.verbose = false;
-    auto rr = runApplication(opt);
+    auto rr = runAutomatedSelfTest(opt);
     bool ok = rr.exitCode == 0 && rr.artifactCount == 5 && rr.usageCount >= 1 && rr.orphanCandidateCount == 0
         && testExists(out / "case" / "exports" / "usage_evidence.csv")
         && testExists(out / "case" / "exports" / "object_usage_summary.csv")

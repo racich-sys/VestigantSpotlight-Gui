@@ -50,10 +50,11 @@ HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCoreDecode{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
 HWND gFullNative{}, gVerbose{}, gExportProfile{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
+void setDetailsPaneMessage(const std::wstring& message);
 HWND gTagList{}, gTagName{}, gTagNote{}, gTaggedList{}, gTagSummary{};
 HWND gIosStatus{}, gIosReadiness{}, gIosPlan{};
 std::vector<HWND> gProcessControls;
@@ -132,6 +133,7 @@ constexpr int WM_APPEND_LOG = WM_APP + 1;
 constexpr int WM_SET_INGEST_STATUS = WM_APP + 2;
 constexpr int WM_SET_INGEST_PROGRESS = WM_APP + 3;
 constexpr int WM_REVIEW_PAGE_RESULT = WM_APP + 4;
+constexpr int WM_CLEAR_PROCESS_LOG = WM_APP + 5;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
@@ -351,14 +353,25 @@ std::wstring getText(HWND h) {
     return s;
 }
 void setText(HWND h, const std::wstring& s) { SetWindowTextW(h, s.c_str()); }
+std::wstring logTimestampPrefix() {
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    wchar_t buf[64]{};
+    swprintf_s(buf, L"%02u:%02u:%02u  ", st.wHour, st.wMinute, st.wSecond);
+    return buf;
+}
+
 void appendLog(const std::wstring& s) {
     if (!gLog) return;
     const int len = GetWindowTextLengthW(gLog);
     SendMessageW(gLog, EM_SETSEL, len, len);
-    const std::wstring line = s + L"\r\n";
+    const std::wstring line = logTimestampPrefix() + s + L"\r\n";
     SendMessageW(gLog, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(line.c_str()));
+    SendMessageW(gLog, EM_SCROLLCARET, 0, 0);
 }
+void clearProcessLog() { if (gLog) SetWindowTextW(gLog, L""); }
 void postLog(const std::wstring& s) { if (gLog) PostMessageW(GetParent(gLog), WM_APPEND_LOG, 0, reinterpret_cast<LPARAM>(new std::wstring(s))); }
+void postClearProcessLog() { if (gLog) PostMessageW(GetParent(gLog), WM_CLEAR_PROCESS_LOG, 0, 0); }
 void postStatus(const std::wstring& s) { if (gIngestStatus) PostMessageW(GetParent(gIngestStatus), WM_SET_INGEST_STATUS, 0, reinterpret_cast<LPARAM>(new std::wstring(s))); }
 void postProgress(int percent) { if (gIngestProgress) PostMessageW(GetParent(gIngestProgress), WM_SET_INGEST_PROGRESS, static_cast<WPARAM>(percent), 0); }
 std::wstring browseFolder(HWND owner) {
@@ -1814,6 +1827,11 @@ void setReviewLoadingState(bool loading) {
     if (gExportPage) EnableWindow(gExportPage, loading ? FALSE : TRUE);
     if (gExportFiltered) EnableWindow(gExportFiltered, loading ? FALSE : TRUE);
     if (gExportChecked) EnableWindow(gExportChecked, loading ? FALSE : TRUE);
+    if (gReviewBusy) {
+        ShowWindow(gReviewBusy, loading ? SW_SHOW : SW_HIDE);
+        SendMessageW(gReviewBusy, PBM_SETMARQUEE, loading ? TRUE : FALSE, loading ? 35 : 0);
+    }
+    if (loading) SetCursor(LoadCursorW(nullptr, IDC_WAIT));
 }
 
 void updateRowDetailsPanel();
@@ -1942,7 +1960,9 @@ void loadReviewPage() {
     std::wostringstream loading;
     loading << L"Loading " << v.displayName << L" page " << (requestedPage + 1) << L" from SQLite in background. You can cancel or choose another view/search.";
     setReviewSummary(loading.str());
+    setDetailsPaneMessage(L"Loading selected view. Results will appear when the background SQLite query completes.");
     UpdateWindow(gReviewSummary);
+    UpdateWindow(gReviewBusy);
     UpdateWindow(gList);
 
     gReviewThread = std::thread([requestId, owner, dbPath, v, viewIndex, requestedPage, ps, search, capturedFilterValue, sql, bindPatterns, checkedCountAtRequest]() {
@@ -2727,7 +2747,7 @@ std::wstring formatBytesPerSecond(unsigned long long bytes, unsigned long long s
     std::wostringstream os;
     os.setf(std::ios::fixed);
     os.precision(2);
-    os << mb << L" MiB processed; average " << rate << L" MiB/s";
+    os << L"source size " << mb << L" MiB; elapsed average " << rate << L" MiB/s";
     return os.str();
 }
 
@@ -2751,6 +2771,7 @@ std::wstring stageDisplayName(const std::wstring& stage) {
 
 void worker() {
     EnableWindow(gRun, FALSE);
+    postClearProcessLog();
     postProgress(1);
     const auto ingestStart = std::chrono::steady_clock::now();
     const unsigned long long inputBytesForRate = fileSizeBytesNoThrow(getText(gInput));
@@ -2768,9 +2789,10 @@ void worker() {
         const std::wstring statusPath = getText(gOut) + L"\\logs\\run_status.txt";
         const std::wstring progressPath = getText(gOut) + L"\\logs\\last_progress.tsv";
         const std::wstring rootProgressPath = getText(gOut) + L"\\last_progress.tsv";
-        monitor = std::thread([statusPath, progressPath, rootProgressPath, ingestStart, &monitorDone]() {
+        monitor = std::thread([statusPath, progressPath, rootProgressPath, ingestStart, inputBytesForRate, &monitorDone]() {
             std::wstring lastStatus;
             std::wstring lastProgress;
+            unsigned long long lastHeartbeatSecond = 0;
             while (!monitorDone.load()) {
                 const std::wstring currentStatus = lastNonEmptyLine(statusPath);
                 if (!currentStatus.empty() && currentStatus != lastStatus) {
@@ -2794,6 +2816,14 @@ void worker() {
                         postStatus(status);
                         postLog(status);
                     }
+                }
+                const auto elapsedNow = static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - ingestStart).count());
+                if (elapsedNow >= 5 && elapsedNow / 5 != lastHeartbeatSecond / 5) {
+                    lastHeartbeatSecond = elapsedNow;
+                    std::wstring heartbeat = L"Still processing | elapsed " + formatElapsedSeconds(elapsedNow);
+                    if (inputBytesForRate > 0) heartbeat += L" | source-size/time average " + formatBytesPerSecond(inputBytesForRate, elapsedNow);
+                    if (!lastStatus.empty()) heartbeat += L" | last stage " + stageDisplayName(lastStatus);
+                    postLog(heartbeat);
                 }
                 Sleep(750);
             }
@@ -2905,11 +2935,11 @@ void createProcessControls(HWND hwnd) {
 
     addProcess(CreateWindowW(L"STATIC", L"Build / Processing", WS_CHILD | WS_VISIBLE, 16, y0 + 292, 720, 24, hwnd, nullptr, gInst, nullptr));
     labelP(hwnd, L"Source type", 16, y0 + 328, 90, 22); gSourceType = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 112, y0 + 324, 180, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_TYPE)), gInst, nullptr));
-    for (const wchar_t* s : {L"Folder", L"ZIP", L"AFF4 (future)", L"Raw IMG/DD (future)"}) SendMessageW(gSourceType, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gSourceType, CB_SETCURSEL, 0, 0);
+    for (const wchar_t* s : {L"Folder", L"ZIP"}) SendMessageW(gSourceType, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gSourceType, CB_SETCURSEL, 0, 0);
     labelP(hwnd, L"Raw Spotlight evidence source", 300, y0 + 328, 190, 22); gInput = editP(hwnd, 492, y0 + 324, 380, 26); gBrowseInput = buttonP(hwnd, L"Browse", ID_BROWSE_INPUT, 882, y0 + 324, 100, 28);
     labelP(hwnd, L"Evidence root / iOS cache case", 16, y0 + 364, 220, 22); gEvidenceRoot = editP(hwnd, 236, y0 + 360, 636, 26); gBrowseRoot = buttonP(hwnd, L"Browse", ID_BROWSE_ROOT, 882, y0 + 360, 100, 28);
     labelP(hwnd, L"7z.exe path (optional)", 16, y0 + 400, 210, 22); gSevenZip = editP(hwnd, 236, y0 + 396, 636, 26); gBrowse7z = buttonP(hwnd, L"Browse", ID_BROWSE_7Z, 882, y0 + 396, 100, 28);
-    addProcess(CreateWindowW(L"STATIC", L"ZIP/folder workflows are stable. AFF4/APFS image inventory remains the next priority path; raw IMG/DD is secondary.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 430, 966, 24, hwnd, nullptr, gInst, nullptr));
+    addProcess(CreateWindowW(L"STATIC", L"Folder and ZIP workflows are the V1 investigator intake paths. AFF4/APFS and raw image support remain documented roadmap items.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 430, 966, 24, hwnd, nullptr, gInst, nullptr));
 
     labelP(hwnd, L"Profile", 16, y0 + 464, 90, 22); gProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 106, y0 + 460, 180, 160, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Auto", L"Standard macOS", L"iOS/CoreSpotlight"}) SendMessageW(gProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gProfile, CB_SETCURSEL, 0, 0);
@@ -3040,6 +3070,8 @@ void createReviewControls(HWND hwnd) {
     gOpenDashboard = buttonR(hwnd, L"Dashboard", ID_OPEN_DASHBOARD, 732, y0 + 102, 116, 26);
     gOpenReviewIndex = buttonR(hwnd, L"Review Index", ID_OPEN_REVIEW_INDEX, 854, y0 + 102, 126, 26);
     gReviewSummary = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"No case opened. Open a database from the Case Information tab.", WS_CHILD | WS_VISIBLE | SS_LEFT, 262, y0 + 136, 720, 58, hwnd, nullptr, gInst, nullptr));
+    gReviewBusy = addReview(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | PBS_MARQUEE, 262, y0 + 198, 720, 6, hwnd, nullptr, gInst, nullptr));
+    if (gReviewBusy) ShowWindow(gReviewBusy, SW_HIDE);
     gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     SetWindowSubclass(gList, ReviewListSubclassProc, 1, 0);
@@ -3172,6 +3204,7 @@ void layoutControls(HWND hwnd) {
     // Keep the search box from expanding over the Update/Cancel/Rows controls on wide windows.
     moveIf(gSearch, 326, y0 + 30, 250, 26);
     moveIf(gReviewSummary, reviewX, y0 + 136, reviewW, 58);
+    moveIf(gReviewBusy, reviewX, y0 + 198, reviewW, 6);
     const int reviewBodyY = y0 + 206;
     const int reviewBodyH = std::max(300, bottom - reviewBodyY - 20);
     const int detailsLabelH = 20;
@@ -3376,9 +3409,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (HIWORD(wp) == CBN_SELCHANGE) {
                 int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
                 if (srcType == 0) postStatus(L"Source type: Folder. Loose folder sources will be preserved into a static evidence archive before working-copy parsing.");
-                else if (srcType == 1) postStatus(L"Source type: ZIP. Original ZIP will be hashed/registered and extracted to a controlled working staging folder; no second evidentiary archive is created.");
-                else if (srcType == 2) postStatus(L"Source type: AFF4/APFS priority path. This build registers/hashes and creates image-inventory/active-comparison readiness, but does not yet extract APFS files.");
-                else postStatus(L"Source type: Raw IMG/DD is secondary. This build registers/hashes and probes partitions, but AFF4/APFS image inventory is prioritized for active comparison.");
+                else postStatus(L"Source type: ZIP. Original ZIP will be hashed/registered and extracted to a controlled working staging folder; no second evidentiary archive is created.");
             }
             return 0;
         }
@@ -3413,11 +3444,6 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 }
             }
             int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
-            if (srcType >= 2) {
-                MessageBoxW(hwnd, L"This source type is registered in the roadmap but extraction is not implemented yet. Use Folder or ZIP for the current build. AFF4/APFS support requires container stream enumeration plus APFS filesystem inventory in a later version.", L"Vestigant Spotlight - Source Type Not Implemented", MB_OK | MB_ICONINFORMATION);
-                postStatus(L"Waiting: AFF4/raw image extraction is not implemented in this build. Use Folder or ZIP.");
-                return 0;
-            }
             postProgress(0);
             postStatus(L"Queued: ingest worker starting.");
             std::thread(worker).detach();
@@ -3501,6 +3527,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     case WM_APPEND_LOG: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { appendLog(*s); delete s; } return 0; }
+    case WM_CLEAR_PROCESS_LOG: { clearProcessLog(); return 0; }
     case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } return 0; }
     case WM_SET_INGEST_PROGRESS: { int pct = static_cast<int>(wp); if (pct < 0) pct = 0; if (pct > 100) pct = 100; if (gIngestProgress) SendMessageW(gIngestProgress, PBM_SETPOS, static_cast<WPARAM>(pct), 0); return 0; }
     case WM_REVIEW_PAGE_RESULT: { completeReviewPageLoad(reinterpret_cast<ReviewPageResult*>(lp)); return 0; }

@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V0_9_57.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_57",
-  [string]$BuildLog = "D:\Downloads\V0_9_57_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V0_9_59.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V0_9_59",
+  [string]$BuildLog = "D:\Downloads\V0_9_59_build.log",
   [switch]$CleanExtract
 )
 
@@ -22,7 +22,7 @@ if (!(Test-Path -LiteralPath $SourceRoot)) {
 
 if (!(Test-Path -LiteralPath "$SourceRoot\build_windows_msvc.bat")) { throw "Build script not found: $SourceRoot\build_windows_msvc.bat" }
 
-# V0_9_57 is a V1 production-readiness cleanup. Force removal of stale GUI/link
+# V0_9_59 is a V1 production-readiness cleanup. Force removal of stale GUI/link
 # outputs before building so older review-pane or hidden-control behavior cannot
 # survive an incremental or locked-output build attempt.
 Remove-Item -LiteralPath "$SourceRoot\build-msvc\obj\win32_gui.obj" -Force -ErrorAction SilentlyContinue

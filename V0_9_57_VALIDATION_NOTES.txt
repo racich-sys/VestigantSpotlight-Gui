@@ -1,4 +1,4 @@
-V0_9_57 validation notes
+V0_9_59 validation notes
 
 Scope:
 - Focused Windows/MSVC build-script hotfix after V0_9_55 failed with:
@@ -11,7 +11,7 @@ Root cause classification:
 - This is a build-script control-flow fragility issue, not a C++ compile failure.
 
 Changes made:
-- Updated version metadata to 0.9.57.
+- Updated version metadata to 0.9.59.
 - Replaced build_windows_msvc.bat subroutine-label common compilation with a manifest-driven FOR /F loop.
 - Removed :CompileCommon, :CompileCommonQuiet, and :RequireObject labels from build_windows_msvc.bat.
 - Added explicit object-existence validation for case_db.obj, case_store.obj, and app_runner.obj.
@@ -23,7 +23,7 @@ Validation performed in this environment:
 - Ran CMake configure successfully on Linux.
 - Ran Linux CMake build successfully for core library, CLI, and tests.
 - Ran VestigantSpotlightTests self-test successfully.
-- Verified version string reports 0.9.57 in source metadata.
+- Verified version string reports 0.9.59 in source metadata.
 - Packaged full source ZIP and patch ZIP and verified ZIP integrity.
 
 Validation not completed here:
@@ -32,6 +32,6 @@ Validation not completed here:
 - Existing-case tag/view-set/details-pane runtime validation.
 
 Recommended Windows validation:
-1. Build V0_9_57 with scripts\Build-V0_9_57.ps1.
+1. Build V0_9_59 with scripts\Build-V0_9_59.ps1.
 2. Confirm build_windows_msvc.bat compiles past sqlite_enrichment.cpp into sqlite_exporter.cpp, case_store.cpp, app_runner.cpp, CLI/test/GUI links, and prints Build complete.
 3. Launch GUI and confirm V0_9_55 GUI changes remain present.

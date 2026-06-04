@@ -471,41 +471,6 @@ CREATE TABLE IF NOT EXISTS notes (
   note TEXT,
   created_utc TEXT
 );
-CREATE TABLE IF NOT EXISTS v7_import_sessions (
-  v7_session_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT,
-  v7_output_path TEXT,
-  imported_utc TEXT,
-  kv_rows INTEGER,
-  date_candidate_rows INTEGER,
-  parsed_date_rows INTEGER,
-  fullpath_rows INTEGER,
-  files_imported INTEGER
-);
-CREATE TABLE IF NOT EXISTS v7_record_key_values (
-)SQL" R"SQL(  v7_kv_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, import_file TEXT, import_row INTEGER, store_guid TEXT, store_path TEXT, source_db TEXT, source_db_role TEXT, inode_num TEXT, store_id TEXT, parent_inode_num TEXT, full_path TEXT, record_state TEXT, field_name TEXT, field_value TEXT
-);
-CREATE TABLE IF NOT EXISTS v7_date_candidates (
-  v7_date_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, import_file TEXT, import_row INTEGER, store_guid TEXT, store_path TEXT, source_db TEXT, source_db_role TEXT, inode_num TEXT, store_id TEXT, field_name TEXT, field_value TEXT, parsed_utc TEXT, parse_method TEXT
-);
-CREATE TABLE IF NOT EXISTS v7_parsed_date_values (
-  v7_parsed_date_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, import_file TEXT, import_row INTEGER, store_guid TEXT, store_path TEXT, source_db TEXT, source_db_role TEXT, inode_num TEXT, store_id TEXT, field_name TEXT, field_value TEXT, parsed_utc TEXT, parse_method TEXT
-);
-CREATE TABLE IF NOT EXISTS v7_decoder_fullpaths (
-  v7_fullpath_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, import_file TEXT, import_row INTEGER, store_guid TEXT, source_db_role TEXT, inode_num TEXT, full_path TEXT
-);
-CREATE TABLE IF NOT EXISTS v7_field_inventory (
-  v7_field_inventory_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, field_name TEXT, row_count INTEGER, populated_count INTEGER, sample_value TEXT
-);
-CREATE TABLE IF NOT EXISTS native_v7_comparison (
-  comparison_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source_id TEXT, metric_name TEXT, native_value INTEGER, v7_value INTEGER, delta_value INTEGER, created_utc TEXT
-);
 CREATE TABLE IF NOT EXISTS native_property_dictionary (
   native_property_id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id TEXT,
@@ -897,11 +862,6 @@ CREATE INDEX IF NOT EXISTS idx_parent_inode_links_parent ON parent_inode_links(s
 CREATE INDEX IF NOT EXISTS idx_parent_inode_links_status ON parent_inode_links(source_id, relationship_status);
 CREATE INDEX IF NOT EXISTS idx_field_inventory_field ON field_inventory(source_id, field_name);
 CREATE INDEX IF NOT EXISTS idx_parser_coverage_metric ON parser_coverage_summary(source_id, metric_name);
-CREATE INDEX IF NOT EXISTS idx_v7_kv_field ON v7_record_key_values(source_id, field_name);
-CREATE INDEX IF NOT EXISTS idx_v7_kv_inode_field ON v7_record_key_values(source_id, store_guid, inode_num, field_name);
-CREATE INDEX IF NOT EXISTS idx_v7_dates_inode_field ON v7_date_candidates(source_id, store_guid, inode_num, field_name);
-CREATE INDEX IF NOT EXISTS idx_v7_fullpaths_inode ON v7_decoder_fullpaths(source_id, store_guid, inode_num);
-CREATE INDEX IF NOT EXISTS idx_native_v7_metric ON native_v7_comparison(source_id, metric_name);
 CREATE INDEX IF NOT EXISTS idx_native_property_dictionary_name ON native_property_dictionary(source_id, property_name);
 CREATE INDEX IF NOT EXISTS idx_native_property_dictionary_store ON native_property_dictionary(source_id, store_guid, source_db);
 CREATE INDEX IF NOT EXISTS idx_native_category_dictionary_store ON native_category_dictionary(source_id, store_guid, source_db);

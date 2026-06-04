@@ -48,7 +48,6 @@ void cliTerminateHandler() { writeCrashFile("std::terminate called"); std::abort
 void usage() {
     std::cout << appTitle() << "\n\n"
               << "Usage:\n"
-              << "  VestigantSpotlightCli --mode self-test --out <folder>\n"
               << "  VestigantSpotlightCli --mode discover --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--full-scan]\n"
               << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
               << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"

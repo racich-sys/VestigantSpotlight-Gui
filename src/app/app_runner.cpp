@@ -7093,39 +7093,48 @@ void writeAff4ApfsRootTreeNodeProbeOutputs(const fs::path& caseDir,
 }
 
 
-void writeAff4ApfsRootTreeChildNodeProbeOutputs(const fs::path& caseDir,
+std::string upperAsciiCopy(std::string v) {
+    std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c){ return static_cast<char>(std::toupper(c)); });
+    return v;
+}
+
+void writeAff4ApfsRootTreeTraversalProbeOutputs(const fs::path& caseDir,
                                                 const EvidenceSource& source,
                                                 const fs::path& originalInput,
-                                                const std::vector<ApfsRootTreeChildNodeProbeRow>& childRows,
-                                                const std::vector<ApfsRootTreeRecordSampleRow>& childRecordRows,
+                                                const std::vector<ApfsRootTreeChildNodeProbeRow>& traversalRows,
+                                                const std::vector<ApfsRootTreeRecordSampleRow>& recordRows,
+                                                const std::string& traversalLevelName,
                                                 bool strictSingleAff4,
                                                 Logger& log) {
-    const fs::path childCsvPath = caseDir / "aff4_apfs_root_tree_child_node_probe.csv";
-    const fs::path recordCsvPath = caseDir / "aff4_apfs_root_tree_child_record_sample.csv";
-    const fs::path jsonPath = caseDir / "aff4_apfs_root_tree_child_node_probe_summary.json";
-    const fs::path mdPath = caseDir / "AFF4_APFS_ROOT_TREE_CHILD_NODE_PROBE.md";
+    const std::string level = traversalLevelName.empty() ? "node" : traversalLevelName;
+    const fs::path csvPath = caseDir / ("aff4_apfs_root_tree_" + level + "_node_probe.csv");
+    const fs::path recordCsvPath = caseDir / ("aff4_apfs_root_tree_" + level + "_record_sample.csv");
+    const fs::path jsonPath = caseDir / ("aff4_apfs_root_tree_" + level + "_node_probe_summary.json");
+    const fs::path mdPath = caseDir / ("AFF4_APFS_ROOT_TREE_" + upperAsciiCopy(level) + "_NODE_PROBE.md");
 
     std::size_t resolvedRows = 0;
     std::size_t btreeRows = 0;
     std::size_t branchRows = 0;
     std::size_t leafRows = 0;
     std::size_t dirRecordSamples = 0;
-    std::size_t branchChildSamples = 0;
-    for (const auto& r : childRows) {
+    std::size_t branchSamples = 0;
+    for (const auto& r : traversalRows) {
         if (r.lookupStatus == "OMAP_TARGET_LOOKUP_RESOLVED") ++resolvedRows;
-        if (r.childNodeStatus == "CHILD_NODE_BTREE_READ") ++btreeRows;
-        if (r.childNodeStatus == "CHILD_NODE_BTREE_READ" && r.resolvedBtnLevel > 0) ++branchRows;
-        if (r.childNodeStatus == "CHILD_NODE_BTREE_READ" && r.resolvedBtnLevel == 0) ++leafRows;
+        if (r.childNodeStatus.find("BTREE_READ") != std::string::npos) {
+            ++btreeRows;
+            if (r.resolvedBtnLevel > 0) ++branchRows;
+            else ++leafRows;
+        }
     }
-    for (const auto& r : childRecordRows) {
+    for (const auto& r : recordRows) {
         if (r.keyTypeLabel == "DIR_REC") ++dirRecordSamples;
-        if (r.branchChildOid != 0) ++branchChildSamples;
+        if (r.branchChildOid != 0) ++branchSamples;
     }
 
     try {
-        std::ofstream out(childCsvPath, std::ios::binary);
+        std::ofstream out(csvPath, std::ios::binary);
         out << "source_id,input_path,input_type,sequence,source_record_sequence,volume_sequence,target_role,fs_oid,volume_name,apfs_root_tree_oid,parent_node_oid,parent_node_virtual_offset,parent_node_level,parent_entry_index,branch_child_oid,target_xid,omap_branch_depth,omap_branch_path,omap_leaf_oid,omap_leaf_virtual_offset,omap_leaf_bytes_read,matched_entry_index,matched_key_oid,matched_key_xid,value_flags,value_size,value_paddr,resolved_virtual_offset,resolved_bytes_read,resolved_object_oid,resolved_object_xid,resolved_object_type_raw,resolved_object_type_label,resolved_object_subtype,resolved_magic,resolved_btn_flags,resolved_btn_level,resolved_btn_nkeys,lookup_status,child_node_status,interpretation,sample_hex,resolved_sample_hex,notes\n";
-        for (const auto& r : childRows) {
+        for (const auto& r : traversalRows) {
             out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ','
                 << r.sequence << ',' << r.sourceRecordSequence << ',' << r.volumeSequence << ',' << csvEscape(r.targetRole) << ',' << r.fsOid << ',' << csvEscape(r.volumeName) << ','
                 << r.apfsRootTreeOid << ',' << r.parentNodeOid << ',' << r.parentNodeVirtualOffset << ',' << r.parentNodeLevel << ',' << r.parentEntryIndex << ',' << r.branchChildOid << ',' << r.targetXid << ','
@@ -7135,19 +7144,19 @@ void writeAff4ApfsRootTreeChildNodeProbeOutputs(const fs::path& caseDir,
                 << r.resolvedBtnFlags << ',' << r.resolvedBtnLevel << ',' << r.resolvedBtnNkeys << ',' << csvEscape(r.lookupStatus) << ',' << csvEscape(r.childNodeStatus) << ','
                 << csvEscape(r.interpretation) << ',' << csvEscape(r.sampleHex) << ',' << csvEscape(r.resolvedSampleHex) << ',' << csvEscape(r.notes) << "\n";
         }
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_child_node_probe.csv: ") + ex.what()); }
+    } catch (const std::exception& ex) { log.warn(std::string("Unable to write APFS root-tree traversal probe CSV: ") + ex.what()); }
 
     try {
         std::ofstream out(recordCsvPath, std::ios::binary);
         out << "source_id,input_path,input_type,sequence,volume_sequence,target_role,fs_oid,volume_name,apfs_root_tree_oid,node_oid,node_virtual_offset,node_level,node_nkeys,entry_index,toc_offset,key_offset,key_length,value_offset,value_length,key_raw,key_object_id,key_type_raw,key_type_label,branch_child_oid,decoded_name,status,interpretation,key_sample_hex,value_sample_hex,notes\n";
-        for (const auto& r : childRecordRows) {
+        for (const auto& r : recordRows) {
             out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ','
                 << r.sequence << ',' << r.volumeSequence << ',' << csvEscape(r.targetRole) << ',' << r.fsOid << ',' << csvEscape(r.volumeName) << ','
                 << r.apfsRootTreeOid << ',' << r.nodeOid << ',' << r.nodeVirtualOffset << ',' << r.nodeLevel << ',' << r.nodeNkeys << ',' << r.entryIndex << ',' << r.tocOffset << ','
                 << r.keyOffset << ',' << r.keyLength << ',' << r.valueOffset << ',' << r.valueLength << ',' << r.keyRaw << ',' << r.keyObjectId << ',' << static_cast<unsigned int>(r.keyTypeRaw) << ',' << csvEscape(r.keyTypeLabel) << ','
                 << r.branchChildOid << ',' << csvEscape(r.decodedName) << ',' << csvEscape(r.status) << ',' << csvEscape(r.interpretation) << ',' << csvEscape(r.keySampleHex) << ',' << csvEscape(r.valueSampleHex) << ',' << csvEscape(r.notes) << "\n";
         }
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_child_record_sample.csv: ") + ex.what()); }
+    } catch (const std::exception& ex) { log.warn(std::string("Unable to write APFS root-tree traversal record sample CSV: ") + ex.what()); }
 
     try {
         std::ofstream out(jsonPath, std::ios::binary);
@@ -7156,134 +7165,38 @@ void writeAff4ApfsRootTreeChildNodeProbeOutputs(const fs::path& caseDir,
         out << "  \"app_version\": \"" << appVersion() << "\",\n";
         out << "  \"source_id\": \"" << source.sourceId << "\",\n";
         out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
-        out << "  \"probe_scope\": \"EXACT_INPUT_FILE_APFS_ROOT_TREE_CHILD_NODE_SAMPLE\",\n";
+        out << "  \"probe_scope\": \"EXACT_INPUT_FILE_APFS_ROOT_TREE_" << upperAsciiCopy(level) << "_NODE_SAMPLE\",\n";
         out << "  \"strict_single_aff4_policy\": " << (strictSingleAff4 ? "true" : "false") << ",\n";
-        out << "  \"child_probe_rows\": " << childRows.size() << ",\n";
-        out << "  \"omap_resolved_child_rows\": " << resolvedRows << ",\n";
-        out << "  \"child_btree_node_headers_parsed\": " << btreeRows << ",\n";
-        out << "  \"branch_child_nodes\": " << branchRows << ",\n";
-        out << "  \"leaf_child_nodes\": " << leafRows << ",\n";
-        out << "  \"child_record_sample_rows\": " << childRecordRows.size() << ",\n";
-        out << "  \"child_branch_candidate_samples\": " << branchChildSamples << ",\n";
-        out << "  \"child_directory_record_samples\": " << dirRecordSamples << "\n";
+        out << "  \"traversal_level\": \"" << jsonEscape(level) << "\",\n";
+        out << "  \"traversal_probe_rows\": " << traversalRows.size() << ",\n";
+        out << "  \"omap_resolved_rows\": " << resolvedRows << ",\n";
+        out << "  \"btree_node_headers_parsed\": " << btreeRows << ",\n";
+        out << "  \"branch_nodes\": " << branchRows << ",\n";
+        out << "  \"leaf_nodes\": " << leafRows << ",\n";
+        out << "  \"record_sample_rows\": " << recordRows.size() << ",\n";
+        out << "  \"branch_candidate_samples\": " << branchSamples << ",\n";
+        out << "  \"directory_record_samples\": " << dirRecordSamples << "\n";
         out << "}\n";
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_child_node_probe_summary.json: ") + ex.what()); }
+    } catch (const std::exception& ex) { log.warn(std::string("Unable to write APFS root-tree traversal summary JSON: ") + ex.what()); }
 
     try {
         std::ofstream out(mdPath, std::ios::binary);
-        out << "# AFF4 APFS Root-Tree Child Node Probe\n\n";
+        out << "# AFF4 APFS Root-Tree " << level << " Node Probe\n\n";
         out << "Version: " << appVersion() << "\n\n";
         out << "## Scope\n\n";
-        out << "This bounded probe takes branch-child OID candidates sampled from APFS filesystem root-tree branch records, resolves each candidate through the same volume OMAP using the APSB transaction ID, reads the resulting child B-tree node, and samples child-node records. It remains single-AFF4 only and does not yet reconstruct full paths or copy file extents.\n\n";
+        out << "This bounded probe resolves APFS filesystem root-tree " << level << " node candidates through the volume OMAP and samples B-tree records. It remains single-AFF4 only and does not yet reconstruct full paths or copy file extents.\n\n";
         out << "## Summary\n\n";
-        out << "- Child probe rows: `" << childRows.size() << "`\n";
-        out << "- OMAP-resolved child rows: `" << resolvedRows << "`\n";
-        out << "- Child B-tree node headers parsed: `" << btreeRows << "`\n";
-        out << "- Branch child nodes: `" << branchRows << "`\n";
-        out << "- Leaf child nodes: `" << leafRows << "`\n";
-        out << "- Child record samples: `" << childRecordRows.size() << "`\n";
-        out << "- Child branch-candidate samples: `" << branchChildSamples << "`\n";
-        out << "- Child directory-record samples: `" << dirRecordSamples << "`\n\n";
+        out << "- Probe rows: `" << traversalRows.size() << "`\n";
+        out << "- OMAP-resolved rows: `" << resolvedRows << "`\n";
+        out << "- B-tree node headers parsed: `" << btreeRows << "`\n";
+        out << "- Branch nodes: `" << branchRows << "`\n";
+        out << "- Leaf nodes: `" << leafRows << "`\n";
+        out << "- Record samples: `" << recordRows.size() << "`\n";
+        out << "- Branch-candidate samples: `" << branchSamples << "`\n";
+        out << "- Directory-record samples: `" << dirRecordSamples << "`\n\n";
         out << "## Next step\n\n";
-        out << "If child leaf nodes appear, the next version should begin a bounded filesystem namespace seed: decode inode, directory-record, file-info, and file-extent records needed to identify `.Spotlight-V100` / `Store-V2` paths without storing a bloated full filesystem inventory by default. The shared path/provenance abstractions remain reusable for the later iOS CoreSpotlight full-file-system ZIP track.\n";
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write AFF4_APFS_ROOT_TREE_CHILD_NODE_PROBE.md: ") + ex.what()); }
-}
-
-
-void writeAff4ApfsRootTreeDescendantNodeProbeOutputs(const fs::path& caseDir,
-                                                const EvidenceSource& source,
-                                                const fs::path& originalInput,
-                                                const std::vector<ApfsRootTreeChildNodeProbeRow>& descendantRows,
-                                                const std::vector<ApfsRootTreeRecordSampleRow>& descendantRecordRows,
-                                                bool strictSingleAff4,
-                                                Logger& log) {
-    const fs::path descendantCsvPath = caseDir / "aff4_apfs_root_tree_descendant_node_probe.csv";
-    const fs::path recordCsvPath = caseDir / "aff4_apfs_root_tree_descendant_record_sample.csv";
-    const fs::path jsonPath = caseDir / "aff4_apfs_root_tree_descendant_node_probe_summary.json";
-    const fs::path mdPath = caseDir / "AFF4_APFS_ROOT_TREE_DESCENDANT_NODE_PROBE.md";
-
-    std::size_t resolvedRows = 0;
-    std::size_t btreeRows = 0;
-    std::size_t branchRows = 0;
-    std::size_t leafRows = 0;
-    std::size_t dirRecordSamples = 0;
-    std::size_t branchDescendantSamples = 0;
-    for (const auto& r : descendantRows) {
-        if (r.lookupStatus == "OMAP_TARGET_LOOKUP_RESOLVED") ++resolvedRows;
-        if (r.childNodeStatus == "DESCENDANT_NODE_BTREE_READ") ++btreeRows;
-        if (r.childNodeStatus == "DESCENDANT_NODE_BTREE_READ" && r.resolvedBtnLevel > 0) ++branchRows;
-        if (r.childNodeStatus == "DESCENDANT_NODE_BTREE_READ" && r.resolvedBtnLevel == 0) ++leafRows;
-    }
-    for (const auto& r : descendantRecordRows) {
-        if (r.keyTypeLabel == "DIR_REC") ++dirRecordSamples;
-        if (r.branchChildOid != 0) ++branchDescendantSamples;
-    }
-
-    try {
-        std::ofstream out(descendantCsvPath, std::ios::binary);
-        out << "source_id,input_path,input_type,sequence,source_record_sequence,volume_sequence,target_role,fs_oid,volume_name,apfs_root_tree_oid,parent_node_oid,parent_node_virtual_offset,parent_node_level,parent_entry_index,branch_descendant_oid,target_xid,omap_branch_depth,omap_branch_path,omap_leaf_oid,omap_leaf_virtual_offset,omap_leaf_bytes_read,matched_entry_index,matched_key_oid,matched_key_xid,value_flags,value_size,value_paddr,resolved_virtual_offset,resolved_bytes_read,resolved_object_oid,resolved_object_xid,resolved_object_type_raw,resolved_object_type_label,resolved_object_subtype,resolved_magic,resolved_btn_flags,resolved_btn_level,resolved_btn_nkeys,lookup_status,descendant_node_status,interpretation,sample_hex,resolved_sample_hex,notes\n";
-        for (const auto& r : descendantRows) {
-            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ','
-                << r.sequence << ',' << r.sourceRecordSequence << ',' << r.volumeSequence << ',' << csvEscape(r.targetRole) << ',' << r.fsOid << ',' << csvEscape(r.volumeName) << ','
-                << r.apfsRootTreeOid << ',' << r.parentNodeOid << ',' << r.parentNodeVirtualOffset << ',' << r.parentNodeLevel << ',' << r.parentEntryIndex << ',' << r.branchChildOid << ',' << r.targetXid << ','
-                << r.omapBranchDepth << ',' << csvEscape(r.omapBranchPath) << ',' << r.omapLeafOid << ',' << r.omapLeafVirtualOffset << ',' << r.omapLeafBytesRead << ','
-                << r.matchedEntryIndex << ',' << r.matchedKeyOid << ',' << r.matchedKeyXid << ',' << r.valueFlags << ',' << r.valueSize << ',' << r.valuePaddr << ','
-                << r.resolvedVirtualOffset << ',' << r.resolvedBytesRead << ',' << r.resolvedObjectOid << ',' << r.resolvedObjectXid << ',' << r.resolvedObjectTypeRaw << ',' << csvEscape(r.resolvedObjectTypeLabel) << ',' << r.resolvedObjectSubtype << ',' << csvEscape(r.resolvedMagic) << ','
-                << r.resolvedBtnFlags << ',' << r.resolvedBtnLevel << ',' << r.resolvedBtnNkeys << ',' << csvEscape(r.lookupStatus) << ',' << csvEscape(r.childNodeStatus) << ','
-                << csvEscape(r.interpretation) << ',' << csvEscape(r.sampleHex) << ',' << csvEscape(r.resolvedSampleHex) << ',' << csvEscape(r.notes) << "\n";
-        }
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_descendant_node_probe.csv: ") + ex.what()); }
-
-    try {
-        std::ofstream out(recordCsvPath, std::ios::binary);
-        out << "source_id,input_path,input_type,sequence,volume_sequence,target_role,fs_oid,volume_name,apfs_root_tree_oid,node_oid,node_virtual_offset,node_level,node_nkeys,entry_index,toc_offset,key_offset,key_length,value_offset,value_length,key_raw,key_object_id,key_type_raw,key_type_label,branch_descendant_oid,decoded_name,status,interpretation,key_sample_hex,value_sample_hex,notes\n";
-        for (const auto& r : descendantRecordRows) {
-            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ','
-                << r.sequence << ',' << r.volumeSequence << ',' << csvEscape(r.targetRole) << ',' << r.fsOid << ',' << csvEscape(r.volumeName) << ','
-                << r.apfsRootTreeOid << ',' << r.nodeOid << ',' << r.nodeVirtualOffset << ',' << r.nodeLevel << ',' << r.nodeNkeys << ',' << r.entryIndex << ',' << r.tocOffset << ','
-                << r.keyOffset << ',' << r.keyLength << ',' << r.valueOffset << ',' << r.valueLength << ',' << r.keyRaw << ',' << r.keyObjectId << ',' << static_cast<unsigned int>(r.keyTypeRaw) << ',' << csvEscape(r.keyTypeLabel) << ','
-                << r.branchChildOid << ',' << csvEscape(r.decodedName) << ',' << csvEscape(r.status) << ',' << csvEscape(r.interpretation) << ',' << csvEscape(r.keySampleHex) << ',' << csvEscape(r.valueSampleHex) << ',' << csvEscape(r.notes) << "\n";
-        }
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_descendant_record_sample.csv: ") + ex.what()); }
-
-    try {
-        std::ofstream out(jsonPath, std::ios::binary);
-        out << "{\n";
-        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
-        out << "  \"app_version\": \"" << appVersion() << "\",\n";
-        out << "  \"source_id\": \"" << source.sourceId << "\",\n";
-        out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
-        out << "  \"probe_scope\": \"EXACT_INPUT_FILE_APFS_ROOT_TREE_DESCENDANT_NODE_SAMPLE\",\n";
-        out << "  \"strict_single_aff4_policy\": " << (strictSingleAff4 ? "true" : "false") << ",\n";
-        out << "  \"descendant_probe_rows\": " << descendantRows.size() << ",\n";
-        out << "  \"omap_resolved_descendant_rows\": " << resolvedRows << ",\n";
-        out << "  \"descendant_btree_node_headers_parsed\": " << btreeRows << ",\n";
-        out << "  \"branch_descendant_nodes\": " << branchRows << ",\n";
-        out << "  \"leaf_descendant_nodes\": " << leafRows << ",\n";
-        out << "  \"descendant_record_sample_rows\": " << descendantRecordRows.size() << ",\n";
-        out << "  \"descendant_branch_candidate_samples\": " << branchDescendantSamples << ",\n";
-        out << "  \"descendant_directory_record_samples\": " << dirRecordSamples << "\n";
-        out << "}\n";
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_root_tree_descendant_node_probe_summary.json: ") + ex.what()); }
-
-    try {
-        std::ofstream out(mdPath, std::ios::binary);
-        out << "# AFF4 APFS Root-Tree Descendant Node Probe\n\n";
-        out << "Version: " << appVersion() << "\n\n";
-        out << "## Scope\n\n";
-        out << "This bounded probe takes branch-descendant OID candidates sampled from APFS filesystem root-tree branch records, resolves each candidate through the same volume OMAP using the APSB transaction ID, reads the resulting descendant B-tree node, and samples descendant-node records. It remains single-AFF4 only and does not yet reconstruct full paths or copy file extents.\n\n";
-        out << "## Summary\n\n";
-        out << "- Descendant probe rows: `" << descendantRows.size() << "`\n";
-        out << "- OMAP-resolved descendant rows: `" << resolvedRows << "`\n";
-        out << "- Descendant B-tree node headers parsed: `" << btreeRows << "`\n";
-        out << "- Branch descendant nodes: `" << branchRows << "`\n";
-        out << "- Leaf descendant nodes: `" << leafRows << "`\n";
-        out << "- Descendant record samples: `" << descendantRecordRows.size() << "`\n";
-        out << "- Descendant branch-candidate samples: `" << branchDescendantSamples << "`\n";
-        out << "- Descendant directory-record samples: `" << dirRecordSamples << "`\n\n";
-        out << "## Next step\n\n";
-        out << "If descendant leaf nodes appear, the next version should begin a bounded filesystem namespace seed: decode inode, directory-record, file-info, and file-extent records needed to identify `.Spotlight-V100` / `Store-V2` paths without storing a bloated full filesystem inventory by default. The shared path/provenance abstractions remain reusable for the later iOS CoreSpotlight full-file-system ZIP track.\n";
-    } catch (const std::exception& ex) { log.warn(std::string("Unable to write AFF4_APFS_ROOT_TREE_DESCENDANT_NODE_PROBE.md: ") + ex.what()); }
+        out << "Use leaf and directory-record samples to seed bounded filesystem namespace work for identifying `.Spotlight-V100` / `Store-V2` paths without bloating normal investigator databases.\n";
+    } catch (const std::exception& ex) { log.warn(std::string("Unable to write APFS root-tree traversal markdown summary: ") + ex.what()); }
 }
 
 void writeAff4ApfsFilesystemNamespaceSeedOutputs(const fs::path& caseDir,
@@ -12677,8 +12590,8 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
     writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, nxSummary, apfsResolvedVolumeSuperblockRows, apfsVolumeOmapProbeRows, apfsVolumeRootTreeLookupRows, opt.strictSingleAff4, log);
     writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, apfsVolumeRootTreeLookupRows, opt.strictSingleAff4, log);
     writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeNodeProbeRows, apfsRootTreeRecordSampleRows, opt.strictSingleAff4, log);
-    writeAff4ApfsRootTreeChildNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, opt.strictSingleAff4, log);
-    writeAff4ApfsRootTreeDescendantNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, opt.strictSingleAff4, log);
+    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, "child", opt.strictSingleAff4, log);
+    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, "descendant", opt.strictSingleAff4, log);
     writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, apfsRootTreeRecordSampleRows, apfsRootTreeChildRecordSampleRows, apfsRootTreeDescendantRecordSampleRows, opt.strictSingleAff4, log);
     writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, apfsSpotlightTargetScanRows, apfsSpotlightNameScanSampleRows, apfsSpotlightCopyAttemptRows, apfsSpotlightTargetScanMetrics, opt.strictSingleAff4, log);
     writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, apfsSpotlightInodeProbeRows, opt.strictSingleAff4, log);
@@ -14454,9 +14367,13 @@ void writeAff4ZipSingleFileProbe(const fs::path& caseDir,
     log.info("AFF4 ZIP single-file probe written: " + pathString(csvPath));
 }
 
+RunResult runAutomatedSelfTest(const RunOptions& opt) {
+    return selfTest(opt);
+}
+
 bool validateRunOptions(const RunOptions& opt, std::string& error) {
     const auto mode = toLower(opt.mode.empty() ? "run" : opt.mode);
-    if (mode == "self-test") return true;
+    if (mode == "self-test") { error = "self-test mode is deprecated in V1. Use VestigantSpotlightTests instead."; return false; }
     if (opt.input.empty() && mode != "init-case") { error = "--input is required"; return false; }
     if (opt.output.empty() && opt.caseDir.empty()) { error = "--out or --case is required"; return false; }
     if (opt.strictSingleAff4) {
@@ -14474,7 +14391,9 @@ bool validateRunOptions(const RunOptions& opt, std::string& error) {
 
 RunResult runApplication(const RunOptions& opt) {
     installStructuredExceptionTranslator();
-    if (toLower(opt.mode) == "self-test") return selfTest(opt);
+    if (toLower(opt.mode) == "self-test") {
+        throw std::runtime_error("self-test mode is deprecated in V1. Use VestigantSpotlightTests instead.");
+    }
     const fs::path caseDir = !opt.caseDir.empty() ? opt.caseDir : opt.output;
     fs::create_directories(caseDir);
     appendRunStatus(caseDir, "start", "application entry");
