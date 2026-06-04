@@ -1,3 +1,5 @@
+V1.0.7: Added dedicated APFS module boundary and fixed direct AFF4/APFS copy-status/staging classification.
+
 # Vestigant Spotlight V0_9_60 Notes
 
 V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.

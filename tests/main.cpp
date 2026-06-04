@@ -1,5 +1,6 @@
 #include "core/app_info.h"
 #include "db/case_db.h"
+#include "parsers/apfs_volume_reader.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -19,6 +20,23 @@ fs::path testIoPath(const fs::path& p) {
 #else
     return p;
 #endif
+}
+
+
+bool runApfsModuleSmokeTest() {
+    const std::uint64_t key = makeApfsSearchKey(15203ULL, kApfsTypeDirRecord);
+    if (apfsKeyObjectId(key) != 15203ULL) return false;
+    if (apfsKeyRecordType(key) != kApfsTypeDirRecord) return false;
+    if (apfsRecordTypeLabel(kApfsTypeInode) != "INODE") return false;
+    if (!apfsIsLikelyStoreV2GroupDirectoryName("BADA95B6-4657-4C31-9FBF-C9754AB13701")) return false;
+    if (apfsIsLikelyStoreV2GroupDirectoryName("not-a-guid")) return false;
+    if (apfsStoreV2ComponentKind("store.db") != "STORE_DB") return false;
+    if (apfsStoreV2ComponentKind("dbStr-4.map.data") != "DBSTR_COMPONENT") return false;
+    if (!apfsCopyStatusRepresentsCompleteFile("COPIED_DIRECT_INDEXED_EXTENT_CHAIN")) return false;
+    if (!apfsCopyStatusRepresentsCompleteFile("COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS")) return false;
+    if (!apfsCopyStatusRepresentsPartialCandidate("COPIED_PARTIAL_COMPRESSED_OR_RSRC_FORK_CANDIDATE")) return false;
+    if (apfsSanitizePathComponent("bad:/name") != "bad__name") return false;
+    return true;
 }
 
 bool runSchemaSmokeTest(const fs::path& out) {
@@ -66,11 +84,11 @@ int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
     fs::remove_all(out, ec);
-    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out);
+    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runApfsModuleSmokeTest();
     if (!ok) {
         std::cerr << "VestigantSpotlightTests failed for version " << appVersion() << "\n";
         return 1;
     }
-    std::cout << "Schema smoke test passed for Vestigant Spotlight v" << appVersion() << ": " << out << "\n";
+    std::cout << "Schema/APFS module smoke test passed for Vestigant Spotlight v" << appVersion() << ": " << out << "\n";
     return 0;
 }

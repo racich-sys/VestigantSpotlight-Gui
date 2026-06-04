@@ -1,0 +1,19 @@
+Vestigant Spotlight V1.0.6 validation summary
+
+Environment: Linux container build/test validation only.
+
+Checks performed:
+- cmake --build build-linux -j2: PASS
+- ./build-linux/VestigantSpotlightCli --version: Vestigant Spotlight v1.0.6
+- ./build-linux/VestigantSpotlightTests build-linux/selftest_out: PASS, schema smoke test passed
+- Build-V1_0_6.ps1 version gate: confirmed expects 1.0.6
+- Removed app-runner self-test routing/fake evidence path: grep found no /Users/alice, selfTest, or self-test route in src/app/app_runner.cpp/scripts/tests
+- V0.9 run/package/collect scripts: none present in clean package
+- V0.9 validation summaries and docs/codex_notes/CHANGES_Codex_*.md: none present in clean package
+- AFF4/APFS logical directory walk outputs are listed in app output manifest, source-probe upload copy list, and single-AFF4 wrapper expected ZIP outputs
+
+Not verified:
+- Windows/MSVC V1.0.6 build
+- Win32 GUI runtime
+- Live AFF4/APFS run against O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4
+- External Store-V2 comparison after V1.0.6 copy-out changes

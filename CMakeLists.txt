@@ -21,6 +21,7 @@ set(CORE_SOURCES
   src/ingest/source_profiles.cpp
   src/ingest/store_discovery.cpp src/ingest/evidence_preservation.cpp
   src/parsers/native_storedb_parser.cpp
+  src/parsers/apfs_volume_reader.cpp
   src/enrich_sql/sqlite_enrichment.cpp
   src/export_sql/sqlite_exporter.cpp
   src/app/case_store.cpp

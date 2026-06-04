@@ -1,3 +1,5 @@
+V1.0.7: Added dedicated APFS module boundary and fixed direct AFF4/APFS copy-status/staging classification.
+
 # Vestigant Spotlight V1.0.0 Notes
 
 V1.0.0 starts the post-0.9.x V1 line. It keeps the stable V0_9_60 GUI/iOS baseline and moves the next work back toward macOS Spotlight investigation from AFF4/APFS forensic images.

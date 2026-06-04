@@ -1,3 +1,22 @@
+
+## V1.0.7
+
+- Added a dedicated `src/parsers/apfs_volume_reader.*` module boundary for future APFS lower-bound B-tree iterator work.
+- Added APFS key, Store-V2 component, copy-status, and staging path helper functions with smoke-test coverage.
+- Updated MSVC/CMake builds to include the APFS module.
+- Corrected AFF4/APFS direct copy-out counting and staging classification for `COPIED_DIRECT_INDEXED_EXTENT_CHAIN` and `COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS`.
+- Preserved V1.0.6 AFF4/APFS extraction behavior while reducing the risk of adding the full B-tree iterator directly into `app_runner.cpp`.
+
+## V1.0.6 - MSVC preview-status helper scope hotfix
+
+V1.0.6 fixes a Windows/MSVC compile-scope issue introduced in V1.0.5. The direct AFF4/APFS copy-out code referenced `directPreviewStatusForBytes()` before the helper was visible to MSVC. The helper is now available at file scope before both the guarded/indexed and direct AFF4/APFS copy-out paths. No AFF4/APFS runtime behavior was intentionally changed beyond making the V1.0.5 target-index/copy-out work compile on Windows.
+
+## V1.0.5 - APFS target-index correlation and guarded direct Store-V2 copy-out attempt
+
+V1.0.5 responds to the V1.0.4 AFF4/APFS result where APFS root-tree traversal completed without node-limit skips and found Store-V2 namespace candidates, but still staged zero Store-V2 files. It adds a direct APFS filesystem-tree index during the exhausted B-tree traversal, correlates Store-V2 target child IDs to indexed INODE and FILE_EXTENT records, writes a logical directory-walk report, and attempts guarded direct copy-out when usable extents are found. Sparse logical gaps and zero physical extents are written only with explicit synthetic-zero provenance and SHA-256 hashing. The primary application binary no longer contains a self-test route or fake evidence-generation path.
+
+Delayed items: a true lower-bound APFS directory iterator is still targeted for a dedicated APFS module; V1.0.5 uses an exhausted indexed traversal bridge. LZFSE/LZVN remains delayed until vetted codec source and cross-platform test vectors are added. Diagnostic CSV suppression for normal production mode remains delayed until AFF4/APFS extraction is promoted from source-probe to normal StoreInfo discovery.
+
 ## V1.0.4 - AFF4/APFS direct traversal limit cleanup and Store-V2 namespace seeding
 
 V1.0.4 fixes the stale build-script version check from V1.0.3 and cleans up the direct AFF4/APFS traversal behavior. The direct APFS root-tree scan now terminates by queue exhaustion and visited-node cycle protection instead of the prior node/record/depth hard caps. It also records direct directory entries independent from the bounded upload name-sample CSV and uses those entries to recursively seed Store-V2 child copy-attempt rows with group and APFS path context. Full target-guided INODE/FILE_EXTENT copy-out is deferred to V1.0.5 and should be moved out of `app_runner.cpp` into a dedicated APFS lookup module before implementation.
