@@ -1,3 +1,13 @@
+# V1.0.17
+
+- Added optional Apple/lzfse LZFSE/LZVN codec integration path.
+- Added `src/codec/lzfse_codec.h/.cpp` with safe no-output behavior when the codec is not compiled in.
+- Added `tools/Prepare-LzfseThirdParty.ps1` to explicitly vendor and manifest Apple/lzfse source under `third_party/lzfse`.
+- Updated CMake and no-CMake MSVC build scripts to compile the Apple decoder sources only when the vetted source tree is present.
+- Updated APFS decmpfs resource-fork reconstruction so compression types 8/12 call the Apple codec adapter when available and record explicit decode/skipped statuses when unavailable or failed.
+- Updated direct AFF4/APFS copy-out to prefer inode data-stream logical size over raw extent-chain end where available.
+- Added validation/status documentation for logical-size trim and optional codec integration.
+
 # V1.0.15
 
 - Added AFF4/APFS Store-V2 candidate dual-process comparison.

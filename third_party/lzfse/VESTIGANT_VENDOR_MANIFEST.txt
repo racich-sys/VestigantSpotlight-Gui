@@ -1,0 +1,9 @@
+vendor=Apple lzfse/lzfse reference implementation
+source_repository=https://github.com/lzfse/lzfse
+source_zip_uploaded_name=lzfse-master.zip
+source_zip_sha256=23855f54ff38ff2f679f79730d20df970dcd3f6cd5ad33505fcdc4220b3ab158
+observed_latest_commit_sha=8ca039302ee20ae9ee39d2d00ab0d6f652352a10
+observed_latest_commit_message=Add const to tables in lzfse_internal.h
+license=BSD-3-Clause
+required_header=third_party/lzfse/src/lzfse.h
+vendored_for=Vestigant Spotlight V1.0.17 LZFSE/LZVN decode validation

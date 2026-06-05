@@ -1,3 +1,30 @@
+# V1.0.17 Release Notes
+
+V1.0.17 vendors the uploaded Apple/lzfse reference source and enables the existing LZFSE/LZVN adapter path when that source is present. The build should now report Apple lzfse source detected instead of codec disabled.
+
+## AFF4/APFS
+
+- Apple/lzfse source is included under `third_party/lzfse`.
+- Copy-out summaries now record codec build status and decmpfs resource-fork counts.
+- The existing decmpfs resource-fork reconstruction path can decode compression types 8 and 12 when the Apple codec is compiled.
+- Added a macOS investigative feature inventory and roadmap.
+
+## Validation focus
+
+- Confirm MSVC compiles the vendored Apple decoder sources.
+- Confirm `VestigantSpotlightTests.exe` passes the LZVN smoke vector.
+- Compare V1.0.17 AFF4/APFS external mismatches against V1.0.16 to determine whether LZFSE/LZVN reduces cache-file mismatches.
+
+# V1.0.17
+
+- Added optional Apple/lzfse LZFSE/LZVN codec integration path.
+- Added `src/codec/lzfse_codec.h/.cpp` with safe no-output behavior when the codec is not compiled in.
+- Added `tools/Prepare-LzfseThirdParty.ps1` to explicitly vendor and manifest Apple/lzfse source under `third_party/lzfse`.
+- Updated CMake and no-CMake MSVC build scripts to compile the Apple decoder sources only when the vetted source tree is present.
+- Updated APFS decmpfs resource-fork reconstruction so compression types 8/12 call the Apple codec adapter when available and record explicit decode/skipped statuses when unavailable or failed.
+- Updated direct AFF4/APFS copy-out to prefer inode data-stream logical size over raw extent-chain end where available.
+- Added validation/status documentation for logical-size trim and optional codec integration.
+
 # V1.0.15
 
 - Added AFF4/APFS Store-V2 candidate dual-process comparison.

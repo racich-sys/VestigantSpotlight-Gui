@@ -325,7 +325,7 @@ if ($exitCode -ne 0 -and !$ProbeTimedOut) {
         "ExitCode: $exitCode",
         "Case output: $Out",
         "Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
-        "This V1.0.15 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
+        "This V1.0.17 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
     ) | Set-Content -LiteralPath $failureNote -Encoding UTF8
     if (!$SkipUploadZip) {
         try {

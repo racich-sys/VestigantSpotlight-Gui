@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 1.0.15 LANGUAGES CXX)
+project(VestigantSpotlightInv VERSION 1.0.17 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,6 +9,24 @@ if(MSVC)
   add_compile_options(/W4 /permissive- /EHa)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+
+option(VESTIGANT_ENABLE_LZFSE "Enable Apple lzfse/lzvn reference decoder when third_party/lzfse is vendored" ON)
+set(VESTIGANT_LZFSE_SOURCES)
+if(VESTIGANT_ENABLE_LZFSE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/lzfse/src/lzfse.h")
+  message(STATUS "Apple lzfse source detected; enabling VESTIGANT_HAS_LZFSE")
+  list(APPEND VESTIGANT_LZFSE_SOURCES
+    third_party/lzfse/src/lzfse_decode.c
+    third_party/lzfse/src/lzfse_decode_base.c
+    third_party/lzfse/src/lzfse_fse.c
+    third_party/lzfse/src/lzvn_decode_base.c
+  )
+  if(MSVC)
+    set_source_files_properties(${VESTIGANT_LZFSE_SOURCES} PROPERTIES COMPILE_OPTIONS "/W0")
+  else()
+    set_source_files_properties(${VESTIGANT_LZFSE_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+  endif()
 endif()
 
 set(CORE_SOURCES
@@ -24,14 +42,20 @@ set(CORE_SOURCES
   src/parsers/ios_app_db_parser.cpp
   src/parsers/apfs_volume_reader.cpp
   src/parsers/apfs_aff4_reader.cpp
+  src/codec/lzfse_codec.cpp
   src/enrich_sql/sqlite_enrichment.cpp
   src/export_sql/sqlite_exporter.cpp
   src/app/case_store.cpp
   src/app/app_runner.cpp
+  ${VESTIGANT_LZFSE_SOURCES}
 )
 
 add_library(vestigant_spotlight_core STATIC ${CORE_SOURCES})
 target_include_directories(vestigant_spotlight_core PUBLIC src)
+if(VESTIGANT_LZFSE_SOURCES)
+  target_include_directories(vestigant_spotlight_core PUBLIC third_party/lzfse/src)
+  target_compile_definitions(vestigant_spotlight_core PUBLIC VESTIGANT_HAS_LZFSE=1)
+endif()
 
 if(WIN32)
   target_link_libraries(vestigant_spotlight_core PUBLIC winsqlite3)

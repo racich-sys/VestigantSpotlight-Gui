@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_0_15.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_0_15",
-  [string]$BuildLog = "D:\Downloads\V1_0_15_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_0_17.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_0_17",
+  [string]$BuildLog = "D:\Downloads\V1_0_17_build.log",
   [switch]$CleanExtract
 )
 
@@ -32,6 +32,6 @@ Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlightTests
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE. Log: $BuildLog" }
 
 $version = (& "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe" --version 2>&1 | Out-String).Trim()
-if ($version -notmatch "1\.0\.15") { throw "Unexpected CLI version after build: $version" }
+if ($version -notmatch "1\.0\.17") { throw "Unexpected CLI version after build: $version" }
 Write-Host $version
 Write-Host "Build log: $BuildLog"

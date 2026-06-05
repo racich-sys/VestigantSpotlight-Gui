@@ -78,6 +78,14 @@ if exist "%OBJ%" rmdir /s /q "%OBJ%"
 mkdir "%OBJ%"
 
 set "CXXFLAGS=/nologo /std:c++20 /EHa /W4 /permissive- /DWIN32 /D_WINDOWS /DUNICODE /D_UNICODE /utf-8 /I src"
+set "LZFSE_ENABLED=0"
+if exist "third_party\lzfse\src\lzfse.h" (
+  set "LZFSE_ENABLED=1"
+  set "CXXFLAGS=!CXXFLAGS! /DVESTIGANT_HAS_LZFSE=1 /I third_party\lzfse\src"
+  echo Apple lzfse source detected: enabling VESTIGANT_HAS_LZFSE.
+) else (
+  echo Apple lzfse source not vendored: LZFSE/LZVN decode remains disabled.
+)
 set "COMMON_RSP=%OBJ%\common_objects.rsp"
 set "CLI_RSP=%OBJ%\cli_link.rsp"
 set "TESTS_RSP=%OBJ%\tests_link.rsp"
@@ -107,6 +115,7 @@ REM ---------------------------------------------------------------------------
   echo src\parsers\ios_app_db_parser.cpp^|ios_app_db_parser.obj
   echo src\parsers\apfs_volume_reader.cpp^|apfs_volume_reader.obj
   echo src\parsers\apfs_aff4_reader.cpp^|apfs_aff4_reader.obj
+  echo src\codec\lzfse_codec.cpp^|lzfse_codec.obj
   echo src\enrich_sql\sqlite_enrichment.cpp^|sqlite_enrichment.obj
   echo src\export_sql\sqlite_exporter.cpp^|sqlite_exporter.obj
   echo src\app\case_store.cpp^|case_store.obj
@@ -124,6 +133,16 @@ for /f "usebackq tokens=1,2 delims=|" %%A in ("%OBJ%\common_compile_manifest.txt
     exit /b 1
   )
   echo "%OBJ%\%%B" >> "%COMMON_RSP%"
+)
+
+if "%LZFSE_ENABLED%"=="1" (
+  for %%F in (lzfse_decode.c lzfse_decode_base.c lzfse_fse.c lzvn_decode_base.c) do (
+    echo.
+    echo Compiling third_party\lzfse\src\%%F...
+    cl /nologo /TC /W0 /DWIN32 /D_WINDOWS /I third_party\lzfse\src /c "third_party\lzfse\src\%%F" /Fo:"%OBJ%\%%~nF.obj"
+    if errorlevel 1 exit /b 1
+    echo "%OBJ%\%%~nF.obj" >> "%COMMON_RSP%"
+  )
 )
 
 if not exist "%OBJ%\case_db.obj" (

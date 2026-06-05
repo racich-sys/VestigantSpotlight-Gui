@@ -5,6 +5,7 @@
 #include "core/csv.h"
 #include "core/hash.h"
 #include "core/path_utils.h"
+#include "codec/lzfse_codec.h"
 #include "db/case_db.h"
 #include "enrich_sql/sqlite_enrichment.h"
 #include "export_sql/sqlite_exporter.h"
@@ -5351,6 +5352,23 @@ ApfsDecmpfsReconstructionResult reconstructDecmpfsResourceForkDissectStyle(const
                     ++uncompressedMarkerChunks;
                     continue;
                 }
+                if (compressionType == 8 || compressionType == 12) {
+                    const std::uint64_t remaining64 = (out.size() < expectedUncompressedSize) ? (expectedUncompressedSize - static_cast<std::uint64_t>(out.size())) : 0ULL;
+                    const std::size_t perChunkExpected = static_cast<std::size_t>(std::min<std::uint64_t>(65536ULL, remaining64));
+                    const auto decoded = decodeAppleLzfseOrLzvnChunk(chunk, perChunkExpected == 0 ? 65536U : perChunkExpected);
+                    if (!decoded.ok) {
+                        rr.status = decoded.codecAvailable ? "DECOMPFS_LZFSE_LZVN_DECODE_FAILED" : "DECOMPFS_LZFSE_LZVN_CODEC_NOT_COMPILED";
+                        rr.notes = "Resource-fork algorithm " + decmpfsCompressionTypeLabel(compressionType) + "; entry=" + std::to_string(i) + "; apple_codec_status=" + decoded.status + "; " + decoded.notes;
+                        return rr;
+                    }
+                    if (out.size() + decoded.data.size() > expectedUncompressedSize + 65536ULL) {
+                        rr.status = "DECOMPFS_OUTPUT_EXCEEDED_EXPECTED_SIZE";
+                        rr.notes = "Decoded LZFSE/LZVN chunks exceeded decoded size. entry=" + std::to_string(i);
+                        return rr;
+                    }
+                    out.insert(out.end(), decoded.data.begin(), decoded.data.end());
+                    continue;
+                }
                 rr.status = "DECOMPFS_RESOURCE_FORK_CODEC_UNSUPPORTED";
                 rr.notes = "Resource-fork algorithm " + decmpfsCompressionTypeLabel(compressionType) + " requires a codec for compressed chunks; uncompressed marker chunks before failure=" + std::to_string(uncompressedMarkerChunks) + "; entry=" + std::to_string(i) + "; first_byte=" + std::to_string(static_cast<unsigned int>(chunk[0]));
                 return rr;
@@ -5358,14 +5376,15 @@ ApfsDecmpfsReconstructionResult reconstructDecmpfsResourceForkDissectStyle(const
             if (out.size() > expectedUncompressedSize) out.resize(static_cast<std::size_t>(expectedUncompressedSize));
             rr.data.swap(out);
             rr.ok = (rr.data.size() == expectedUncompressedSize);
-            rr.status = rr.ok ? (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + "_UNCOMPRESSED_MARKER_RECONSTRUCTED")
-                              : (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + "_PARTIAL_UNCOMPRESSED_MARKER_RECONSTRUCTION");
+            rr.status = rr.ok ? (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + (appleLzfseCodecAvailable() ? "_RECONSTRUCTED" : "_UNCOMPRESSED_MARKER_RECONSTRUCTED"))
+                              : (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + (appleLzfseCodecAvailable() ? "_PARTIAL_RECONSTRUCTION" : "_PARTIAL_UNCOMPRESSED_MARKER_RECONSTRUCTION"));
             std::ostringstream ns;
             ns << "algorithm=" << decmpfsCompressionTypeLabel(compressionType)
                << "; block_count=" << rr.blockCount
                << "; expected_uncompressed_size=" << expectedUncompressedSize
                << "; reconstructed_size=" << rr.data.size()
                << "; uncompressed_marker_chunks=" << uncompressedMarkerChunks
+               << "; apple_lzfse_codec=" << appleLzfseCodecBuildStatus()
                << "; offset_model=go-apfs/dissect.apfs:offset_array_chunk_stream";
             rr.notes = ns.str();
             return rr;
@@ -6758,6 +6777,10 @@ void writeAff4ApfsSpotlightFileCopyOutOutputs(const fs::path& caseDir,
     std::size_t copiedRows = 0;
     std::size_t skippedRows = 0;
     std::size_t sqliteRows = 0;
+    std::size_t decmpfsRows = 0;
+    std::size_t lzvnRows = 0;
+    std::size_t lzfseRows = 0;
+    std::size_t lzfseOrLzvnFailureRows = 0;
     std::uint64_t totalCopiedBytes = 0;
     for (const auto& r : rows) {
         if (apfsCopyStatusRepresentsCompleteFile(r.copyStatus)) {
@@ -6766,6 +6789,14 @@ void writeAff4ApfsSpotlightFileCopyOutOutputs(const fs::path& caseDir,
             if (r.firstBytesStatus.find("SQLITE") != std::string::npos) ++sqliteRows;
         } else {
             ++skippedRows;
+        }
+        if (r.copyStatus.rfind("COPIED_DECOMPFS_RESOURCE_FORK", 0) == 0) {
+            ++decmpfsRows;
+            if (r.copyStatus.find("LZVN") != std::string::npos) ++lzvnRows;
+            if (r.copyStatus.find("LZFSE") != std::string::npos) ++lzfseRows;
+        }
+        if (r.validationStatus.find("LZFSE") != std::string::npos || r.validationStatus.find("LZVN") != std::string::npos) {
+            if (r.copyStatus.rfind("SKIPPED_", 0) == 0) ++lzfseOrLzvnFailureRows;
         }
     }
 
@@ -6783,6 +6814,11 @@ void writeAff4ApfsSpotlightFileCopyOutOutputs(const fs::path& caseDir,
         out << "  \"copied_files\": " << copiedRows << ",\n";
         out << "  \"skipped_rows\": " << skippedRows << ",\n";
         out << "  \"sqlite_header_or_support_previews\": " << sqliteRows << ",\n";
+        out << "  \"apple_lzfse_codec_status\": \"" << jsonEscape(appleLzfseCodecBuildStatus()) << "\",\n";
+        out << "  \"decmpfs_resource_fork_rows\": " << decmpfsRows << ",\n";
+        out << "  \"decmpfs_lzvn_resource_fork_rows\": " << lzvnRows << ",\n";
+        out << "  \"decmpfs_lzfse_resource_fork_rows\": " << lzfseRows << ",\n";
+        out << "  \"decmpfs_lzfse_or_lzvn_failure_rows\": " << lzfseOrLzvnFailureRows << ",\n";
         out << "  \"total_copied_bytes\": " << totalCopiedBytes << "\n";
         out << "}\n";
     }
@@ -6797,8 +6833,13 @@ void writeAff4ApfsSpotlightFileCopyOutOutputs(const fs::path& caseDir,
         out << "- Copied files: `" << copiedRows << "`\n";
         out << "- Skipped rows: `" << skippedRows << "`\n";
         out << "- SQLite header/support previews: `" << sqliteRows << "`\n";
+        out << "- Apple/lzfse codec status: `" << appleLzfseCodecBuildStatus() << "`\n";
+        out << "- Decmpfs resource-fork reconstructed rows: `" << decmpfsRows << "`\n";
+        out << "- Decmpfs LZVN rows: `" << lzvnRows << "`\n";
+        out << "- Decmpfs LZFSE rows: `" << lzfseRows << "`\n";
+        out << "- Decmpfs LZFSE/LZVN failure rows: `" << lzfseOrLzvnFailureRows << "`\n";
         out << "- Total copied bytes: `" << totalCopiedBytes << "`\n\n";
-        out << "Files are written under `ExtractedSpotlight/` inside the case folder. Full production staging still needs complete path reconstruction and compression validation before this becomes the normal ingestion route. V0_8_65 adds bounded decmpfs type-4 zlib resource-fork reconstruction for Store-V2 cache files when the resource fork stream is available and validates to the decoded logical size.\n";
+        out << "Files are written under `ExtractedSpotlight/` inside the case folder. V1.0.17 vendors Apple/lzfse when supplied under `third_party/lzfse` and records codec availability and decmpfs reconstruction status in the copy-out CSV/summary.\n";
     }
 
 
@@ -11871,8 +11912,8 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 outRow.firstBytesHex = hexSampleBytes(preview.data(), preview.size());
                             }
                             if (infoIt->second.compressionType == 4) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_ZLIB";
-                            else if (infoIt->second.compressionType == 8) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS";
-                            else if (infoIt->second.compressionType == 12) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS";
+                            else if (infoIt->second.compressionType == 8) outRow.copyStatus = appleLzfseCodecAvailable() ? "COPIED_DECOMPFS_RESOURCE_FORK_LZVN" : "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS";
+                            else if (infoIt->second.compressionType == 12) outRow.copyStatus = appleLzfseCodecAvailable() ? "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE" : "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS";
                             else if (infoIt->second.compressionType == 14) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZBITMAP_UNCOMPRESSED_MARKERS";
                             else outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_PLAIN";
                             const std::string algLabel = decmpfsCompressionTypeLabel(infoIt->second.compressionType);
@@ -11983,8 +12024,8 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
                                 outRow.firstBytesHex = hexSampleBytes(preview.data(), preview.size());
                             } else { outRow.firstBytesStatus = "NO_PREVIEW"; }
                             if (infoIt->second.compressionType == 4) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_ZLIB";
-                            else if (infoIt->second.compressionType == 8) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS";
-                            else if (infoIt->second.compressionType == 12) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS";
+                            else if (infoIt->second.compressionType == 8) outRow.copyStatus = appleLzfseCodecAvailable() ? "COPIED_DECOMPFS_RESOURCE_FORK_LZVN" : "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS";
+                            else if (infoIt->second.compressionType == 12) outRow.copyStatus = appleLzfseCodecAvailable() ? "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE" : "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS";
                             else if (infoIt->second.compressionType == 14) outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_LZBITMAP_UNCOMPRESSED_MARKERS";
                             else outRow.copyStatus = "COPIED_DECOMPFS_RESOURCE_FORK_PLAIN";
                             const std::string algLabel = decmpfsCompressionTypeLabel(infoIt->second.compressionType);
@@ -13649,6 +13690,19 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                             if (eEnd < er.extentLogicalOffset) invalidLength = true;
                             expectedEnd = std::max<std::uint64_t>(expectedEnd, eEnd);
                         }
+                        std::uint64_t directLogicalSize = expectedEnd;
+                        std::string directLogicalSizeSource = "direct_indexed_file_extent_end";
+                        const auto inodeForLogicalIt = directIndexedInodeByObject.find(std::make_pair(cr.volumeSequence, cr.childFileId));
+                        if (inodeForLogicalIt != directIndexedInodeByObject.end()) {
+                            const auto& indexedInode = inodeForLogicalIt->second;
+                            if (indexedInode.inodeDstreamSize != 0 && indexedInode.inodeDstreamSize <= expectedEnd) {
+                                directLogicalSize = indexedInode.inodeDstreamSize;
+                                directLogicalSizeSource = "INO_EXT_TYPE_DSTREAM.size.direct_index";
+                            } else if (indexedInode.inodeUncompressedSize != 0 && indexedInode.inodeUncompressedSize <= expectedEnd) {
+                                directLogicalSize = indexedInode.inodeUncompressedSize;
+                                directLogicalSizeSource = "j_inode_val.uncompressed_size.direct_index";
+                            }
+                        }
                         ApfsSpotlightFileCopyOutRow row;
                         row.sequence = static_cast<std::uint32_t>(directSpotlightFileCopyOutRows.size());
                         row.targetSequence = cr.sequence;
@@ -13665,12 +13719,12 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         row.storeV2RelativePath = cr.storeV2RelativePath.empty() ? pathString(safeRelativeStorePath(cr)) : cr.storeV2RelativePath;
                         row.extentCount = static_cast<std::uint32_t>(extents.size());
                         row.assembledBytes = expectedEnd;
-                        row.logicalSizeBytes = expectedEnd;
-                        row.logicalSizeSource = "direct_indexed_file_extent_end";
+                        row.logicalSizeBytes = directLogicalSize;
+                        row.logicalSizeSource = directLogicalSizeSource;
                         row.firstPhysicalOffset = extents.empty() ? 0ULL : extents.front().physicalOffset;
                         if (overlap) { row.copyStatus = "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS"; row.validationStatus = "OVERLAP_ORDER_GATE_FAILED"; row.notes = "Direct indexed extents overlapped; skipped to avoid shifted output."; directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        if (invalidLength || expectedEnd == 0 || expectedEnd > kDirectMaxSingleCopyOutBytes) { row.copyStatus = "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH"; row.validationStatus = "SIZE_GATE_FAILED"; row.notes = "Direct indexed extent chain was empty, invalid, or above per-file safety cap."; directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        // V1.0.15: write raw APFS copy-out rows to a unique per-target folder.
+                        if (invalidLength || expectedEnd == 0 || directLogicalSize == 0 || expectedEnd > kDirectMaxSingleCopyOutBytes || directLogicalSize > kDirectMaxSingleCopyOutBytes) { row.copyStatus = "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH"; row.validationStatus = "SIZE_GATE_FAILED"; row.notes = "Direct indexed extent chain was empty, invalid, or above per-file safety cap."; directSpotlightFileCopyOutRows.push_back(row); continue; }
+                        // V1.0.17: write raw APFS copy-out rows to a unique per-target folder.
                         // Earlier builds wrote many duplicate Store-V2 component names into
                         // ExtractedSpotlight/StagedStoreV2/Ungrouped/<name>.  Later rows could
                         // overwrite the file that an earlier, higher-scored staging row referenced,
@@ -13706,24 +13760,33 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                             return true;
                         };
                         for (const auto& er : extents) {
+                            if (logicalCursor >= directLogicalSize) break;
                             if (er.extentLogicalOffset > logicalCursor) {
-                                const std::uint64_t gap = er.extentLogicalOffset - logicalCursor;
+                                const std::uint64_t gapRaw = er.extentLogicalOffset - logicalCursor;
+                                const std::uint64_t gap = std::min<std::uint64_t>(gapRaw, directLogicalSize - logicalCursor);
                                 if (!writeZeros(gap, "logical_sparse_gap")) { copyOk = false; break; }
                                 logicalCursor += gap;
+                                if (logicalCursor >= directLogicalSize) break;
                             }
+                            const std::uint64_t writableExtentBytes = std::min<std::uint64_t>(er.extentLengthBytes, directLogicalSize - logicalCursor);
+                            if (writableExtentBytes == 0) break;
                             if (er.physicalBlock == 0 || er.physicalOffset == 0) {
-                                if (!writeZeros(er.extentLengthBytes, "zero_physical_extent")) { copyOk = false; break; }
-                                logicalCursor += er.extentLengthBytes;
+                                if (!writeZeros(writableExtentBytes, "zero_physical_extent")) { copyOk = false; break; }
+                                logicalCursor += writableExtentBytes;
                                 continue;
                             }
                             std::vector<unsigned char> extentBytes;
                             std::string readErr;
-                            const long long got = directReadVirtual(er.physicalOffset, er.extentLengthBytes, extentBytes, readErr);
-                            if (got < 0 || static_cast<std::uint64_t>(got) != er.extentLengthBytes || extentBytes.size() != er.extentLengthBytes) { copyOk = false; copyNotes = readErr.empty() ? "extent read failed or returned short data" : readErr; break; }
+                            const long long got = directReadVirtual(er.physicalOffset, writableExtentBytes, extentBytes, readErr);
+                            if (got < 0 || static_cast<std::uint64_t>(got) != writableExtentBytes || extentBytes.size() != writableExtentBytes) { copyOk = false; copyNotes = readErr.empty() ? "extent read failed or returned short data" : readErr; break; }
                             if (firstBytes.empty()) firstBytes.assign(extentBytes.begin(), extentBytes.begin() + std::min<std::size_t>(extentBytes.size(), 96U));
                             outFile.write(reinterpret_cast<const char*>(extentBytes.data()), static_cast<std::streamsize>(extentBytes.size()));
                             if (!outFile) { copyOk = false; copyNotes = "extent write failed"; break; }
-                            logicalCursor += er.extentLengthBytes;
+                            logicalCursor += writableExtentBytes;
+                        }
+                        if (copyOk && logicalCursor != directLogicalSize) {
+                            copyOk = false;
+                            copyNotes = "logical output short after bounded direct copy; wrote=" + std::to_string(logicalCursor) + "; expected=" + std::to_string(directLogicalSize);
                         }
                         outFile.close();
                         row.outputPath = pathString(outPath);
@@ -13742,13 +13805,13 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                             try { row.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { row.notes = std::string("sha256_failed: ") + ex.what(); }
                             if (syntheticZeroBytes != 0 || hasSparseGap || hasZeroPhysical) {
                                 row.copyStatus = "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS";
-                                row.validationStatus = (row.outputSizeBytes == expectedEnd) ? "SIZE_MATCH_WITH_ZERO_FILL_PROVENANCE" : "SIZE_MISMATCH_AFTER_ZERO_FILL_COPY";
-                                row.notes += (row.notes.empty() ? std::string{} : "; ") + std::string("direct_aff4_v1_0_5_copy_out=1; synthetic_zero_bytes=") + std::to_string(syntheticZeroBytes) + "; sparse_gap=" + (hasSparseGap ? "true" : "false") + "; zero_physical_extent=" + (hasZeroPhysical ? "true" : "false") + "; apfs_absolute_path=" + directPathForObject(cr.volumeSequence, cr.childFileId);
+                                row.validationStatus = (row.outputSizeBytes == directLogicalSize) ? "SIZE_MATCH_WITH_ZERO_FILL_PROVENANCE" : "SIZE_MISMATCH_AFTER_ZERO_FILL_COPY";
+                                row.notes += (row.notes.empty() ? std::string{} : "; ") + (std::string("direct_aff4_v1_0_16_copy_out=1; logical_size_source=") + directLogicalSizeSource + "; synthetic_zero_bytes=") + std::to_string(syntheticZeroBytes) + "; sparse_gap=" + (hasSparseGap ? "true" : "false") + "; zero_physical_extent=" + (hasZeroPhysical ? "true" : "false") + "; apfs_absolute_path=" + directPathForObject(cr.volumeSequence, cr.childFileId);
                                 row.interpretation = "Direct AFF4/APFS indexed FILE_EXTENT rows were staged with explicit zero-fill provenance for sparse or zero-physical regions.";
                             } else {
                                 row.copyStatus = "COPIED_DIRECT_INDEXED_EXTENT_CHAIN";
-                                row.validationStatus = (row.outputSizeBytes == expectedEnd) ? "SIZE_MATCHES_EXTENT_CHAIN" : "SIZE_MISMATCH_AFTER_COPY";
-                                row.notes += (row.notes.empty() ? std::string{} : "; ") + std::string("direct_aff4_v1_0_5_copy_out=1; apfs_absolute_path=") + directPathForObject(cr.volumeSequence, cr.childFileId);
+                                row.validationStatus = (row.outputSizeBytes == directLogicalSize && directLogicalSize < expectedEnd) ? "TRIMMED_TO_INODE_LOGICAL_SIZE" : ((row.outputSizeBytes == expectedEnd) ? "SIZE_MATCHES_EXTENT_CHAIN" : "SIZE_MISMATCH_AFTER_COPY");
+                                row.notes += (row.notes.empty() ? std::string{} : "; ") + (std::string("direct_aff4_v1_0_16_copy_out=1; logical_size_source=") + directLogicalSizeSource + "; apfs_absolute_path=") + directPathForObject(cr.volumeSequence, cr.childFileId);
                                 row.interpretation = "Direct AFF4/APFS indexed FILE_EXTENT rows were assembled into a staged Store-V2 copy-out file.";
                             }
                         }

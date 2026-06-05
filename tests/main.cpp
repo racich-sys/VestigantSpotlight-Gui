@@ -3,6 +3,7 @@
 #include "parsers/apfs_volume_reader.h"
 #include "parsers/apfs_aff4_reader.h"
 #include "parsers/ios_app_db_parser.h"
+#include "codec/lzfse_codec.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -102,6 +103,27 @@ bool runApfsModuleSmokeTest() {
     return true;
 }
 
+
+bool runLzfseCodecSmokeTest() {
+    if (!appleLzfseCodecAvailable()) return true;
+    const unsigned char encodedBytes[] = {
+        0x62,0x76,0x78,0x6e,0xc4,0x09,0x00,0x00,0x4b,0x00,0x00,0x00,0xe0,0x17,0x56,0x65,
+        0x73,0x74,0x69,0x67,0x61,0x6e,0x74,0x20,0x4c,0x5a,0x46,0x53,0x45,0x20,0x66,0x6f,
+        0x72,0x65,0x6e,0x73,0x69,0x63,0x20,0x73,0x6d,0x6f,0x6b,0x65,0x20,0x76,0x65,0x63,
+        0x74,0x6f,0x72,0x2e,0x20,0x38,0x27,0xf0,0xff,0xf0,0xff,0xf0,0xff,0xf0,0xff,0xf0,
+        0xff,0xf0,0xff,0xf0,0xff,0xf0,0xff,0xf0,0xff,0xf8,0xe4,0x45,0x4e,0x44,0x0a,0x06,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x62,0x76,0x78,0x24
+    };
+    std::vector<unsigned char> encoded(encodedBytes, encodedBytes + sizeof(encodedBytes));
+    const auto decoded = decodeAppleLzfseOrLzvnChunk(encoded, 2500U);
+    if (!decoded.ok || decoded.data.size() != 2500U) return false;
+    const std::string prefix(decoded.data.begin(), decoded.data.begin() + 38);
+    if (prefix != "Vestigant LZFSE forensic smoke vector.") return false;
+    const std::string suffix(decoded.data.end() - 4, decoded.data.end());
+    if (suffix != "END\n") return false;
+    return true;
+}
+
 bool runSchemaSmokeTest(const fs::path& out) {
     fs::path dbPath = out / "schema_smoke" / "schema_smoke.case.sqlite";
     std::error_code ec;
@@ -147,7 +169,7 @@ int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
     fs::remove_all(out, ec);
-    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runIosAppDbParserSmokeTest() && runApfsModuleSmokeTest();
+    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runIosAppDbParserSmokeTest() && runApfsModuleSmokeTest() && runLzfseCodecSmokeTest();
     if (!ok) {
         std::cerr << "VestigantSpotlightTests failed for version " << appVersion() << "\n";
         return 1;
