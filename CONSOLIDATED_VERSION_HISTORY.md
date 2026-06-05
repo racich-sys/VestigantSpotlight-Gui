@@ -1,4 +1,4 @@
-# V1.0.17
+# V1.0.18
 
 - Added optional Apple/lzfse LZFSE/LZVN codec integration path.
 - Added `src/codec/lzfse_codec.h/.cpp` with safe no-output behavior when the codec is not compiled in.

@@ -1,8 +1,8 @@
-# V1.0.17 LZFSE/LZVN Optional Vendor Integration
+# V1.0.18 LZFSE/LZVN Optional Vendor Integration
 
 ## Source decision
 
-V1.0.17 recognizes Apple/lzfse as the vetted codec source for future APFS decmpfs LZFSE/LZVN reconstruction. The project does not fetch source during normal builds; it requires the source to be explicitly vendored under:
+V1.0.18 recognizes Apple/lzfse as the vetted codec source for future APFS decmpfs LZFSE/LZVN reconstruction. The project does not fetch source during normal builds; it requires the source to be explicitly vendored under:
 
 ```text
 third_party/lzfse/

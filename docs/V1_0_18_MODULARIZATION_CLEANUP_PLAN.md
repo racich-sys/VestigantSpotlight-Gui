@@ -1,6 +1,6 @@
-# V1.0.17 Modularization and Cleanup Plan
+# V1.0.18 Modularization and Cleanup Plan
 
-## Current structure after V1.0.17
+## Current structure after V1.0.18
 
 Current line counts from this package:
 
@@ -31,7 +31,7 @@ Move from `app_runner.cpp` into `src/parsers/apfs_aff4_reader.cpp` and `src/pars
 Acceptance benchmark:
 
 - `app_runner.cpp` no longer constructs APFS copy-out rows directly.
-- Existing V1.0.16/V1.0.17 AFF4/APFS thin metrics do not regress.
+- Existing V1.0.16/V1.0.18 AFF4/APFS thin metrics do not regress.
 - External compare output still runs automatically.
 
 ### 2. macOS Store-V2 investigation module

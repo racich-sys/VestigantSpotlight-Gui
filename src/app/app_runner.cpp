@@ -3972,7 +3972,7 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                 std::string table = reinterpret_cast<const char*>(nameTxt);
                 std::string cols = sqliteColumnList(ext, table);
                 long long rowCount = sqliteScalarCount(ext, table);
-                const IosAppDbTableParseDecision parseDecision = iosAppDbBuildTableParseDecision(inv.cat, table, cols);
+                const IosAppDbTableParseDecision parseDecision = IosAppDbParser::buildTableParseDecision(inv.cat, table, cols);
                 const std::string recCat = parseDecision.recordCategory;
                 ins.bind(1, sourceId);
                 ins.bind(2, inv.id);
@@ -3985,11 +3985,11 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                 ins.bind(9, cols);
                 ins.bind(10, recCat);
                 ins.bind(11, rowCount >= 0 ? "table_counted" : "table_count_failed");
-                ins.bind(12, iosAppDbIsTargetRecordCategory(recCat) ? "schema/table-counted and generic parsed-record extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
+                ins.bind(12, IosAppDbParser::isTargetRecordCategory(recCat) ? "schema/table-counted and parser-module row extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
                 ins.bind(13, nowUtc());
                 ins.stepDone(); ins.reset();
-                if (rowCount > 0 && iosAppDbIsTargetRecordCategory(recCat)) {
-                    parsedRows += iosAppDbParseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
+                if (rowCount > 0 && IosAppDbParser::isTargetRecordCategory(recCat)) {
+                    parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
                 }
                 ++tableRows; ++tableCount;
             }
@@ -6839,7 +6839,7 @@ void writeAff4ApfsSpotlightFileCopyOutOutputs(const fs::path& caseDir,
         out << "- Decmpfs LZFSE rows: `" << lzfseRows << "`\n";
         out << "- Decmpfs LZFSE/LZVN failure rows: `" << lzfseOrLzvnFailureRows << "`\n";
         out << "- Total copied bytes: `" << totalCopiedBytes << "`\n\n";
-        out << "Files are written under `ExtractedSpotlight/` inside the case folder. V1.0.17 vendors Apple/lzfse when supplied under `third_party/lzfse` and records codec availability and decmpfs reconstruction status in the copy-out CSV/summary.\n";
+        out << "Files are written under `ExtractedSpotlight/` inside the case folder. V1.0.18 vendors Apple/lzfse when supplied under `third_party/lzfse` and records codec availability and decmpfs reconstruction status in the copy-out CSV/summary.\n";
     }
 
 
@@ -13724,7 +13724,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         row.firstPhysicalOffset = extents.empty() ? 0ULL : extents.front().physicalOffset;
                         if (overlap) { row.copyStatus = "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS"; row.validationStatus = "OVERLAP_ORDER_GATE_FAILED"; row.notes = "Direct indexed extents overlapped; skipped to avoid shifted output."; directSpotlightFileCopyOutRows.push_back(row); continue; }
                         if (invalidLength || expectedEnd == 0 || directLogicalSize == 0 || expectedEnd > kDirectMaxSingleCopyOutBytes || directLogicalSize > kDirectMaxSingleCopyOutBytes) { row.copyStatus = "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH"; row.validationStatus = "SIZE_GATE_FAILED"; row.notes = "Direct indexed extent chain was empty, invalid, or above per-file safety cap."; directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        // V1.0.17: write raw APFS copy-out rows to a unique per-target folder.
+                        // V1.0.18: write raw APFS copy-out rows to a unique per-target folder.
                         // Earlier builds wrote many duplicate Store-V2 component names into
                         // ExtractedSpotlight/StagedStoreV2/Ungrouped/<name>.  Later rows could
                         // overwrite the file that an earlier, higher-scored staging row referenced,

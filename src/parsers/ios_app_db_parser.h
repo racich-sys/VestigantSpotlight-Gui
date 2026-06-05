@@ -58,4 +58,21 @@ std::size_t iosAppDbParseTable(const std::string& sourceId,
                                const IosAppDbTableParseDecision& parseDecision,
                                SqlStatement& parsedIns);
 
+class IosAppDbParser {
+public:
+    static std::string recordCategory(const std::string& databaseCategory,
+                                      const std::string& tableName,
+                                      const std::string& columnsCsv);
+    static bool isTargetRecordCategory(const std::string& category);
+    static IosAppDbTableParseDecision buildTableParseDecision(const std::string& databaseCategory,
+                                                              const std::string& tableName,
+                                                              const std::string& columnsCsv);
+    static std::size_t parseTable(const std::string& sourceId,
+                                  const IosAppDbInventory& inv,
+                                  sqlite3* ext,
+                                  const std::string& table,
+                                  const IosAppDbTableParseDecision& parseDecision,
+                                  SqlStatement& parsedIns);
+};
+
 } // namespace vestigant::spotlight

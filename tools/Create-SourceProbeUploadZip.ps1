@@ -4,7 +4,8 @@ param(
     [string]$ZipPath = "",
     [string]$AdditionalOutputRoot = "",
     [string]$UploadWorkRoot = "",
-    [switch]$IncludeLogsTailOnly
+    [switch]$IncludeLogsTailOnly,
+    [switch]$IncludeStructuralDiagnostics
 )
 
 $ErrorActionPreference = "Stop"
@@ -139,7 +140,31 @@ $Wanted = @(
 )
 
 $copied = New-Object System.Collections.Generic.List[string]
+
+$StructuralDiagnosticEntries = @(
+    "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md",
+    "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md",
+    "aff4_apfs_volume_superblocks.csv", "aff4_apfs_volume_superblocks_summary.json", "AFF4_APFS_VOLUME_SUPERBLOCK_PROBE.md",
+    "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md",
+    "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md",
+    "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_PROBE.md", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_LEAF_KV_DECODE.md",
+    "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md",
+    "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md",
+    "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md",
+    "aff4_apfs_root_tree_child_node_probe.csv", "aff4_apfs_root_tree_child_record_sample.csv", "aff4_apfs_root_tree_child_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_CHILD_NODE_PROBE.md",
+    "aff4_apfs_root_tree_descendant_node_probe.csv", "aff4_apfs_root_tree_descendant_record_sample.csv", "aff4_apfs_root_tree_descendant_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_DESCENDANT_NODE_PROBE.md",
+    "aff4_apfs_filesystem_namespace_seed.csv", "aff4_apfs_filesystem_namespace_seed_summary.json", "AFF4_APFS_FILESYSTEM_NAMESPACE_SEED.md",
+    "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv",
+    "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json",
+    "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md",
+    "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md",
+    "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md"
+)
+$StructuralDiagnosticSet = @{}
+foreach ($name in $StructuralDiagnosticEntries) { $StructuralDiagnosticSet[$name] = $true }
+
 foreach ($name in $Wanted) {
+    if (!$IncludeStructuralDiagnostics -and $StructuralDiagnosticSet.ContainsKey($name)) { continue }
     if (Copy-FirstExistingCaseFile -RelativeName $name) {
         $copied.Add($name) | Out-Null
     }
@@ -230,6 +255,7 @@ $manifestPath = Join-Path $UploadRoot "UPLOAD_MANIFEST.txt"
     "ZipPath: $ZipPath",
     "AdditionalOutputRoot: $AdditionalOutputRoot",
     "UploadWorkRoot: $UploadRoot",
+    "IncludeStructuralDiagnostics: $IncludeStructuralDiagnostics",
     "",
     "Copied files:",
     ($copied | Sort-Object -Unique | ForEach-Object { "- $_" })

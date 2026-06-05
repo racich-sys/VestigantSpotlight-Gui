@@ -80,6 +80,7 @@ bool gBulkCheckUpdate = false;
 std::vector<std::string> gCurrentRowArtifactIds;
 std::atomic<unsigned long long> gReviewRequestSeq{0};
 std::atomic_bool gShuttingDown{false};
+std::atomic_bool gExportFilteredActive{false};
 std::thread gReviewThread;
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
@@ -135,6 +136,7 @@ constexpr int WM_SET_INGEST_STATUS = WM_APP + 2;
 constexpr int WM_SET_INGEST_PROGRESS = WM_APP + 3;
 constexpr int WM_REVIEW_PAGE_RESULT = WM_APP + 4;
 constexpr int WM_CLEAR_PROCESS_LOG = WM_APP + 5;
+constexpr int WM_EXPORT_FILTERED_RESULT = WM_APP + 6;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
@@ -1585,7 +1587,7 @@ void setReviewLoadingState(bool loading) {
     if (loading) SetCursor(LoadCursorW(nullptr, IDC_WAIT));
 }
 
-void updateRowDetailsPanel();
+void updateRowDetailsPanel(int forcedRow = -1);
 void layoutControls(HWND hwnd);
 
 void populateReviewListFromResult(const ReviewPageResult& result) {
@@ -1655,7 +1657,12 @@ void completeReviewPageLoad(ReviewPageResult* result) {
         } else {
             populateReviewListFromResult(*result);
             setReviewSummary(result->summary);
-            updateRowDetailsPanel();
+            if (gList && ListView_GetItemCount(gList) > 0) {
+                focusReviewRow(0, true);
+                updateRowDetailsPanel(0);
+            } else {
+                updateRowDetailsPanel();
+            }
         }
     } catch (const std::exception& ex) {
         clearListColumns();
@@ -1825,58 +1832,78 @@ void exportCurrentPage(HWND owner) {
 
 void exportFilteredView(HWND owner) {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting filtered view."); return; }
+    bool expected = false;
+    if (!gExportFilteredActive.compare_exchange_strong(expected, true)) {
+        setReviewSummary(L"Export Filtered is already running. Wait for the current export to finish.");
+        return;
+    }
     const std::wstring searchText = getText(gSearch);
     if (searchText.empty()) {
         int answer = MessageBoxW(owner,
             L"This will export the entire selected view because no search/filter text is active. Large views may produce very large CSV files. Continue?",
             L"Vestigant Spotlight - Export Filtered View",
             MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
-        if (answer != IDYES) return;
+        if (answer != IDYES) { gExportFilteredActive.store(false); return; }
     }
     std::wstring out = saveCsv(owner);
-    if (out.empty()) return;
-    try {
-        const ULONGLONG startedMs = GetTickCount64();
-        const auto& v = views()[static_cast<size_t>(selectedViewIndex())];
-        const std::string search = narrow(searchText);
-        ReadOnlyDb db(gOpenedCaseDb);
-        const std::string where = buildWhere(v, search);
-        std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + reviewOrderBy(v);
-        sqlite3_stmt* st = nullptr;
-        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
-        int bind = 1;
-        bindSearch(st, v, search, bind);
-        std::ofstream f(narrow(out), std::ios::binary);
-        f << "\xEF\xBB\xBF";
-        f << csvEscape("checked") << ',' << csvEscape("tags");
-        for (size_t c = 0; c < v.columns.size(); ++c) f << ',' << csvEscape(v.columns[c]);
-        f << "\n";
-        unsigned long long rows = 0;
-        while (true) {
-            int rc = sqlite3_step(st);
-            if (rc == SQLITE_DONE) break;
-            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
-            const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), v, st);
-            const bool checked = !artifactId.empty() && gCheckedArtifactIds.find(std::strtoll(artifactId.c_str(), nullptr, 10)) != gCheckedArtifactIds.end();
-            f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(narrow(tagsForArtifact(db.get(), artifactId)));
-            for (int c = 0; c < sqlite3_column_count(st); ++c) {
-                f << ',';
-                const unsigned char* raw = sqlite3_column_text(st, c);
-                f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
+    if (out.empty()) { gExportFilteredActive.store(false); return; }
+
+    const int viewIdx = selectedViewIndex();
+    const std::string search = narrow(searchText);
+    const std::wstring dbPath = gOpenedCaseDb;
+    const std::set<long long> checkedSnapshot = gCheckedArtifactIds;
+
+    setReviewSummary(L"Export Filtered in progress... GUI remains active.");
+    if (gExportFiltered) EnableWindow(gExportFiltered, FALSE);
+
+    std::thread([owner, viewIdx, search, out, dbPath, checkedSnapshot]() {
+        auto postResult = [owner](bool ok, const std::wstring& msg) {
+            auto* heapMsg = new std::wstring(msg);
+            if (!PostMessageW(owner, WM_EXPORT_FILTERED_RESULT, ok ? 1 : 0, reinterpret_cast<LPARAM>(heapMsg))) {
+                delete heapMsg;
             }
+        };
+        try {
+            const ULONGLONG startedMs = GetTickCount64();
+            if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) throw std::runtime_error("Invalid selected view index");
+            const auto& v = views()[static_cast<size_t>(viewIdx)];
+            ReadOnlyDb db(dbPath);
+            const std::string where = buildWhere(v, search);
+            std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + reviewOrderBy(v);
+            sqlite3_stmt* st = nullptr;
+            if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
+            int bind = 1;
+            bindSearch(st, v, search, bind);
+            std::ofstream f(narrow(out), std::ios::binary);
+            if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open CSV for writing"); }
+            f << "\xEF\xBB\xBF";
+            f << csvEscape("checked") << ',' << csvEscape("tags");
+            for (size_t c = 0; c < v.columns.size(); ++c) f << ',' << csvEscape(v.columns[c]);
             f << "\n";
-            ++rows;
-            if ((rows % 5000ULL) == 0ULL) {
-                setReviewSummary(L"Export Filtered in progress: " + std::to_wstring(rows) + L" rows written...");
-                UpdateWindow(gReviewSummary);
+            unsigned long long rows = 0;
+            while (true) {
+                int rc = sqlite3_step(st);
+                if (rc == SQLITE_DONE) break;
+                if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
+                const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), v, st);
+                const long long artifactIdNum = artifactId.empty() ? 0LL : std::strtoll(artifactId.c_str(), nullptr, 10);
+                const bool checked = artifactIdNum != 0LL && checkedSnapshot.find(artifactIdNum) != checkedSnapshot.end();
+                f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(narrow(tagsForArtifact(db.get(), artifactId)));
+                for (int c = 0; c < sqlite3_column_count(st); ++c) {
+                    f << ',';
+                    const unsigned char* raw = sqlite3_column_text(st, c);
+                    f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
+                }
+                f << "\n";
+                ++rows;
             }
+            sqlite3_finalize(st);
+            const ULONGLONG elapsedMs = GetTickCount64() - startedMs;
+            postResult(true, L"Exported filtered view rows=" + std::to_wstring(rows) + L" in " + std::to_wstring(elapsedMs) + L" ms to: " + out);
+        } catch (const std::exception& ex) {
+            postResult(false, L"ERROR exporting filtered view: " + widen(ex.what()));
         }
-        sqlite3_finalize(st);
-        const ULONGLONG elapsedMs = GetTickCount64() - startedMs;
-        setReviewSummary(L"Exported filtered view rows=" + std::to_wstring(rows) + L" in " + std::to_wstring(elapsedMs) + L" ms to: " + out);
-    } catch (const std::exception& ex) {
-        setReviewSummary(L"ERROR exporting filtered view: " + widen(ex.what()));
-    }
+    }).detach();
 }
 
 
@@ -2213,15 +2240,17 @@ void appendDetailsSectionToList(DetailGroup g, const std::vector<DetailField>& f
     }
 }
 
-void updateRowDetailsPanel() {
+void updateRowDetailsPanel(int forcedRow) {
     if (!gRowDetails) return;
     if (!gList) {
         setDetailsPaneMessage(L"Open a case and select an investigation row to view all fields here.");
         return;
     }
 
-    const int sel = selectedOrFocusedReviewRow();
-    if (sel < 0) {
+    int sel = forcedRow;
+    const int rowCount = gList ? ListView_GetItemCount(gList) : 0;
+    if (sel < 0) sel = selectedOrFocusedReviewRow();
+    if (sel < 0 || sel >= rowCount) {
         setDetailsPaneMessage(L"Select a row to view all fields for the current investigation result. This pane is a two-column Field / Metadata table and can be resized by dragging the divider above it.");
         return;
     }
@@ -2731,11 +2760,19 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         ListView_SubItemHitTest(hwnd, &hit);
         if (hit.iItem >= 0 && hit.iSubItem == 0) {
             toggleReviewRowChecked(hit.iItem);
-            focusReviewRow(hit.iItem + 1, true);
+            focusReviewRow(hit.iItem, true);
             setReviewSummary(L"Toggled checked state. Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())));
-            updateRowDetailsPanel();
+            updateRowDetailsPanel(hit.iItem);
             return 0;
         }
+    }
+    if (msg == WM_LBUTTONUP) {
+        LRESULT res = DefSubclassProc(hwnd, msg, wp, lp);
+        POINT pt{static_cast<LONG>(GET_X_LPARAM(lp)), static_cast<LONG>(GET_Y_LPARAM(lp))};
+        LVHITTESTINFO hit{}; hit.pt = pt;
+        ListView_SubItemHitTest(hwnd, &hit);
+        if (hit.iItem >= 0) updateRowDetailsPanel(hit.iItem);
+        return res;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -2778,8 +2815,8 @@ LRESULT CALLBACK ReviewDetailsSplitterSubclassProc(HWND hwnd, UINT msg, WPARAM w
 void createReviewControls(HWND hwnd) {
     const int y0 = 58;
     addReview(CreateWindowW(L"STATIC", L"Investigation Results Grid: choose a platform-scoped review view from the left, then search/filter/sort/export database-backed results.", WS_CHILD | WS_VISIBLE, 16, y0, 960, 22, hwnd, nullptr, gInst, nullptr));
-    labelR(hwnd, L"View Set", 16, y0 + 32, 90, 22);
-    gReviewViewProfile = addReview(CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 86, y0 + 28, 160, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW_PROFILE)), gInst, nullptr));
+    labelR(hwnd, L"View Set", 16, y0 + 32, 64, 22);
+    gReviewViewProfile = addReview(CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 96, y0 + 28, 160, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW_PROFILE)), gInst, nullptr));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Recommended V1"));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Timeline / Activity"));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Text / Content"));
@@ -2824,7 +2861,7 @@ void createReviewControls(HWND hwnd) {
     gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     SetWindowSubclass(gList, ReviewListSubclassProc, 1, 0);
-    gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"↕ Drag to resize selected-row details", WS_CHILD | SS_CENTER | SS_NOTIFY, 262, y0 + 666, 720, 8, hwnd, nullptr, gInst, nullptr));
+    gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"", WS_CHILD | SS_ETCHEDHORZ | SS_NOTIFY, 262, y0 + 666, 720, 8, hwnd, nullptr, gInst, nullptr));
     SetWindowSubclass(gRowDetailsSplitter, ReviewDetailsSplitterSubclassProc, 1, 0);
     gRowDetailsLabel = addReview(CreateWindowW(L"STATIC", L"Selected Row Details - true two-column Field / Metadata table", WS_CHILD, 262, y0 + 674, 720, 20, hwnd, nullptr, gInst, nullptr));
     gRowDetails = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr,
@@ -2902,6 +2939,19 @@ void moveIf(HWND h, int x, int y, int w, int hgt) {
     MoveWindow(h, x, y, std::max(10, w), std::max(10, hgt), TRUE);
 }
 
+void stabilizeReviewControlZOrder(HWND hwnd) {
+    if (!isInvestigationTabIndex(gActiveTabIndex)) return;
+    if (gList) SetWindowPos(gList, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (gRowDetailsSplitter) SetWindowPos(gRowDetailsSplitter, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (gRowDetailsLabel) SetWindowPos(gRowDetailsLabel, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (gRowDetails) SetWindowPos(gRowDetails, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (gReviewViewProfile) {
+        ShowWindow(gReviewViewProfile, SW_SHOW);
+        SetWindowPos(gReviewViewProfile, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+    InvalidateRect(hwnd, nullptr, TRUE);
+}
+
 void layoutControls(HWND hwnd) {
     RECT rc{};
     GetClientRect(hwnd, &rc);
@@ -2940,7 +2990,7 @@ void layoutControls(HWND hwnd) {
     moveIf(gIngestProgress, 140, y0 + 636, right - 140, 26);
     moveIf(gLog, 16, y0 + 672, right - 16, std::max(120, bottom - (y0 + 672)));
 
-    moveIf(gReviewViewProfile, 86, y0 + 28, 160, 160);
+    moveIf(gReviewViewProfile, 96, y0 + 28, 160, 160);
     const int viewSetButtonsY = bottom - 72;
     moveIf(gReviewView, 16, y0 + 88, 230, std::max(220, viewSetButtonsY - (y0 + 88) - 8));
     moveIf(gViewSetUp, 16, viewSetButtonsY, 70, 26);
@@ -2957,7 +3007,7 @@ void layoutControls(HWND hwnd) {
     const int reviewBodyY = y0 + 206;
     const int reviewBodyH = std::max(300, bottom - reviewBodyY - 20);
     const int detailsLabelH = 20;
-    const int detailGap = 6;
+    const int detailGap = 12;
     const int splitterH = kReviewDetailsSplitterHeight;
     const int maxDetailsPaneH = std::max(kReviewDetailsMinHeight, reviewBodyH - 170 - detailsLabelH - splitterH - detailGap);
     if (gReviewDetailsPaneHeight <= 0) gReviewDetailsPaneHeight = kReviewDetailsDefaultHeight;
@@ -2982,7 +3032,10 @@ void layoutControls(HWND hwnd) {
     moveIf(gIosStatus, 16, y0 + 38, right - 16, 112);
     moveIf(gIosReadiness, 16, y0 + 268, std::max(360, (right - 40) / 2), std::max(180, bottom - (y0 + 268) - 20));
     moveIf(gIosPlan, std::max(500, cw / 2), y0 + 268, std::max(360, right - std::max(500, cw / 2)), std::max(180, bottom - (y0 + 268) - 20));
+
+    stabilizeReviewControlZOrder(hwnd);
 }
+
 
 void createControls(HWND hwnd) {
     INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES | ICC_LISTVIEW_CLASSES | ICC_PROGRESS_CLASS}; InitCommonControlsEx(&icc);
@@ -3053,8 +3106,8 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         LPNMHDR hdr = reinterpret_cast<LPNMHDR>(lp);
         if (hdr && hdr->hwndFrom == gList && hdr->code == LVN_ITEMCHANGED) {
             auto* pnmv = reinterpret_cast<LPNMLISTVIEW>(lp);
-            if ((pnmv->uChanged & LVIF_STATE) && ((pnmv->uNewState ^ pnmv->uOldState) & LVIS_SELECTED)) {
-                updateRowDetailsPanel();
+            if ((pnmv->uChanged & LVIF_STATE) && ((pnmv->uNewState ^ pnmv->uOldState) & (LVIS_SELECTED | LVIS_FOCUSED))) {
+                if ((pnmv->uNewState & (LVIS_SELECTED | LVIS_FOCUSED)) && pnmv->iItem >= 0) updateRowDetailsPanel(pnmv->iItem);
             }
             return 0;
         }
@@ -3272,6 +3325,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } return 0; }
     case WM_SET_INGEST_PROGRESS: { int pct = static_cast<int>(wp); if (pct < 0) pct = 0; if (pct > 100) pct = 100; if (gIngestProgress) SendMessageW(gIngestProgress, PBM_SETPOS, static_cast<WPARAM>(pct), 0); return 0; }
     case WM_REVIEW_PAGE_RESULT: { completeReviewPageLoad(reinterpret_cast<ReviewPageResult*>(lp)); return 0; }
+    case WM_EXPORT_FILTERED_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setReviewSummary(*s); delete s; }
+        gExportFilteredActive.store(false);
+        if (gExportFiltered) EnableWindow(gExportFiltered, TRUE);
+        return 0;
+    }
     case WM_SIZE: { layoutControls(hwnd); return 0; }
     case WM_TIMER: { if (wp == ID_AUTOSAVE_TIMER) { autosaveCaseInformation(hwnd); return 0; } break; }
     case WM_GETMINMAXINFO: {

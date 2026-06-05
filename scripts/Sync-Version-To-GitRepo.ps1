@@ -1,6 +1,6 @@
 param(
-  [string]$Version = "V1_0_17",
-  [string]$VersionRoot = "T:\VestigantSpotlightInv_V1_0_17",
+  [string]$Version = "V1_0_19",
+  [string]$VersionRoot = "T:\VestigantSpotlightInv_V1_0_19",
   [string]$RepoRoot = "T:\VestigantSpotlight",
   [switch]$Commit,
   [switch]$Push

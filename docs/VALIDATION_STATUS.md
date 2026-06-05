@@ -1,32 +1,36 @@
-V1.0.17 validation summary
+V1.0.18 validation summary
 
-Reviewed inputs:
-- V1_0_16_build.log
-- Upload_Thin_MacOS_AFF4_V1_0_16.zip
-- lzfse-master.zip
-- Apple APFS reference and prior APFS compression notes
+Inputs reviewed:
+- V1_0_17_build.log
+- Upload_Thin_MacOS_AFF4_V1_0_17.zip
+- V1.0.17 source package
 
-Input findings:
-- V1.0.16 MSVC build succeeded but reported Apple lzfse source not vendored.
-- V1.0.16 AFF4/APFS staged 8,986 normalized Store-V2 files and parsed 25,000 raw Store-V2 records.
-- External comparison still had 486 relative-path size mismatches and 1,424 external-only rows.
-- Candidate comparison showed 8,979 staged rows selected the best candidate, with seven rows still differing from the best candidate.
+V1.0.17 observed build status:
+- MSVC build completed successfully.
+- Apple/lzfse source was detected and VESTIGANT_HAS_LZFSE was enabled.
+- Third-party Apple/lzfse decoder sources compiled and linked.
 
-Implemented changes:
-- Vendored uploaded Apple/lzfse source into third_party/lzfse.
-- Recorded vendor manifest and uploaded ZIP SHA256.
-- Added codec-enabled smoke test using a known Apple/lzfse-produced LZVN vector.
-- Added copy-out summary fields for Apple/lzfse codec status and decmpfs LZVN/LZFSE rows.
-- Added macOS investigative feature inventory and roadmap document.
-- Updated scripts/version metadata to 1.0.17.
+V1.0.17 observed AFF4/APFS metrics:
+- Copy-out rows: 9,902
+- Copied files: 9,235
+- Normalized staged files: 8,986
+- Staged bytes: 1,368,577,744
+- Valid parsed Store-V2 databases: 2
+- Parsed raw records: 25,000
+- Apple/lzfse codec status: APPLE_LZFSE_REFERENCE_CODEC_ENABLED
+- decmpfs/resource-fork rows in the current test run: 0
 
-Validation performed in this environment:
-- CMake configure detected Apple/lzfse and enabled VESTIGANT_HAS_LZFSE.
-- Linux build progressed through lzfse_codec.cpp and Apple decoder sources before timing out during the existing large app_runner.cpp build; no compile error was observed before timeout.
-- Syntax checks were run for changed C++ source where possible.
+V1.0.18 changes validated in this environment:
+- app_runner.cpp C++20 syntax check with VESTIGANT_HAS_LZFSE=1: PASS
+- ios_app_db_parser.cpp C++20 syntax check: PASS
+- lzfse_codec.cpp C++20 syntax check: PASS
+- APFS parser module syntax checks: PASS
+- GUI view registry syntax check: PASS
+- tests/main.cpp syntax check: PASS
+- CMake configure: PASS
+- Linux build progressed through the vendored Apple/lzfse sources and existing modules, then timed out during the very large app_runner.cpp compile; no compile error was observed before timeout.
 
-Still required:
-- Windows/MSVC V1.0.17 build with Apple/lzfse enabled.
-- VestigantSpotlightTests.exe smoke test confirming the codec vector passes under MSVC.
-- Live AFF4/APFS run against the O: AFF4 image.
-- Review of LZVN/LZFSE decmpfs copy-out statuses and external comparison impact.
+Not verified here:
+- Windows/MSVC V1.0.18 build
+- Win32 GUI runtime
+- Live AFF4/APFS V1.0.18 run

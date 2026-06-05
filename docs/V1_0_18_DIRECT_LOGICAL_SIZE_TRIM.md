@@ -1,4 +1,4 @@
-# V1.0.17 Direct AFF4/APFS Logical-Size Trim
+# V1.0.18 Direct AFF4/APFS Logical-Size Trim
 
 ## Problem observed in V1.0.15
 
@@ -13,9 +13,9 @@ Review of representative mismatch diagnostics showed a repeatable pattern:
 
 This indicates that direct APFS copy-out sometimes wrote the allocated/file-extent end rather than the file's logical data-stream size.
 
-## V1.0.17 change
+## V1.0.18 change
 
-For direct indexed APFS copy-out rows, V1.0.17 now prefers inode-derived logical size when available:
+For direct indexed APFS copy-out rows, V1.0.18 now prefers inode-derived logical size when available:
 
 1. `INO_EXT_TYPE_DSTREAM.size.direct_index`
 2. `j_inode_val.uncompressed_size.direct_index`

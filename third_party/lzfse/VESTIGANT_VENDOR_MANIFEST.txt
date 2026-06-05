@@ -6,4 +6,4 @@ observed_latest_commit_sha=8ca039302ee20ae9ee39d2d00ab0d6f652352a10
 observed_latest_commit_message=Add const to tables in lzfse_internal.h
 license=BSD-3-Clause
 required_header=third_party/lzfse/src/lzfse.h
-vendored_for=Vestigant Spotlight V1.0.17 LZFSE/LZVN decode validation
+vendored_for=Vestigant Spotlight V1.0.18 LZFSE/LZVN decode validation

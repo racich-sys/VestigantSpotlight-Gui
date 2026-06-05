@@ -1,4 +1,4 @@
-# V1.0.17
+# V1.0.18
 
 - Vendored the uploaded Apple/lzfse source tree under `third_party/lzfse`.
 - Enabled codec-aware builds when Apple/lzfse is present.
@@ -6,7 +6,7 @@
 - Added AFF4/APFS copy-out summary fields for codec status and decmpfs LZVN/LZFSE row counts.
 - Added macOS investigative feature inventory and roadmap documentation.
 
-# V1.0.17
+# V1.0.18
 
 - Added optional Apple/lzfse LZFSE/LZVN codec integration path.
 - Added `src/codec/lzfse_codec.h/.cpp` with safe no-output behavior when the codec is not compiled in.

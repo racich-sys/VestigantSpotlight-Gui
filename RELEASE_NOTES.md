@@ -1,44 +1,32 @@
-# V1.0.17 Release Notes
+# V1.0.19
 
-V1.0.17 vendors the uploaded Apple/lzfse reference source and enables the existing LZFSE/LZVN adapter path when that source is present. The build should now report Apple lzfse source detected instead of codec disabled.
+- GUI-only iOS review hotfix.
+- Stabilized View Set combo box visibility/z-order after resize in investigation tabs.
+- Removed clipped splitter text/control artifact above Selected Row Details.
+- Increased separation between the main result grid and detail pane.
+- Populates Selected Row Details immediately for the first selected/clicked row.
+- Keeps checkbox-click detail focus on the clicked row.
+- No intended extraction, parser, codec, schema, or Store-V2 pipeline changes from V1.0.18.
 
-## AFF4/APFS
+# V1.0.18 Release Notes
 
-- Apple/lzfse source is included under `third_party/lzfse`.
-- Copy-out summaries now record codec build status and decmpfs resource-fork counts.
-- The existing decmpfs resource-fork reconstruction path can decode compression types 8 and 12 when the Apple codec is compiled.
-- Added a macOS investigative feature inventory and roadmap.
+V1.0.18 is a cleanup and GUI-responsiveness release on top of the Apple/lzfse-enabled V1.0.17 baseline.
 
-## Validation focus
+## Changes
 
-- Confirm MSVC compiles the vendored Apple decoder sources.
-- Confirm `VestigantSpotlightTests.exe` passes the LZVN smoke vector.
-- Compare V1.0.17 AFF4/APFS external mismatches against V1.0.16 to determine whether LZFSE/LZVN reduces cache-file mismatches.
+- Added an `IosAppDbParser` class facade and routed app-runner iOS app database parsing through that parser facade.
+- Converted filtered-view CSV export in the Win32 GUI to a background worker so large exports do not block the UI message loop.
+- Added `WM_EXPORT_FILTERED_RESULT` handling to return export status to the UI thread.
+- Added a single-export guard for filtered exports.
+- Updated thin-upload packaging so heavy APFS structural diagnostics are only included when diagnostic outputs are explicitly requested.
+- Updated macOS investigative feature documentation and modularization cleanup documentation.
 
-# V1.0.17
+## Notes
 
-- Added optional Apple/lzfse LZFSE/LZVN codec integration path.
-- Added `src/codec/lzfse_codec.h/.cpp` with safe no-output behavior when the codec is not compiled in.
-- Added `tools/Prepare-LzfseThirdParty.ps1` to explicitly vendor and manifest Apple/lzfse source under `third_party/lzfse`.
-- Updated CMake and no-CMake MSVC build scripts to compile the Apple decoder sources only when the vetted source tree is present.
-- Updated APFS decmpfs resource-fork reconstruction so compression types 8/12 call the Apple codec adapter when available and record explicit decode/skipped statuses when unavailable or failed.
-- Updated direct AFF4/APFS copy-out to prefer inode data-stream logical size over raw extent-chain end where available.
-- Added validation/status documentation for logical-size trim and optional codec integration.
+The actual V1.0.17 tree did not contain duplicate GUI `ViewSpec/views()` definitions in `win32_gui.cpp`; the registry was already centralized in `view_registry.h/.cpp`. The actual V1.0.17 tree also did not contain the specialized iOS row parser bodies in `app_runner.cpp`; V1.0.18 adds the class facade requested by review notes while keeping the existing free-function compatibility API.
 
-# V1.0.15
+## Next work
 
-- Added AFF4/APFS Store-V2 candidate dual-process comparison.
-- New outputs:
-  - `aff4_apfs_storev2_candidate_dual_process_compare.csv`
-  - `aff4_apfs_storev2_candidate_dual_process_compare_summary.json`
-  - `AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md`
-- The compare output audits raw APFS copy-out candidates against normalized `StagedStoreV2` selections.
-- Added packaging and wrapper validation for the new compare outputs.
-- Added LZFSE/LZVN source review documentation explaining why APFS structural documentation is authoritative for locating compressed content but not sufficient by itself to enable production codec output.
-- Kept normal-mode AFF4/APFS structural diagnostics suppressed while keeping copy-out/staging/parser/enrichment/external-compare outputs enabled.
-
-# V1.0.14
-
-- Moved iOS app DB row parsing into `src/parsers/ios_app_db_parser.cpp`.
-- Corrected AFF4/APFS normal-mode logging around suppressed diagnostics.
-- Preserved Store-V2 staged parser handoff.
+- Run V1.0.18 on Windows/MSVC and upload the build and AFF4 thin output.
+- Add `ReviewDatabaseHelper` and `ReviewQueryManager` modules.
+- Run APFS lower-bound B-tree iterator as a comparator against current staged output before promoting it to live extraction.
