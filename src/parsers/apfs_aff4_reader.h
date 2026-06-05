@@ -29,6 +29,27 @@ struct ApfsDirectoryIteratorResult {
     bool lowerBoundReaderAvailable = false;
 };
 
+
+// Shared APFS B-tree table-of-contents decoders used by both the live AFF4/APFS
+// pipeline and the isolated lower-bound iterator tests.  These functions are
+// intentionally side-effect free so app_runner can call them while the rest of
+// the APFS extraction state is migrated into ApfsAff4Reader.
+bool apfsAff4DecodeFixedKvAbs(const std::vector<unsigned char>& node,
+                              std::uint32_t entryIndex,
+                              std::size_t valueLenNeeded,
+                              std::size_t& keyAbs,
+                              std::size_t& valAbs,
+                              std::string& detail);
+
+bool apfsAff4DecodeGenericBtreeKvAbs(const std::vector<unsigned char>& node,
+                                     std::uint32_t entryIndex,
+                                     std::size_t& tocAbs,
+                                     std::size_t& keyAbs,
+                                     std::size_t& keyLen,
+                                     std::size_t& valAbs,
+                                     std::size_t& valLen,
+                                     std::string& detail);
+
 class ApfsAff4Reader {
 public:
     using NodeBytes = std::vector<unsigned char>;

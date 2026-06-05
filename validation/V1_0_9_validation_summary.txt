@@ -1,0 +1,20 @@
+V1.0.9 validation summary
+
+Changed areas:
+- src/parsers/apfs_aff4_reader.h
+- src/parsers/apfs_aff4_reader.cpp
+- src/app/app_runner.cpp
+- tests/main.cpp
+- version/scripts/docs
+
+Local validation:
+- CMake configure: PASS.
+- apfs_aff4_reader.cpp compiled during CMake build before app_runner timeout: PASS.
+- ios_app_db_parser.cpp compiled during CMake build before app_runner timeout: PASS.
+- Full Linux build: INCOMPLETE; timed out while compiling existing large app_runner.cpp. No compile error was observed before timeout.
+
+Required external validation:
+- Windows/MSVC V1.0.9 build.
+- V1.0.9 AFF4/APFS thin run.
+- Confirm run_status no longer records `unsupported_aff4_source` for the active AFF4/APFS source.
+- Confirm V1.0.8-level Store-V2 staging and parser metrics are preserved.

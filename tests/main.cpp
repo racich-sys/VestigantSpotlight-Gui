@@ -56,16 +56,32 @@ bool runApfsModuleSmokeTest() {
     if (unavailable.lowerBoundReaderAvailable) return false;
     if (unavailable.warnings.empty()) return false;
 
-    std::vector<unsigned char> node(64, 0);
+    std::vector<unsigned char> node(128, 0);
+    // Synthetic variable-length TOC B-tree node with one DIR_REC.
+    node[36] = 1; // nkeys
+    node[40] = 0; node[41] = 0; // table space offset
+    node[42] = 8; node[43] = 0; // table space length
     const std::uint64_t raw = makeApfsSearchKey(2, kApfsTypeDirRecord);
-    for (int i = 0; i < 8; ++i) node[8 + i] = static_cast<unsigned char>((raw >> (i * 8)) & 0xff);
-    node[16] = 3; node[17] = 0; node[18] = 0; node[19] = 0; // name_len_and_hash = 3 including NUL
-    node[20] = 'x'; node[21] = 'y'; node[22] = 0;
+    const std::size_t keyArea = 64;
+    const std::size_t valAreaEnd = node.size();
+    const std::size_t valueAbs = 104;
+    const std::uint16_t keyOff = 0;
+    const std::uint16_t keyLen = 15;
+    const std::uint16_t valOff = static_cast<std::uint16_t>(valAreaEnd - valueAbs);
+    const std::uint16_t valLen = 8;
+    auto put16 = [&](std::size_t off, std::uint16_t v){ node[off] = static_cast<unsigned char>(v & 0xffU); node[off + 1] = static_cast<unsigned char>((v >> 8U) & 0xffU); };
+    put16(56, keyOff); put16(58, keyLen); put16(60, valOff); put16(62, valLen);
+    for (int i = 0; i < 8; ++i) node[keyArea + i] = static_cast<unsigned char>((raw >> (i * 8)) & 0xff);
+    node[keyArea + 8] = 3; node[keyArea + 9] = 0; node[keyArea + 10] = 0; node[keyArea + 11] = 0; // name_len_and_hash = 3 including NUL
+    node[keyArea + 12] = 'x'; node[keyArea + 13] = 'y'; node[keyArea + 14] = 0;
     const std::uint64_t child = 99;
-    for (int i = 0; i < 8; ++i) node[40 + i] = static_cast<unsigned char>((child >> (i * 8)) & 0xff);
-    ApfsBtreeKvLocation kv;
-    kv.keyOffset = 8; kv.keyLength = 15; kv.valueOffset = 40; kv.valueLength = 8; kv.rawKey = raw; kv.objectId = 2; kv.recordType = kApfsTypeDirRecord;
+    for (int i = 0; i < 8; ++i) node[valueAbs + i] = static_cast<unsigned char>((child >> (i * 8)) & 0xff);
+    std::size_t tocAbs = 0, decodedKeyAbs = 0, decodedKeyLen = 0, decodedValAbs = 0, decodedValLen = 0;
     std::string detail;
+    if (!apfsAff4DecodeGenericBtreeKvAbs(node, 0, tocAbs, decodedKeyAbs, decodedKeyLen, decodedValAbs, decodedValLen, detail)) return false;
+    if (decodedKeyAbs != keyArea || decodedKeyLen != keyLen || decodedValAbs != valueAbs || decodedValLen != valLen) return false;
+    ApfsBtreeKvLocation kv;
+    kv.keyOffset = decodedKeyAbs; kv.keyLength = decodedKeyLen; kv.valueOffset = decodedValAbs; kv.valueLength = decodedValLen; kv.rawKey = raw; kv.objectId = 2; kv.recordType = kApfsTypeDirRecord;
     auto entry = ApfsAff4Reader::decodeDirectoryRecord(node, kv, detail);
     if (!entry || entry->parentId != 2 || entry->childFileId != 99 || entry->name != "xy") return false;
     return true;

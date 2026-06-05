@@ -1,3 +1,20 @@
+## V1.0.9
+
+- Continued APFS/AFF4 modularization without changing the already-working Store-V2 staging pipeline from V1.0.8.
+- Moved APFS B-tree table-of-contents key/value decoding into `src/parsers/apfs_aff4_reader.*` and left `app_runner.cpp` with thin compatibility wrappers.
+- Updated iOS app database table processing to use `IosAppDbTableParseDecision` from `src/parsers/ios_app_db_parser.*` for parser routing, reducing app-runner-local classification branching.
+- Kept full iOS row parsers in `app_runner.cpp` for now because they still depend on local SQLite row-binding and timestamp helper state.
+- Corrected stale AFF4 run-status wording: AFF4/APFS is no longer reported as unimplemented; it is described as an active guarded staged pipeline.
+- Preserved diagnostic CSVs because V1.0.8 still needs support outputs for external-compare mismatch analysis and before promoting AFF4/APFS to ordinary `discoverStores()` ingest.
+- Did not add LZFSE/LZVN; this remains blocked on vetted source, MSVC/Linux integration, and test vectors.
+
+Validation performed in the coding environment:
+
+- CMake configure: PASS.
+- New parser modules compiled before timeout: PASS.
+- Full Linux build reached `app_runner.cpp` and timed out due to compilation time; no compile error was observed before timeout.
+- Windows/MSVC build still requires validation on the Windows system.
+
 ## V1.0.8
 
 - Added `src/parsers/ios_app_db_parser.h/.cpp` for iOS app database table classification, special-parser routing, and KnowledgeC snippet assembly.

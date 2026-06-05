@@ -7,6 +7,13 @@
 namespace vestigant::spotlight {
 namespace {
 
+std::uint16_t readLe16Safe(const std::vector<unsigned char>& data, std::size_t off, bool& ok) {
+    if (off + 2U > data.size()) { ok = false; return 0; }
+    ok = true;
+    return static_cast<std::uint16_t>(data[off]) |
+           (static_cast<std::uint16_t>(data[off + 1]) << 8U);
+}
+
 std::uint32_t readLe32Safe(const std::vector<unsigned char>& data, std::size_t off, bool& ok) {
     if (off + 4U > data.size()) { ok = false; return 0; }
     ok = true;
@@ -38,6 +45,103 @@ std::string safeName(const std::vector<unsigned char>& data, std::size_t off, st
 }
 
 } // namespace
+
+bool apfsAff4DecodeFixedKvAbs(const std::vector<unsigned char>& node,
+                              std::uint32_t entryIndex,
+                              std::size_t valueLenNeeded,
+                              std::size_t& keyAbs,
+                              std::size_t& valAbs,
+                              std::string& detail) {
+    if (node.size() < 64U) { detail = "node too small"; return false; }
+    bool ok = false;
+    const std::uint16_t btnFlags = readLe16Safe(node, 32U, ok);
+    if (!ok) { detail = "node flags outside node buffer"; return false; }
+    const bool fixedKv = (btnFlags & 0x0004U) != 0U;
+    if (!fixedKv) { detail = "node does not advertise fixed-size key/value offsets"; return false; }
+    const std::uint16_t tableSpaceOffset = readLe16Safe(node, 40U, ok);
+    if (!ok) { detail = "table space offset outside node buffer"; return false; }
+    const std::uint16_t tableSpaceLength = readLe16Safe(node, 42U, ok);
+    if (!ok) { detail = "table space length outside node buffer"; return false; }
+    const std::size_t btnDataStart = 56U;
+    std::size_t tocStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset);
+    if (tocStart >= node.size()) tocStart = btnDataStart;
+    const std::uint32_t nkeys = readLe32Safe(node, 36U, ok);
+    if (!ok) { detail = "nkeys outside node buffer"; return false; }
+    std::size_t keyAreaStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset) + static_cast<std::size_t>(tableSpaceLength);
+    if (keyAreaStart >= node.size()) keyAreaStart = tocStart + 4U * static_cast<std::size_t>(nkeys);
+    std::size_t valueAreaEnd = node.size();
+    if (valueAreaEnd >= 40U && (btnFlags & 0x0001U) != 0U) valueAreaEnd -= 40U;
+    const std::size_t entryOff = tocStart + (static_cast<std::size_t>(entryIndex) * 4U);
+    if (entryOff + 4U > node.size()) { detail = "TOC entry beyond node buffer"; return false; }
+    const std::uint16_t keyOff = readLe16Safe(node, entryOff + 0U, ok);
+    if (!ok) { detail = "key offset outside node buffer"; return false; }
+    const std::uint16_t valOff = readLe16Safe(node, entryOff + 2U, ok);
+    if (!ok) { detail = "value offset outside node buffer"; return false; }
+    keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
+    valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
+    if (keyAbs + 16U > node.size()) { detail = "OMAP key outside node buffer"; return false; }
+    if (valAbs + valueLenNeeded > node.size()) { detail = "OMAP value outside node buffer"; return false; }
+    detail = "toc_start=" + std::to_string(tocStart) + "; key_area_start=" + std::to_string(keyAreaStart) + "; value_area_end=" + std::to_string(valueAreaEnd);
+    return true;
+}
+
+bool apfsAff4DecodeGenericBtreeKvAbs(const std::vector<unsigned char>& node,
+                                     std::uint32_t entryIndex,
+                                     std::size_t& tocAbs,
+                                     std::size_t& keyAbs,
+                                     std::size_t& keyLen,
+                                     std::size_t& valAbs,
+                                     std::size_t& valLen,
+                                     std::string& detail) {
+    if (node.size() < 64U) { detail = "node too small"; return false; }
+    bool ok = false;
+    const std::uint16_t btnFlags = readLe16Safe(node, 32U, ok);
+    if (!ok) { detail = "node flags outside node buffer"; return false; }
+    const bool fixedKv = (btnFlags & 0x0004U) != 0U;
+    const std::uint16_t tableSpaceOffset = readLe16Safe(node, 40U, ok);
+    if (!ok) { detail = "table space offset outside node buffer"; return false; }
+    const std::uint16_t tableSpaceLength = readLe16Safe(node, 42U, ok);
+    if (!ok) { detail = "table space length outside node buffer"; return false; }
+    const std::size_t btnDataStart = 56U;
+    const std::uint32_t nkeys = readLe32Safe(node, 36U, ok);
+    if (!ok) { detail = "nkeys outside node buffer"; return false; }
+    const std::size_t entrySize = fixedKv ? 4U : 8U;
+    std::size_t tocStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset);
+    if (tocStart >= node.size()) tocStart = btnDataStart;
+    std::size_t keyAreaStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset) + static_cast<std::size_t>(tableSpaceLength);
+    if (keyAreaStart >= node.size()) keyAreaStart = tocStart + (entrySize * static_cast<std::size_t>(nkeys));
+    std::size_t valueAreaEnd = node.size();
+    if (valueAreaEnd >= 40U && (btnFlags & 0x0001U) != 0U) valueAreaEnd -= 40U;
+    tocAbs = tocStart + (static_cast<std::size_t>(entryIndex) * entrySize);
+    if (tocAbs + entrySize > node.size()) { detail = "TOC entry beyond node buffer"; return false; }
+    if (fixedKv) {
+        const std::uint16_t keyOff = readLe16Safe(node, tocAbs + 0U, ok);
+        if (!ok) { detail = "key offset outside node buffer"; return false; }
+        const std::uint16_t valOff = readLe16Safe(node, tocAbs + 2U, ok);
+        if (!ok) { detail = "value offset outside node buffer"; return false; }
+        keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
+        keyLen = 16U;
+        valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
+        valLen = (valAbs + 16U <= node.size()) ? 16U : 0U;
+    } else {
+        const std::uint16_t keyOff = readLe16Safe(node, tocAbs + 0U, ok);
+        if (!ok) { detail = "key offset outside node buffer"; return false; }
+        const std::uint16_t keyLength = readLe16Safe(node, tocAbs + 2U, ok);
+        if (!ok) { detail = "key length outside node buffer"; return false; }
+        const std::uint16_t valOff = readLe16Safe(node, tocAbs + 4U, ok);
+        if (!ok) { detail = "value offset outside node buffer"; return false; }
+        const std::uint16_t valLength = readLe16Safe(node, tocAbs + 6U, ok);
+        if (!ok) { detail = "value length outside node buffer"; return false; }
+        keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
+        keyLen = keyLength;
+        valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
+        valLen = valLength;
+    }
+    if (keyAbs > node.size() || keyLen > node.size() || keyAbs + keyLen > node.size()) { detail = "key outside node buffer"; return false; }
+    if (valAbs > node.size() || valLen > node.size() || valAbs + valLen > node.size()) { detail = "value outside node buffer"; return false; }
+    detail = "toc_start=" + std::to_string(tocStart) + "; key_area_start=" + std::to_string(keyAreaStart) + "; value_area_end=" + std::to_string(valueAreaEnd) + "; fixed_kv=" + (fixedKv ? "1" : "0");
+    return true;
+}
 
 std::optional<ApfsDirectoryEntry> ApfsAff4Reader::decodeDirectoryRecord(const NodeBytes& node,
                                                                          const ApfsBtreeKvLocation& kv,

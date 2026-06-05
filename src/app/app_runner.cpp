@@ -13,6 +13,7 @@
 #include "ingest/store_discovery.h"
 #include "parsers/native_storedb_parser.h"
 #include "parsers/apfs_volume_reader.h"
+#include "parsers/apfs_aff4_reader.h"
 #include "parsers/ios_app_db_parser.h"
 #include <fstream>
 #include <array>
@@ -4686,7 +4687,8 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                 std::string table = reinterpret_cast<const char*>(nameTxt);
                 std::string cols = sqliteColumnList(ext, table);
                 long long rowCount = sqliteScalarCount(ext, table);
-                std::string recCat = classifyIosAppDbRecordTable(inv.cat, table, cols);
+                const IosAppDbTableParseDecision parseDecision = iosAppDbBuildTableParseDecision(inv.cat, table, cols);
+                const std::string recCat = parseDecision.recordCategory;
                 ins.bind(1, sourceId);
                 ins.bind(2, inv.id);
                 ins.bind(3, inv.norm);
@@ -4702,11 +4704,11 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                 ins.bind(13, nowUtc());
                 ins.stepDone(); ins.reset();
                 if (rowCount > 0 && isTargetIosRecordCategory(recCat)) {
-                    if (shouldUseWhatsappSpecialParser(inv, table, recCat)) {
+                    if (parseDecision.useWhatsAppSpecialParser) {
                         std::size_t specialRows = parseWhatsAppIosTableRows(sourceId, inv, ext, table, recCat, parsedIns);
                         if (specialRows > 0) parsedRows += specialRows;
                         else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    } else if (shouldUseAppleMessagesSpecialParser(inv, table, recCat)) {
+                    } else if (parseDecision.useAppleMessagesSpecialParser) {
                         std::size_t specialRows = 0;
                         const std::string lowerTable = toLower(table);
                         if (lowerTable == "message") {
@@ -4718,7 +4720,7 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                         }
                         if (specialRows > 0) parsedRows += specialRows;
                         else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    } else if (recCat == "KNOWLEDGEC_EVENTS") {
+                    } else if (parseDecision.useKnowledgeCSpecialParser) {
                         std::size_t specialRows = parseKnowledgeCIosZObjectRows(sourceId, inv, ext, table, parsedIns);
                         if (specialRows > 0) parsedRows += specialRows;
                         else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
@@ -5435,31 +5437,9 @@ bool aff4ApfsFixedKvAbsForProbe(const std::vector<unsigned char>& node,
                                 std::size_t& keyAbs,
                                 std::size_t& valAbs,
                                 std::string& detail) {
-    if (node.size() < 64) { detail = "node too small"; return false; }
-    const std::uint16_t btnFlags = readLe16(node, 32);
-    const bool fixedKv = (btnFlags & 0x0004U) != 0;
-    if (!fixedKv) { detail = "node does not advertise fixed-size key/value offsets"; return false; }
-    const std::uint16_t tableSpaceOffset = readLe16(node, 40);
-    const std::uint16_t tableSpaceLength = readLe16(node, 42);
-    const std::size_t btnDataStart = 56U;
-    std::size_t tocStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset);
-    if (tocStart >= node.size()) tocStart = btnDataStart;
-    const std::uint32_t nkeys = readLe32(node, 36);
-    std::size_t keyAreaStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset) + static_cast<std::size_t>(tableSpaceLength);
-    if (keyAreaStart >= node.size()) keyAreaStart = tocStart + 4U * static_cast<std::size_t>(nkeys);
-    std::size_t valueAreaEnd = node.size();
-    if (valueAreaEnd >= 40U && (btnFlags & 0x0001U) != 0U) valueAreaEnd -= 40U;
-    const std::size_t entryOff = tocStart + (static_cast<std::size_t>(entryIndex) * 4U);
-    if (entryOff + 4U > node.size()) { detail = "TOC entry beyond node buffer"; return false; }
-    const std::uint16_t keyOff = readLe16(node, entryOff + 0U);
-    const std::uint16_t valOff = readLe16(node, entryOff + 2U);
-    keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
-    valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
-    if (keyAbs + 16U > node.size()) { detail = "OMAP key outside node buffer"; return false; }
-    if (valAbs + valueLenNeeded > node.size()) { detail = "OMAP value outside node buffer"; return false; }
-    detail = "toc_start=" + std::to_string(tocStart) + "; key_area_start=" + std::to_string(keyAreaStart) + "; value_area_end=" + std::to_string(valueAreaEnd);
-    return true;
+    return apfsAff4DecodeFixedKvAbs(node, entryIndex, valueLenNeeded, keyAbs, valAbs, detail);
 }
+
 
 int aff4ApfsCompareOmapKeyForProbe(std::uint64_t oid, std::uint64_t xid, std::uint64_t targetOid, std::uint64_t targetXid) {
     if (oid < targetOid) return -1;
@@ -5482,44 +5462,9 @@ bool aff4GenericBtreeKvAbsForProbe(const std::vector<unsigned char>& node,
                                    std::size_t& valAbs,
                                    std::size_t& valLen,
                                    std::string& detail) {
-    if (node.size() < 64) { detail = "node too small"; return false; }
-    const std::uint16_t btnFlags = readLe16(node, 32);
-    const bool fixedKv = (btnFlags & 0x0004U) != 0;
-    const std::uint16_t tableSpaceOffset = readLe16(node, 40);
-    const std::uint16_t tableSpaceLength = readLe16(node, 42);
-    const std::size_t btnDataStart = 56U;
-    const std::uint32_t nkeys = readLe32(node, 36);
-    const std::size_t entrySize = fixedKv ? 4U : 8U;
-    std::size_t tocStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset);
-    if (tocStart >= node.size()) tocStart = btnDataStart;
-    std::size_t keyAreaStart = btnDataStart + static_cast<std::size_t>(tableSpaceOffset) + static_cast<std::size_t>(tableSpaceLength);
-    if (keyAreaStart >= node.size()) keyAreaStart = tocStart + (entrySize * static_cast<std::size_t>(nkeys));
-    std::size_t valueAreaEnd = node.size();
-    if (valueAreaEnd >= 40U && (btnFlags & 0x0001U) != 0U) valueAreaEnd -= 40U;
-    tocAbs = tocStart + (static_cast<std::size_t>(entryIndex) * entrySize);
-    if (tocAbs + entrySize > node.size()) { detail = "TOC entry beyond node buffer"; return false; }
-    if (fixedKv) {
-        const std::uint16_t keyOff = readLe16(node, tocAbs + 0U);
-        const std::uint16_t valOff = readLe16(node, tocAbs + 2U);
-        keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
-        keyLen = 16U;
-        valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
-        valLen = (valAbs + 16U <= node.size()) ? 16U : 0U;
-    } else {
-        const std::uint16_t keyOff = readLe16(node, tocAbs + 0U);
-        const std::uint16_t keyLength = readLe16(node, tocAbs + 2U);
-        const std::uint16_t valOff = readLe16(node, tocAbs + 4U);
-        const std::uint16_t valLength = readLe16(node, tocAbs + 6U);
-        keyAbs = keyAreaStart + static_cast<std::size_t>(keyOff);
-        keyLen = keyLength;
-        valAbs = (static_cast<std::size_t>(valOff) <= valueAreaEnd) ? (valueAreaEnd - static_cast<std::size_t>(valOff)) : node.size();
-        valLen = valLength;
-    }
-    if (keyAbs > node.size() || keyLen > node.size() || keyAbs + keyLen > node.size()) { detail = "key outside node buffer"; return false; }
-    if (valAbs > node.size() || valLen > node.size() || valAbs + valLen > node.size()) { detail = "value outside node buffer"; return false; }
-    detail = "toc_start=" + std::to_string(tocStart) + "; key_area_start=" + std::to_string(keyAreaStart) + "; value_area_end=" + std::to_string(valueAreaEnd) + "; fixed_kv=" + (fixedKv ? "1" : "0");
-    return true;
+    return apfsAff4DecodeGenericBtreeKvAbs(node, entryIndex, tocAbs, keyAbs, keyLen, valAbs, valLen, detail);
 }
+
 
 ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
     const ApfsVolumeOmapProbeRow& omRow,
@@ -15295,8 +15240,8 @@ RunResult runApplication(const RunOptions& opt) {
                 log.warn("Full original-container SHA256 deferred by default for AFF4/raw source-probe development speed. Use --force-container-hash when a full evidentiary hash is needed.");
             }
             registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash);
-            const std::string stage = aff4InputSource ? "unsupported_aff4_source" : "unsupported_raw_image_source";
-            const std::string message = aff4InputSource ? "AFF4 registered; container/filesystem extraction not implemented" : "raw image registered; partition/filesystem extraction not implemented";
+            const std::string stage = aff4InputSource ? "aff4_apfs_source_registered" : "unsupported_raw_image_source";
+            const std::string message = aff4InputSource ? "AFF4 registered; guarded APFS metadata and Store-V2 staging pipeline active; full native source-discovery handoff still staged" : "raw image registered; partition/filesystem extraction not implemented";
             const std::string nextAction = aff4InputSource
                 ? "Implement AFF4 stream enumeration, then APFS filesystem inventory, then Spotlight artifact staging and active-file comparison."
                 : "Use V0_8_9 source_partition_probe.csv for partition readiness; raw image extraction remains secondary to AFF4-backed APFS inventory and active-file comparison.";
