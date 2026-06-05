@@ -113,9 +113,33 @@ function Assert-ZipContainsAnyRequired {
     }
 }
 
+function Set-TextFileWithRetry {
+    param(
+        [Parameter(Mandatory=$true)][string]$PathValue,
+        [Parameter(Mandatory=$true)]$Lines,
+        [int]$Attempts = 6,
+        [int]$DelayMilliseconds = 750
+    )
+    $parent = Split-Path -Parent $PathValue
+    if (![string]::IsNullOrWhiteSpace($parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+    $lastError = $null
+    for ($i = 1; $i -le [Math]::Max(1, $Attempts); $i++) {
+        try {
+            $Lines | Set-Content -LiteralPath $PathValue -Encoding UTF8 -Force
+            return $true
+        } catch {
+            $lastError = $_.Exception.Message
+            Start-Sleep -Milliseconds ([Math]::Max(0, $DelayMilliseconds))
+        }
+    }
+    Write-Warning "Unable to write $PathValue after $Attempts attempt(s): $lastError"
+    return $false
+}
+
 function Write-PathManifest {
     param([string]$Stage)
-    $manifest = Join-Path $Out "case_path_manifest.txt"
+    $primaryManifest = Join-Path $Out "case_path_manifest.txt"
+    $wrapperManifest = Join-Path $Out "wrapper_case_path_manifest.txt"
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("Vestigant single-AFF4 source-probe path manifest") | Out-Null
     $lines.Add("Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))") | Out-Null
@@ -130,6 +154,8 @@ function Write-PathManifest {
     $lines.Add("External Spotlight root: $ExternalSpotlightRoot") | Out-Null
     $lines.Add("External compare output root: $ExternalCompareOutRoot") | Out-Null
     $lines.Add("Upload work root: $UploadWorkRoot") | Out-Null
+    $lines.Add("Primary manifest path: $primaryManifest") | Out-Null
+    $lines.Add("Wrapper-safe manifest path: $wrapperManifest") | Out-Null
     $lines.Add("") | Out-Null
     $check = @(
         "run_status.txt",
@@ -148,7 +174,20 @@ function Write-PathManifest {
             $lines.Add("FOUND: $name -> $resolved ($($item.Length) bytes)") | Out-Null
         }
     }
-    $lines | Set-Content -LiteralPath $manifest -Encoding UTF8
+
+    # Always write the wrapper-safe manifest first and require that file in the thin upload.
+    # Some Windows systems intermittently lock case_path_manifest.txt immediately after a
+    # long AFF4 run. A locked convenience manifest must not block packaging of diagnostics.
+    $okWrapper = Set-TextFileWithRetry -PathValue $wrapperManifest -Lines $lines
+    if (!$okWrapper) {
+        $uniqueManifest = Join-Path $Out ("wrapper_case_path_manifest_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".txt")
+        if (!(Set-TextFileWithRetry -PathValue $uniqueManifest -Lines $lines -Attempts 2 -DelayMilliseconds 250)) {
+            Write-Warning "Unable to write any wrapper-safe case path manifest. Continuing so AFF4/APFS diagnostics can still package."
+        }
+    }
+
+    # Best effort only: this legacy filename is useful but must not be fatal when locked.
+    [void](Set-TextFileWithRetry -PathValue $primaryManifest -Lines $lines -Attempts 3 -DelayMilliseconds 500)
 }
 
 function ConvertTo-ProcessArgumentString {
@@ -276,7 +315,29 @@ if (!$proc.WaitForExit([Math]::Max(1, $CliTimeoutMinutes) * 60 * 1000)) {
 }
 if ($exitCode -ne 0 -and !$ProbeTimedOut) {
     Write-PathManifest -Stage "failed-run"
-    throw "Vestigant source-probe failed with exit code $exitCode. Review case output folder: $Out"
+    $failureNote = Join-Path $Out "source_probe_failure_note.txt"
+    @(
+        "Vestigant source-probe failed before normal AFF4/APFS validation completed.",
+        "ExitCode: $exitCode",
+        "Case output: $Out",
+        "Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
+        "This V1.0.11 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
+    ) | Set-Content -LiteralPath $failureNote -Encoding UTF8
+    if (!$SkipUploadZip) {
+        try {
+            $zipScript = Join-Path $PSScriptRoot "Create-SourceProbeUploadZip.ps1"
+            $failedZip = $ZipPath
+            if ($failedZip -notmatch "_FAILED\.zip$") {
+                $failedZip = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($ZipPath), ([System.IO.Path]::GetFileNameWithoutExtension($ZipPath) + "_FAILED.zip"))
+            }
+            $failedWork = if ([string]::IsNullOrWhiteSpace($UploadWorkRoot)) { Join-Path $Out "Upload_Thin_Failed" } else { $UploadWorkRoot + "_FAILED" }
+            & $zipScript -CaseRoot $Out -ReaderToolsRoot $ReaderToolsRoot -ZipPath $failedZip -AdditionalOutputRoot $ExternalCompareOutRoot -UploadWorkRoot $failedWork -IncludeLogsTailOnly:$IncludeLogsTailOnly
+            Write-Warning "Source-probe failed with exit code $exitCode, but partial diagnostics were packaged: $failedZip"
+        } catch {
+            Write-Warning "Source-probe failed with exit code $exitCode and partial packaging also failed: $($_.Exception.Message)"
+        }
+    }
+    throw "Vestigant source-probe failed with exit code $exitCode. Partial diagnostics were attempted; review case output folder: $Out"
 }
 
 Write-PathManifest -Stage "post-run"
@@ -432,7 +493,7 @@ if (!$SkipUploadZip) {
         "aff4_apfs_spotlight_xattr_probe_summary.json",
         "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md",
         "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md",
-        "case_path_manifest.txt",
+        "wrapper_case_path_manifest.txt",
         "UPLOAD_MANIFEST.txt",
         "aff4_apfs_spotlight_file_copy_out.csv",
         "aff4_apfs_extracted_storev2_stage_groups.csv",

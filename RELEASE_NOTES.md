@@ -1,4 +1,4 @@
-## V1.0.9
+## V1.0.11
 
 - Continued APFS/AFF4 modularization without changing the already-working Store-V2 staging pipeline from V1.0.8.
 - Moved APFS B-tree table-of-contents key/value decoding into `src/parsers/apfs_aff4_reader.*` and left `app_runner.cpp` with thin compatibility wrappers.

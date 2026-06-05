@@ -180,12 +180,17 @@ link /nologo /OUT:"%OUT%\VestigantSpotlightTests.exe" /SUBSYSTEM:CONSOLE @"%TEST
 if errorlevel 1 exit /b !errorlevel!
 
 echo.
+echo Compiling GUI view registry...
+cl %CXXFLAGS% /c "src\gui\view_registry.cpp" /Fo:"%OBJ%\view_registry.obj"
+if errorlevel 1 exit /b !errorlevel!
+
 echo Compiling GUI entry point...
 cl %CXXFLAGS% /c "src\gui\win32_gui.cpp" /Fo:"%OBJ%\win32_gui.obj"
 if errorlevel 1 exit /b !errorlevel!
 
 (
   type "%COMMON_RSP%"
+  echo "%OBJ%\view_registry.obj"
   echo "%OBJ%\win32_gui.obj"
   echo comctl32.lib
   echo shell32.lib

@@ -1,9 +1,9 @@
 param(
   [string]$InputZip = "T:\0202_0024-IT002\00008132-000269523699001C_files_full.zip",
-  [string]$ReportRoot = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V1_0_9",
-  [string]$ReportZip = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V1_0_9.zip",
-  [string]$EvidenceRoot = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V1_0_9",
-  [string]$EvidenceZip = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V1_0_9.zip",
+  [string]$ReportRoot = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V1_0_11",
+  [string]$ReportZip = "D:\Downloads\iOS_CoreSpotlight_QuickDiagnostics_V1_0_11.zip",
+  [string]$EvidenceRoot = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V1_0_11",
+  [string]$EvidenceZip = "D:\Downloads\iOS_CoreSpotlight_MinimalEvidence_V1_0_11.zip",
   [switch]$IncludeStoreFiles,
   [switch]$IncludeCacheTextSamples,
   [int]$MaxCacheTextSamplesPerProtectionClass = 25,
