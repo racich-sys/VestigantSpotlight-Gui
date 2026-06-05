@@ -115,6 +115,7 @@ REM ---------------------------------------------------------------------------
   echo src\parsers\ios_app_db_parser.cpp^|ios_app_db_parser.obj
   echo src\parsers\apfs_volume_reader.cpp^|apfs_volume_reader.obj
   echo src\parsers\apfs_aff4_reader.cpp^|apfs_aff4_reader.obj
+  echo src\parsers\apfs_diagnostic_exporter.cpp^|apfs_diagnostic_exporter.obj
   echo src\codec\lzfse_codec.cpp^|lzfse_codec.obj
   echo src\enrich_sql\sqlite_enrichment.cpp^|sqlite_enrichment.obj
   echo src\export_sql\sqlite_exporter.cpp^|sqlite_exporter.obj
@@ -203,6 +204,10 @@ echo Compiling GUI view registry...
 cl %CXXFLAGS% /c "src\gui\view_registry.cpp" /Fo:"%OBJ%\view_registry.obj"
 if errorlevel 1 exit /b !errorlevel!
 
+echo Compiling GUI export worker...
+cl %CXXFLAGS% /c "src\gui\gui_export_worker.cpp" /Fo:"%OBJ%\gui_export_worker.obj"
+if errorlevel 1 exit /b !errorlevel!
+
 echo Compiling GUI entry point...
 cl %CXXFLAGS% /c "src\gui\win32_gui.cpp" /Fo:"%OBJ%\win32_gui.obj"
 if errorlevel 1 exit /b !errorlevel!
@@ -210,6 +215,7 @@ if errorlevel 1 exit /b !errorlevel!
 (
   type "%COMMON_RSP%"
   echo "%OBJ%\view_registry.obj"
+  echo "%OBJ%\gui_export_worker.obj"
   echo "%OBJ%\win32_gui.obj"
   echo comctl32.lib
   echo shell32.lib

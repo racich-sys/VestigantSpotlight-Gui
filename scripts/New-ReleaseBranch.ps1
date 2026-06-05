@@ -2,7 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = "T:\VestigantSpotlight"
-$Version = "V1_0_19"
+$Version = "V1_0_23"
 $Branch = "release/$Version"
 Set-Location $RepoRoot
 git checkout main

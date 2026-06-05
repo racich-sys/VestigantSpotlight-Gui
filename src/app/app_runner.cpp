@@ -15,6 +15,8 @@
 #include "parsers/native_storedb_parser.h"
 #include "parsers/apfs_volume_reader.h"
 #include "parsers/apfs_aff4_reader.h"
+#include "parsers/apfs_diagnostic_exporter.h"
+#include "parsers/apfs_diagnostic_models.h"
 #include "parsers/ios_app_db_parser.h"
 #include <fstream>
 #include <array>
@@ -4184,84 +4186,11 @@ std::string apfsObjectTypeLabel(std::uint32_t rawType) {
     }
 }
 
-struct ApfsNxSuperblockSummary {
-    bool attempted = false;
-    bool found = false;
-    std::uint64_t virtualOffset = 0;
-    long long bytesRead = -1;
-    std::uint64_t oid = 0;
-    std::uint64_t xid = 0;
-    std::uint32_t objectTypeRaw = 0;
-    std::uint32_t objectSubtype = 0;
-    std::string objectTypeLabel;
-    std::uint32_t blockSize = 0;
-    std::uint64_t blockCount = 0;
-    std::uint64_t containerSizeBytes = 0;
-    std::uint64_t features = 0;
-    std::uint64_t readonlyCompatibleFeatures = 0;
-    std::uint64_t incompatibleFeatures = 0;
-    std::string containerUuid;
-    std::uint64_t nextOid = 0;
-    std::uint64_t nextXid = 0;
-    std::uint32_t xpDescBlocks = 0;
-    std::uint32_t xpDataBlocks = 0;
-    std::uint64_t xpDescBase = 0;
-    std::uint64_t xpDataBase = 0;
-    std::uint32_t xpDescNext = 0;
-    std::uint32_t xpDataNext = 0;
-    std::uint32_t xpDescIndex = 0;
-    std::uint32_t xpDescLen = 0;
-    std::uint32_t xpDataIndex = 0;
-    std::uint32_t xpDataLen = 0;
-    std::uint64_t spacemanOid = 0;
-    std::uint64_t omapOid = 0;
-    std::uint64_t reaperOid = 0;
-    std::uint32_t testType = 0;
-    std::uint32_t maxFileSystems = 0;
-    std::vector<std::uint64_t> fsOids;
-    std::string validationStatus;
-    std::string notes;
-};
 
-struct ApfsCheckpointDescriptorRow {
-    std::uint32_t sequence = 0;
-    std::uint64_t physicalBlock = 0;
-    std::uint64_t virtualOffset = 0;
-    long long bytesRead = -1;
-    std::uint64_t oid = 0;
-    std::uint64_t xid = 0;
-    std::uint32_t objectTypeRaw = 0;
-    std::uint32_t objectSubtype = 0;
-    std::string objectTypeLabel;
-    std::string magic;
-    std::string status;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string notes;
-};
 
-struct ApfsVolumeSuperblockRow {
-    std::uint32_t sequence = 0;
-    std::uint64_t fsOid = 0;
-    std::uint64_t virtualOffset = 0;
-    long long bytesRead = -1;
-    std::uint64_t oid = 0;
-    std::uint64_t xid = 0;
-    std::uint32_t objectTypeRaw = 0;
-    std::uint32_t objectSubtype = 0;
-    std::string objectTypeLabel;
-    std::string magic;
-    std::string status;
-    std::uint32_t fsIndexCandidate = 0;
-    std::uint64_t featuresCandidate = 0;
-    std::uint64_t readonlyCompatibleFeaturesCandidate = 0;
-    std::uint64_t incompatibleFeaturesCandidate = 0;
-    std::uint64_t unmountTimeCandidate = 0;
-    std::string volumeUuidCandidate;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string notes;
-};
+
+
+
 
 
 std::string readFixedUtf8Z(const std::vector<unsigned char>& data, std::size_t off, std::size_t maxLen) {
@@ -4279,244 +4208,21 @@ std::string readFixedUtf8Z(const std::vector<unsigned char>& data, std::size_t o
     return out;
 }
 
-struct ApfsResolvedVolumeSuperblockRow {
-    std::uint32_t sequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::uint64_t containerTargetXid = 0;
-    std::uint64_t omapKeyOid = 0;
-    std::uint64_t omapKeyXid = 0;
-    std::uint32_t omapValueFlags = 0;
-    std::uint32_t omapValueSize = 0;
-    std::uint64_t omapValuePaddr = 0;
-    std::uint64_t resolvedVirtualOffset = 0;
-    long long resolvedBytesRead = -1;
-    std::uint64_t objectOid = 0;
-    std::uint64_t objectXid = 0;
-    std::uint32_t objectTypeRaw = 0;
-    std::string objectTypeLabel;
-    std::uint32_t objectSubtype = 0;
-    std::string magic;
-    std::string status;
-    std::uint32_t fsIndex = 0;
-    std::uint64_t features = 0;
-    std::uint64_t readonlyCompatibleFeatures = 0;
-    std::uint64_t incompatibleFeatures = 0;
-    std::uint64_t unmountTime = 0;
-    std::uint64_t reserveBlockCount = 0;
-    std::uint64_t quotaBlockCount = 0;
-    std::uint64_t allocBlockCount = 0;
-    std::uint32_t rootTreeType = 0;
-    std::uint32_t extentrefTreeType = 0;
-    std::uint32_t snapMetaTreeType = 0;
-    std::uint64_t apfsOmapOid = 0;
-    std::uint64_t rootTreeOid = 0;
-    std::uint64_t extentrefTreeOid = 0;
-    std::uint64_t snapMetaTreeOid = 0;
-    std::uint64_t revertToXid = 0;
-    std::uint64_t revertToSblockOid = 0;
-    std::uint64_t nextObjId = 0;
-    std::uint64_t numFiles = 0;
-    std::uint64_t numDirectories = 0;
-    std::uint64_t numSymlinks = 0;
-    std::uint64_t numOtherFsobjects = 0;
-    std::uint64_t numSnapshots = 0;
-    std::uint64_t totalBlocksAlloced = 0;
-    std::uint64_t totalBlocksFreed = 0;
-    std::string volumeUuid;
-    std::uint64_t lastModTime = 0;
-    std::uint64_t fsFlags = 0;
-    std::string volumeName;
-    std::uint32_t nextDocId = 0;
-    std::uint16_t role = 0;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string notes;
-};
-
-struct ApfsVolumeOmapProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::uint64_t volumeObjectOid = 0;
-    std::uint64_t volumeObjectXid = 0;
-    std::uint64_t apfsOmapOid = 0;
-    std::uint64_t apfsRootTreeOid = 0;
-    std::uint64_t omapVirtualOffset = 0;
-    long long omapBytesRead = -1;
-    std::uint64_t omapObjectOid = 0;
-    std::uint64_t omapObjectXid = 0;
-    std::uint32_t omapObjectTypeRaw = 0;
-    std::string omapObjectTypeLabel;
-    std::uint32_t omapObjectSubtype = 0;
-    std::uint32_t omFlags = 0;
-    std::uint32_t omSnapshotCount = 0;
-    std::uint32_t omTreeType = 0;
-    std::uint32_t omSnapshotTreeType = 0;
-    std::uint64_t omTreeOid = 0;
-    std::uint64_t omSnapshotTreeOid = 0;
-    std::uint64_t omMostRecentSnap = 0;
-    std::uint64_t omPendingRevertMin = 0;
-    std::uint64_t omPendingRevertMax = 0;
-    std::uint64_t treeVirtualOffset = 0;
-    long long treeBytesRead = -1;
-    std::uint64_t treeObjectOid = 0;
-    std::uint64_t treeObjectXid = 0;
-    std::uint32_t treeObjectTypeRaw = 0;
-    std::string treeObjectTypeLabel;
-    std::uint32_t treeObjectSubtype = 0;
-    std::uint16_t treeBtnFlags = 0;
-    std::uint16_t treeBtnLevel = 0;
-    std::uint32_t treeBtnNkeys = 0;
-    std::uint16_t treeTableSpaceOffset = 0;
-    std::uint16_t treeTableSpaceLength = 0;
-    std::string omapStatus;
-    std::string treeStatus;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string treeSampleHex;
-    std::string notes;
-};
-
-struct ApfsVolumeRootTreeLookupRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t apfsOmapOid = 0;
-    std::uint64_t omTreeOid = 0;
-    std::uint64_t apfsRootTreeOid = 0;
-    std::uint64_t targetXid = 0;
-    std::uint32_t branchDepth = 0;
-    std::string branchPath;
-    std::uint64_t leafOid = 0;
-    std::uint64_t leafVirtualOffset = 0;
-    long long leafBytesRead = -1;
-    std::uint16_t leafBtnFlags = 0;
-    std::uint16_t leafBtnLevel = 0;
-    std::uint32_t leafBtnNkeys = 0;
-    std::uint32_t matchedEntryIndex = 0;
-    std::uint64_t matchedKeyOid = 0;
-    std::uint64_t matchedKeyXid = 0;
-    std::uint32_t valueFlags = 0;
-    std::uint32_t valueSize = 0;
-    std::uint64_t valuePaddr = 0;
-    std::uint64_t resolvedVirtualOffset = 0;
-    long long resolvedBytesRead = -1;
-    std::uint64_t resolvedObjectOid = 0;
-    std::uint64_t resolvedObjectXid = 0;
-    std::uint32_t resolvedObjectTypeRaw = 0;
-    std::string resolvedObjectTypeLabel;
-    std::uint32_t resolvedObjectSubtype = 0;
-    std::string resolvedMagic;
-    std::uint16_t resolvedBtnFlags = 0;
-    std::uint16_t resolvedBtnLevel = 0;
-    std::uint32_t resolvedBtnNkeys = 0;
-    std::string lookupStatus;
-    std::string rootTreeStatus;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string resolvedSampleHex;
-    std::string notes;
-};
 
 
-struct ApfsRootTreeNodeProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t apfsRootTreeOid = 0;
-    std::uint64_t targetXid = 0;
-    std::uint64_t nodeOid = 0;
-    std::uint64_t virtualOffset = 0;
-    long long bytesRead = -1;
-    std::uint64_t objectOid = 0;
-    std::uint64_t objectXid = 0;
-    std::uint32_t objectTypeRaw = 0;
-    std::string objectTypeLabel;
-    std::uint32_t objectSubtype = 0;
-    std::string magic;
-    std::uint16_t btnFlags = 0;
-    std::uint16_t btnLevel = 0;
-    std::uint32_t btnNkeys = 0;
-    std::uint16_t tableSpaceOffset = 0;
-    std::uint16_t tableSpaceLength = 0;
-    std::uint16_t freeSpaceOffset = 0;
-    std::uint16_t freeSpaceLength = 0;
-    std::string status;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string notes;
-};
-
-struct ApfsRootTreeRecordSampleRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t apfsRootTreeOid = 0;
-    std::uint64_t nodeOid = 0;
-    std::uint64_t nodeVirtualOffset = 0;
-    std::uint16_t nodeLevel = 0;
-    std::uint32_t nodeNkeys = 0;
-    std::uint32_t entryIndex = 0;
-    std::uint32_t tocOffset = 0;
-    std::uint16_t keyOffset = 0;
-    std::uint16_t keyLength = 0;
-    std::uint16_t valueOffset = 0;
-    std::uint16_t valueLength = 0;
-    std::uint64_t keyRaw = 0;
-    std::uint64_t keyObjectId = 0;
-    std::uint8_t keyTypeRaw = 0;
-    std::string keyTypeLabel;
-    std::uint64_t branchChildOid = 0;
-    std::string decodedName;
-    std::uint64_t valueU64_0 = 0;
-    std::uint64_t valueU64_1 = 0;
-    std::uint64_t valueU64_2 = 0;
-    std::string status;
-    std::string interpretation;
-    std::string keySampleHex;
-    std::string valueSampleHex;
-    std::string notes;
-};
 
 
-struct ApfsSpotlightTargetScanMetrics {
-    std::size_t nodesVisited = 0;
-    std::size_t nodesResolved = 0;
-    std::size_t branchNodes = 0;
-    std::size_t leafNodes = 0;
-    std::size_t recordsScanned = 0;
-    std::size_t dirRecordsDecoded = 0;
-    std::size_t branchCandidatesQueued = 0;
-    std::size_t targetNameHits = 0;
-    std::size_t nodesSkippedByLimit = 0;
-};
 
-struct ApfsSpotlightCopyAttemptRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t parentObjectId = 0;
-    std::uint64_t childFileId = 0;
-    std::string targetName;
-    std::string targetKind;
-    std::uint64_t storeV2RootObjectId = 0;
-    std::string storeV2GroupName;
-    std::string storeV2RelativePath;
-    std::string extractionStatus;
-    std::string outputPath;
-    std::string interpretation;
-    std::string notes;
-};
+
+
+
+
+
+
+
+
+
+
 
 struct ApfsDirectoryRecordEntry {
     std::uint32_t volumeSequence = 0;
@@ -4528,133 +4234,13 @@ struct ApfsDirectoryRecordEntry {
     std::string name;
 };
 
-struct ApfsSpotlightInodeProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t targetSequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t targetParentObjectId = 0;
-    std::uint64_t targetChildFileId = 0;
-    std::string targetName;
-    std::string targetKind;
-    std::uint64_t inodeObjectId = 0;
-    std::uint64_t inodeParentId = 0;
-    std::uint64_t inodePrivateId = 0;
-    std::uint64_t inodeCreateTimeRaw = 0;
-    std::uint64_t inodeModTimeRaw = 0;
-    std::uint64_t inodeChangeTimeRaw = 0;
-    std::uint64_t inodeAccessTimeRaw = 0;
-    std::uint64_t inodeInternalFlags = 0;
-    std::uint64_t inodeNchildrenOrNlink = 0;
-    std::uint64_t inodeModeCandidate = 0;
-    std::uint64_t inodeUncompressedSize = 0;
-    std::uint64_t inodeDstreamSize = 0;
-    std::uint64_t inodeDstreamAllocedSize = 0;
-    std::uint64_t inodeDstreamDefaultCryptoId = 0;
-    std::string inodeXfieldStatus;
-    std::uint64_t nodeOid = 0;
-    std::uint64_t nodeVirtualOffset = 0;
-    std::uint16_t nodeLevel = 0;
-    std::uint32_t nodeNkeys = 0;
-    std::uint32_t entryIndex = 0;
-    std::string inodeStatus;
-    std::string interpretation;
-    std::string valueSampleHex;
-    std::string notes;
-};
 
-struct ApfsSpotlightFileExtentProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t targetSequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t targetParentObjectId = 0;
-    std::uint64_t targetChildFileId = 0;
-    std::string targetName;
-    std::string targetKind;
-    std::uint64_t extentFileId = 0;
-    std::uint64_t extentLogicalOffset = 0;
-    std::uint64_t lenAndFlags = 0;
-    std::uint64_t extentLengthBytes = 0;
-    std::uint32_t extentFlags = 0;
-    std::uint64_t physicalBlock = 0;
-    std::uint64_t physicalOffset = 0;
-    std::uint64_t cryptoId = 0;
-    std::uint64_t nodeOid = 0;
-    std::uint64_t nodeVirtualOffset = 0;
-    std::uint16_t nodeLevel = 0;
-    std::uint32_t nodeNkeys = 0;
-    std::uint32_t entryIndex = 0;
-    std::string extentStatus;
-    long long previewBytesRead = -1;
-    std::string previewStatus;
-    std::string previewSampleHex;
-    std::string interpretation;
-    std::string notes;
-};
 
-struct ApfsSpotlightXattrProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t fileObjectId = 0;
-    std::string xattrName;
-    std::uint16_t xattrNameLength = 0;
-    std::uint16_t xattrFlags = 0;
-    std::uint16_t xdataLength = 0;
-    std::uint64_t xdataStreamId = 0;
-    std::uint64_t xdataStreamSize = 0;
-    std::uint64_t xdataStreamAllocatedSize = 0;
-    std::uint64_t xdataStreamDefaultCryptoId = 0;
-    std::string xattrStorage;
-    std::string xdataPreviewStatus;
-    std::string xdataPreviewHex;
-    std::uint64_t nodeOid = 0;
-    std::uint64_t nodeVirtualOffset = 0;
-    std::uint16_t nodeLevel = 0;
-    std::uint32_t nodeNkeys = 0;
-    std::uint32_t entryIndex = 0;
-    std::string xattrStatus;
-    std::string interpretation;
-    std::string notes;
-};
 
-struct ApfsSpotlightFileCopyOutRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t targetSequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t targetParentObjectId = 0;
-    std::uint64_t targetChildFileId = 0;
-    std::string targetName;
-    std::string targetKind;
-    std::uint64_t storeV2RootObjectId = 0;
-    std::string storeV2GroupName;
-    std::string storeV2RelativePath;
-    std::uint32_t extentCount = 0;
-    std::uint64_t assembledBytes = 0;
-    std::uint64_t logicalSizeBytes = 0;
-    std::string logicalSizeSource;
-    std::uint64_t firstPhysicalOffset = 0;
-    std::string outputRelativePath;
-    std::string outputPath;
-    std::uint64_t outputSizeBytes = 0;
-    std::string outputSha256;
-    std::string copyStatus;
-    std::string validationStatus;
-    std::string firstBytesStatus;
-    std::string firstBytesHex;
-    std::string interpretation;
-    std::string notes;
-};
+
+
+
+
 
 
 struct ApfsOmapTargetResolution {
@@ -4929,49 +4515,7 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
     return out;
 }
 
-struct ApfsRootTreeChildNodeProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t sourceRecordSequence = 0;
-    std::uint32_t volumeSequence = 0;
-    std::string targetRole;
-    std::uint64_t fsOid = 0;
-    std::string volumeName;
-    std::uint64_t apfsRootTreeOid = 0;
-    std::uint64_t parentNodeOid = 0;
-    std::uint64_t parentNodeVirtualOffset = 0;
-    std::uint16_t parentNodeLevel = 0;
-    std::uint32_t parentEntryIndex = 0;
-    std::uint64_t branchChildOid = 0;
-    std::uint64_t targetXid = 0;
-    std::uint32_t omapBranchDepth = 0;
-    std::string omapBranchPath;
-    std::uint64_t omapLeafOid = 0;
-    std::uint64_t omapLeafVirtualOffset = 0;
-    long long omapLeafBytesRead = -1;
-    std::uint32_t matchedEntryIndex = 0;
-    std::uint64_t matchedKeyOid = 0;
-    std::uint64_t matchedKeyXid = 0;
-    std::uint32_t valueFlags = 0;
-    std::uint32_t valueSize = 0;
-    std::uint64_t valuePaddr = 0;
-    std::uint64_t resolvedVirtualOffset = 0;
-    long long resolvedBytesRead = -1;
-    std::uint64_t resolvedObjectOid = 0;
-    std::uint64_t resolvedObjectXid = 0;
-    std::uint32_t resolvedObjectTypeRaw = 0;
-    std::string resolvedObjectTypeLabel;
-    std::uint32_t resolvedObjectSubtype = 0;
-    std::string resolvedMagic;
-    std::uint16_t resolvedBtnFlags = 0;
-    std::uint16_t resolvedBtnLevel = 0;
-    std::uint32_t resolvedBtnNkeys = 0;
-    std::string lookupStatus;
-    std::string childNodeStatus;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string resolvedSampleHex;
-    std::string notes;
-};
+
 
 constexpr std::uint64_t kApfsFsObjectIdMask = 0x0fffffffffffffffULL;
 
@@ -5573,46 +5117,9 @@ void parseResolvedApfsVolumeSuperblock(ApfsResolvedVolumeSuperblockRow& row,
     row.notes = readNotes;
 }
 
-struct ApfsCheckpointMapEntryRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t entryIndex = 0;
-    std::uint64_t checkpointBlock = 0;
-    std::uint64_t checkpointVirtualOffset = 0;
-    long long checkpointBytesRead = -1;
-    std::uint32_t checkpointFlags = 0;
-    std::uint32_t checkpointCount = 0;
-    std::uint32_t cpmTypeRaw = 0;
-    std::uint32_t cpmSubtype = 0;
-    std::uint32_t cpmSize = 0;
-    std::uint64_t cpmFsOid = 0;
-    std::uint64_t cpmOid = 0;
-    std::uint64_t cpmPaddr = 0;
-    std::string cpmTypeLabel;
-    std::string targetRole;
-    std::string interpretation;
-    std::string notes;
-};
 
-struct ApfsCheckpointMappedObjectProbeRow {
-    std::uint32_t sequence = 0;
-    std::uint32_t entryIndex = 0;
-    std::uint64_t cpmOid = 0;
-    std::uint64_t cpmFsOid = 0;
-    std::uint64_t cpmPaddr = 0;
-    std::uint64_t virtualOffset = 0;
-    long long bytesRead = -1;
-    std::uint64_t mappedOid = 0;
-    std::uint64_t mappedXid = 0;
-    std::uint32_t mappedTypeRaw = 0;
-    std::uint32_t mappedSubtype = 0;
-    std::string mappedTypeLabel;
-    std::string magic;
-    std::string targetRole;
-    std::string status;
-    std::string interpretation;
-    std::string sampleHex;
-    std::string notes;
-};
+
+
 
 bool containsU64(const std::vector<std::uint64_t>& values, std::uint64_t v) {
     return std::find(values.begin(), values.end(), v) != values.end();
@@ -12056,7 +11563,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
     addApfsRow("virtual_apfs_probe", "NOT_SUPPORTED_ON_THIS_PLATFORM", 0, -1, {}, "NOT_RUN", "AFF4 virtual APFS probe requires Windows libaff4 dynamic loading in this build.", {}, "Run the Windows build for this probe.");
 #endif
 
-    const bool writeHeavyApfsDiagnostics = opt.verbose || opt.diagnosticFullNativeDb || opt.aff4ApfsDiagnosticOutputs;
+    const bool writeHeavyApfsDiagnostics = shouldWriteAff4ApfsStructuralDiagnostics(opt.verbose, opt.diagnosticFullNativeDb, opt.aff4ApfsDiagnosticOutputs);
     const bool strictAff4PolicyForOutputs = opt.strictSingleAff4 || isAff4SourcePath(originalInput);
     if (writeHeavyApfsDiagnostics) {
         log.info("AFF4/APFS diagnostic output mode enabled: writing structural probe CSV outputs.");
@@ -12077,7 +11584,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
         writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, apfsSpotlightFileExtentProbeRows, strictAff4PolicyForOutputs, log);
     } else {
         log.info("Normal AFF4/APFS source-probe mode: structural diagnostic CSV outputs suppressed; writing copy-out/stage outputs only.");
-        appendRunStatus(caseDir, "aff4_apfs_structural_diagnostics_suppressed", "use --aff4-apfs-diagnostic-outputs or --verbose to write structural probe CSVs");
+        appendRunStatus(caseDir, aff4ApfsStructuralDiagnosticsSuppressedStatus(), aff4ApfsStructuralDiagnosticsSuppressedGuidance());
     }
     writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
     writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
@@ -14131,7 +13638,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         log.warn(std::string("Unable to write AFF4_DIRECT_SQLITE_CANDIDATE_CARVE.md: ") + ex.what());
     }
     if (directBestNx.attempted || directBestNx.found) {
-        const bool writeHeavyApfsDiagnostics = opt.verbose || opt.diagnosticFullNativeDb || opt.aff4ApfsDiagnosticOutputs;
+        const bool writeHeavyApfsDiagnostics = shouldWriteAff4ApfsStructuralDiagnostics(opt.verbose, opt.diagnosticFullNativeDb, opt.aff4ApfsDiagnosticOutputs);
         if (writeHeavyApfsDiagnostics) {
             log.info("AFF4/APFS diagnostic output mode enabled: writing structural probe CSV outputs.");
             writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, directBestNx, directDescriptorRows, log);
@@ -14147,7 +13654,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
             writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, true, log);
         } else {
             log.info("Normal AFF4/APFS source-probe mode: structural diagnostic CSV outputs suppressed; writing copy-out/stage outputs only.");
-            appendRunStatus(caseDir, "aff4_apfs_structural_diagnostics_suppressed", "use --aff4-apfs-diagnostic-outputs or --verbose to write structural probe CSVs");
+            appendRunStatus(caseDir, aff4ApfsStructuralDiagnosticsSuppressedStatus(), aff4ApfsStructuralDiagnosticsSuppressedGuidance());
         }
         // Copy-out and staging outputs remain enabled in normal mode because they
         // describe actual extracted evidence and feed the external comparison.

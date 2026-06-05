@@ -1,0 +1,25 @@
+V1.0.22 validation summary
+
+Purpose:
+- Fix V1.0.20 Windows GUI compile failure caused by missing Selected Row Details ListView helper functions.
+- Preserve V1.0.20 modularization: export/database worker logic remains in gui_export_worker.
+
+Changed files of interest:
+- src/gui/win32_gui.cpp
+- src/core/app_info.cpp
+- VERSION / VERSION.txt
+- CMakeLists.txt
+- scripts/Build-V1_0_22.ps1
+- scripts/Launch-V1_0_22-GUI.ps1
+- scripts/Run-V1_0_22-macOS-AFF4-Probe-AndZip.ps1
+
+Validation performed in packaging environment:
+- Confirmed missing helper names are now defined in src/gui/win32_gui.cpp.
+- Confirmed GUI export worker files remain present.
+- Confirmed version strings updated to 1.0.22.
+- Package and ZIP integrity checks performed.
+
+Not verified here:
+- Windows/MSVC build.
+- Win32 GUI runtime.
+- Live macOS/iOS extraction, because extraction code was not changed.

@@ -1,3 +1,10 @@
+# V1.0.23
+
+- Added `src/parsers/apfs_diagnostic_models.h` as the shared APFS/AFF4 diagnostic row-model header.
+- Moved APFS diagnostic row/summary structs out of `src/app/app_runner.cpp` without changing extraction, Store-V2 parsing, iOS parsing, GUI view behavior, Apple/lzfse behavior, or schema.
+- Kept diagnostic CSV writer bodies in `app_runner.cpp` for a narrow, verifiable transition step before moving writer implementations.
+- Updated V1.0.23 build/launch/AFF4 wrapper scripts.
+
 # V1.0.18
 
 - Vendored the uploaded Apple/lzfse source tree under `third_party/lzfse`.

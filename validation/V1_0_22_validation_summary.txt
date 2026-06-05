@@ -1,0 +1,13 @@
+V1.0.22 validation summary
+
+Changes:
+- Review current-page export backend moved to GuiExportWorker.
+- Review filtered-view export backend moved to GuiExportWorker.
+- UI thread now launches current-page export asynchronously and receives WM_EXPORT_PAGE_RESULT.
+- Existing checked/tagged asynchronous exports retained.
+
+Local validation performed by assistant:
+- C++ compilation on Linux through CMake should validate non-Win32 modules and CLI/tests.
+- Windows/MSVC GUI build still must be verified by user.
+
+Extraction behavior intentionally unchanged.

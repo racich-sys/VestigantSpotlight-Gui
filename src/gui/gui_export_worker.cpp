@@ -1,0 +1,427 @@
+#include "gui/gui_export_worker.h"
+
+#include "db/sqlite_compat.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+
+namespace vestigant::spotlight {
+namespace {
+
+std::string narrow(const std::wstring& w) {
+    std::string out;
+    out.reserve(w.size());
+    for (wchar_t ch : w) {
+        if (ch >= 0 && ch <= 0x7f) out.push_back(static_cast<char>(ch));
+        else out.push_back('?');
+    }
+    return out;
+}
+
+std::wstring widenAscii(const std::string& s) {
+    std::wstring out;
+    out.reserve(s.size());
+    for (unsigned char ch : s) out.push_back(static_cast<wchar_t>(ch));
+    return out;
+}
+
+std::string csvEscape(const std::string& s) {
+    const bool quote = s.find_first_of(",\r\n\"") != std::string::npos;
+    if (!quote) return s;
+    std::string out = "\"";
+    for (char c : s) out += (c == '"') ? "\"\"" : std::string(1, c);
+    out += "\"";
+    return out;
+}
+
+std::string stmtText(sqlite3_stmt* st, int col) {
+    if (col < 0 || col >= sqlite3_column_count(st)) return "";
+    const unsigned char* raw = sqlite3_column_text(st, col);
+    return raw ? reinterpret_cast<const char*>(raw) : "";
+}
+
+class ReadOnlyExportDb {
+public:
+    explicit ReadOnlyExportDb(const std::wstring& path) {
+        const std::string p = narrow(path);
+        if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            const std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown";
+            if (db_) sqlite3_close_v2(db_);
+            db_ = nullptr;
+            throw std::runtime_error("Unable to open case database for export: " + msg);
+        }
+        sqlite3_busy_timeout(db_, 30000);
+        sqlite3_exec(db_, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+    }
+    ~ReadOnlyExportDb() { if (db_) sqlite3_close_v2(db_); }
+    sqlite3* get() const { return db_; }
+private:
+    sqlite3* db_ = nullptr;
+};
+
+std::wstring withSuffixBeforeExtension(const std::wstring& path, const std::wstring& suffix) {
+    const size_t slash = path.find_last_of(L"\\/");
+    const size_t dot = path.find_last_of(L'.');
+    if (dot != std::wstring::npos && (slash == std::wstring::npos || dot > slash)) return path.substr(0, dot) + suffix + path.substr(dot);
+    return path + suffix;
+}
+
+std::string idListSql(const std::vector<long long>& ids) {
+    std::vector<long long> sorted = ids;
+    std::sort(sorted.begin(), sorted.end());
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+    std::string out;
+    for (long long id : sorted) {
+        if (id <= 0) continue;
+        if (!out.empty()) out += ',';
+        out += std::to_string(id);
+    }
+    return out;
+}
+
+std::string sqlColumns(const ViewSpec& v) {
+    std::string out;
+    for (std::size_t i = 0; i < v.columns.size(); ++i) {
+        if (i) out += ',';
+        out += v.columns[i];
+    }
+    return out;
+}
+
+std::string buildWhere(const ViewSpec& v, const std::string& search, int filterColumn, const std::string& filterValue) {
+    std::vector<std::string> clauses;
+    if (!search.empty() && !v.searchColumns.empty()) {
+        std::string q = "(";
+        for (std::size_t i = 0; i < v.searchColumns.size(); ++i) {
+            if (i) q += " OR ";
+            q += "COALESCE(CAST(";
+            q += v.searchColumns[i];
+            q += " AS TEXT),'') LIKE ?";
+        }
+        q += ")";
+        clauses.push_back(q);
+    }
+    if (filterColumn >= 0 && filterColumn < static_cast<int>(v.columns.size()) && !filterValue.empty()) {
+        std::string q = "COALESCE(CAST(";
+        q += v.columns[static_cast<std::size_t>(filterColumn)];
+        q += " AS TEXT),'') LIKE ?";
+        clauses.push_back(q);
+    }
+    if (clauses.empty()) return "";
+    std::string where = " WHERE ";
+    for (std::size_t i = 0; i < clauses.size(); ++i) {
+        if (i) where += " AND ";
+        where += clauses[i];
+    }
+    return where;
+}
+
+void bindViewSearch(sqlite3_stmt* st, const ViewSpec& v, const std::string& search, int filterColumn, const std::string& filterValue, int& index) {
+    if (!search.empty()) {
+        const std::string pattern = "%" + search + "%";
+        for (std::size_t i = 0; i < v.searchColumns.size(); ++i) {
+            sqlite3_bind_text(st, index++, pattern.c_str(), -1, SQLITE_TRANSIENT);
+        }
+    }
+    if (filterColumn >= 0 && filterColumn < static_cast<int>(v.columns.size()) && !filterValue.empty()) {
+        const std::string pattern = "%" + filterValue + "%";
+        sqlite3_bind_text(st, index++, pattern.c_str(), -1, SQLITE_TRANSIENT);
+    }
+}
+
+int viewColumnIndex(const ViewSpec& v, const char* columnName) {
+    for (std::size_t i = 0; i < v.columns.size(); ++i) {
+        if (std::string(v.columns[i]) == columnName) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+std::string resolveArtifactIdForVisibleRow(sqlite3* db, const ViewSpec& v, sqlite3_stmt* st) {
+    const int artifactCol = viewColumnIndex(v, "artifact_id");
+    if (artifactCol >= 0) {
+        std::string id = stmtText(st, artifactCol);
+        if (!id.empty()) return id;
+    }
+    const int storeCol = viewColumnIndex(v, "store_guid");
+    int inodeCol = viewColumnIndex(v, "inode_num");
+    if (inodeCol < 0) inodeCol = viewColumnIndex(v, "child_inode_num");
+    if (inodeCol < 0) return "";
+    const std::string storeGuid = storeCol >= 0 ? stmtText(st, storeCol) : "";
+    const std::string inode = stmtText(st, inodeCol);
+    if (inode.empty()) return "";
+    sqlite3_stmt* q = nullptr;
+    const char* sqlWithStore = "SELECT artifact_id FROM artifacts WHERE COALESCE(store_guid,'')=? AND CAST(inode_num AS TEXT)=? ORDER BY artifact_id LIMIT 1";
+    const char* sqlNoStore = "SELECT artifact_id FROM artifacts WHERE CAST(inode_num AS TEXT)=? ORDER BY artifact_id LIMIT 1";
+    const char* sql = storeGuid.empty() ? sqlNoStore : sqlWithStore;
+    if (sqlite3_prepare_v2(db, sql, -1, &q, nullptr) != SQLITE_OK) return "";
+    int b = 1;
+    if (!storeGuid.empty()) sqlite3_bind_text(q, b++, storeGuid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(q, b++, inode.c_str(), -1, SQLITE_TRANSIENT);
+    std::string id;
+    if (sqlite3_step(q) == SQLITE_ROW) id = stmtText(q, 0);
+    sqlite3_finalize(q);
+    return id;
+}
+
+std::string tagsForArtifact(sqlite3* db, const std::string& artifactId) {
+    if (artifactId.empty()) return "";
+    sqlite3_stmt* st = nullptr;
+    const char* sql =
+        "SELECT GROUP_CONCAT(tag_name, '; ') FROM ("
+        "SELECT it.tag_name FROM artifact_tags at "
+        "JOIN investigator_tags it ON it.tag_id=at.tag_id "
+        "WHERE at.artifact_id=? ORDER BY lower(it.tag_name))";
+    if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) return "";
+    sqlite3_bind_int64(st, 1, std::strtoll(artifactId.c_str(), nullptr, 10));
+    std::string out;
+    if (sqlite3_step(st) == SQLITE_ROW) out = stmtText(st, 0);
+    sqlite3_finalize(st);
+    return out;
+}
+
+std::size_t writeSqlCsv(sqlite3* db, const std::wstring& outPath, const std::string& sql) {
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db));
+    std::ofstream f(narrow(outPath), std::ios::binary);
+    if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open CSV for writing"); }
+    f << "\xEF\xBB\xBF";
+    const int cols = sqlite3_column_count(st);
+    for (int c = 0; c < cols; ++c) {
+        if (c) f << ',';
+        f << csvEscape(sqlite3_column_name(st, c) ? sqlite3_column_name(st, c) : "");
+    }
+    f << "\n";
+    std::size_t rows = 0;
+    while (true) {
+        const int rc = sqlite3_step(st);
+        if (rc == SQLITE_DONE) break;
+        if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db); sqlite3_finalize(st); throw std::runtime_error(msg); }
+        for (int c = 0; c < cols; ++c) {
+            if (c) f << ',';
+            f << csvEscape(stmtText(st, c));
+        }
+        f << "\n";
+        ++rows;
+    }
+    sqlite3_finalize(st);
+    return rows;
+}
+
+void writeSupportManifest(const std::wstring& outPath, const std::vector<std::pair<std::wstring, std::size_t>>& files) {
+    std::ofstream f(narrow(outPath), std::ios::binary);
+    if (!f) throw std::runtime_error("Unable to open support manifest for writing");
+    f << "\xEF\xBB\xBF";
+    f << "file,row_count\n";
+    for (const auto& item : files) f << csvEscape(narrow(item.first)) << ',' << item.second << "\n";
+}
+
+void exportSupportForArtifactIdSql(sqlite3* db, const std::string& idSql, const std::wstring& baseCsvPath, std::vector<std::pair<std::wstring, std::size_t>>& manifestRows) {
+    const std::wstring rawKvPath = withSuffixBeforeExtension(baseCsvPath, L"_raw_key_values");
+    const std::wstring rawDatesPath = withSuffixBeforeExtension(baseCsvPath, L"_raw_date_candidates");
+    const std::wstring usagePath = withSuffixBeforeExtension(baseCsvPath, L"_usage_evidence");
+    const std::wstring timelinePath = withSuffixBeforeExtension(baseCsvPath, L"_timeline_events");
+
+    const std::string rawKvSql =
+        "SELECT r.raw_kv_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_id,r.parent_inode_num,r.full_path,r.record_state,r.field_name,r.field_value "
+        "FROM raw_key_values r JOIN artifacts a ON a.source_id=r.source_id AND a.store_guid=r.store_guid AND a.inode_num=r.inode_num "
+        "WHERE a.artifact_id IN (" + idSql + ") ORDER BY a.artifact_id,r.raw_kv_id";
+    manifestRows.push_back({rawKvPath, writeSqlCsv(db, rawKvPath, rawKvSql)});
+
+    const std::string rawDatesSql =
+        "SELECT raw_date_id,artifact_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,best_path,field_name,field_value,parsed_utc,parse_method,date_type,association_status,association_confidence "
+        "FROM raw_date_candidates WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,parsed_utc,raw_date_id";
+    manifestRows.push_back({rawDatesPath, writeSqlCsv(db, rawDatesPath, rawDatesSql)});
+
+    const std::string usageSql =
+        "SELECT usage_id,artifact_id,source_id,store_guid,inode_num,field_name,field_value,parsed_utc FROM usage_evidence "
+        "WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,parsed_utc,usage_id";
+    manifestRows.push_back({usagePath, writeSqlCsv(db, usagePath, usageSql)});
+
+    const std::string timelineSql =
+        "SELECT timeline_id,artifact_id,source_id,store_guid,inode_num,file_name,path,event_timestamp_utc,event_type,event_source_field,existence_status,deleted_or_orphaned_candidate "
+        "FROM timeline_events WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,event_timestamp_utc,timeline_id";
+    manifestRows.push_back({timelinePath, writeSqlCsv(db, timelinePath, timelineSql)});
+}
+
+} // namespace
+
+GuiExportResult GuiExportWorker::exportCurrentPage(const GuiViewExportRequest& request) {
+    GuiExportResult result;
+    try {
+        ReadOnlyExportDb db(request.dbPath);
+        const std::string where = buildWhere(request.view, request.search, request.filterColumn, request.filterValue);
+        const std::string order = request.orderBy.empty() ? (request.view.orderBy ? request.view.orderBy : "") : request.orderBy;
+        std::string sql = "SELECT " + sqlColumns(request.view) + " FROM " + request.view.tableName + where;
+        if (!order.empty()) sql += " ORDER BY " + order;
+        sql += " LIMIT ? OFFSET ?";
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
+        int bind = 1;
+        bindViewSearch(st, request.view, request.search, request.filterColumn, request.filterValue, bind);
+        sqlite3_bind_int(st, bind++, request.pageSize > 0 ? request.pageSize : 1000);
+        sqlite3_bind_int64(st, bind++, static_cast<sqlite3_int64>(request.page < 0 ? 0 : request.page) * (request.pageSize > 0 ? request.pageSize : 1000));
+        std::ofstream f(narrow(request.outPath), std::ios::binary);
+        if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open current-page CSV for writing"); }
+        f << "\xEF\xBB\xBF";
+        f << csvEscape("checked") << ',' << csvEscape("tags");
+        for (std::size_t c = 0; c < request.view.columns.size(); ++c) f << ',' << csvEscape(request.view.columns[c]);
+        f << "\n";
+        std::size_t rows = 0;
+        while (true) {
+            const int rc = sqlite3_step(st);
+            if (rc == SQLITE_DONE) break;
+            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
+            const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), request.view, st);
+            const long long artifactIdNum = artifactId.empty() ? 0LL : std::strtoll(artifactId.c_str(), nullptr, 10);
+            const bool checked = artifactIdNum != 0LL && request.checkedArtifactIds.find(artifactIdNum) != request.checkedArtifactIds.end();
+            f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(tagsForArtifact(db.get(), artifactId));
+            for (int c = 0; c < sqlite3_column_count(st); ++c) f << ',' << csvEscape(stmtText(st, c));
+            f << "\n";
+            ++rows;
+        }
+        sqlite3_finalize(st);
+        result.ok = true;
+        result.rows = rows;
+        result.message = L"Exported current page rows=" + std::to_wstring(static_cast<unsigned long long>(rows)) + L" to: " + request.outPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"ERROR exporting current page: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+GuiExportResult GuiExportWorker::exportFilteredView(const GuiViewExportRequest& request) {
+    GuiExportResult result;
+    try {
+        ReadOnlyExportDb db(request.dbPath);
+        const std::string where = buildWhere(request.view, request.search, request.filterColumn, request.filterValue);
+        const std::string order = request.orderBy.empty() ? (request.view.orderBy ? request.view.orderBy : "") : request.orderBy;
+        std::string sql = "SELECT " + sqlColumns(request.view) + " FROM " + request.view.tableName + where;
+        if (!order.empty()) sql += " ORDER BY " + order;
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
+        int bind = 1;
+        bindViewSearch(st, request.view, request.search, request.filterColumn, request.filterValue, bind);
+        std::ofstream f(narrow(request.outPath), std::ios::binary);
+        if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open filtered CSV for writing"); }
+        f << "\xEF\xBB\xBF";
+        f << csvEscape("checked") << ',' << csvEscape("tags");
+        for (std::size_t c = 0; c < request.view.columns.size(); ++c) f << ',' << csvEscape(request.view.columns[c]);
+        f << "\n";
+        std::size_t rows = 0;
+        while (true) {
+            const int rc = sqlite3_step(st);
+            if (rc == SQLITE_DONE) break;
+            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
+            const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), request.view, st);
+            const long long artifactIdNum = artifactId.empty() ? 0LL : std::strtoll(artifactId.c_str(), nullptr, 10);
+            const bool checked = artifactIdNum != 0LL && request.checkedArtifactIds.find(artifactIdNum) != request.checkedArtifactIds.end();
+            f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(tagsForArtifact(db.get(), artifactId));
+            for (int c = 0; c < sqlite3_column_count(st); ++c) f << ',' << csvEscape(stmtText(st, c));
+            f << "\n";
+            ++rows;
+        }
+        sqlite3_finalize(st);
+        result.ok = true;
+        result.rows = rows;
+        result.message = L"Exported filtered view rows=" + std::to_wstring(static_cast<unsigned long long>(rows)) + L" to: " + request.outPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"ERROR exporting filtered view: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+GuiExportResult GuiExportWorker::exportCheckedArtifacts(const std::wstring& dbPath,
+                                                        const std::vector<long long>& artifactIds,
+                                                        const std::wstring& outPath) {
+    GuiExportResult result;
+    try {
+        const std::string ids = idListSql(artifactIds);
+        if (ids.empty()) throw std::runtime_error("No checked artifact IDs were supplied for export.");
+        ReadOnlyExportDb db(dbPath);
+        std::ofstream f(narrow(outPath), std::ios::binary);
+        if (!f) throw std::runtime_error("Unable to open checked-artifact CSV for writing");
+        f << "\xEF\xBB\xBF";
+        const std::vector<const char*> cols = {
+            "artifact_id","tags","store_guid","inode_num","parent_inode_num","file_name","display_name","best_path",
+            "spotlight_display_path","normalized_mac_path","content_type","content_type_tree","last_updated_utc",
+            "first_used_candidate_utc","last_used_date_utc","used_dates_count","use_count_value","usage_field_summary",
+            "downloaded_date_utc","where_froms","is_mounted_volume_path","mounted_volume_name","external_volume_reason",
+            "existence_status","confidence"
+        };
+        for (size_t i = 0; i < cols.size(); ++i) { if (i) f << ','; f << csvEscape(cols[i]); }
+        f << "\n";
+        const std::string sql =
+            "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,spotlight_display_path,normalized_mac_path,"
+            "content_type,content_type_tree,last_updated_utc,first_used_candidate_utc,last_used_date_utc,used_dates_count,use_count_value,usage_field_summary,"
+            "downloaded_date_utc,where_froms,is_mounted_volume_path,mounted_volume_name,external_volume_reason,existence_status,confidence "
+            "FROM artifacts WHERE artifact_id IN (" + ids + ") ORDER BY artifact_id";
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
+        std::size_t rows = 0;
+        while (true) {
+            int rc = sqlite3_step(st);
+            if (rc == SQLITE_DONE) break;
+            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
+            const std::string artifactId = stmtText(st, 0);
+            f << csvEscape(artifactId) << ',' << csvEscape(tagsForArtifact(db.get(), artifactId));
+            for (int c = 1; c < sqlite3_column_count(st); ++c) f << ',' << csvEscape(stmtText(st, c));
+            f << "\n";
+            ++rows;
+        }
+        sqlite3_finalize(st);
+        std::vector<std::pair<std::wstring, std::size_t>> supportFiles;
+        exportSupportForArtifactIdSql(db.get(), ids, outPath, supportFiles);
+        const std::wstring manifestPath = withSuffixBeforeExtension(outPath, L"_support_manifest");
+        supportFiles.insert(supportFiles.begin(), {outPath, rows});
+        writeSupportManifest(manifestPath, supportFiles);
+        result.ok = true;
+        result.rows = rows;
+        result.manifestPath = manifestPath;
+        result.message = L"Exported " + std::to_wstring(static_cast<unsigned long long>(rows)) + L" checked artifact(s) plus raw support files. Manifest: " + manifestPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"ERROR exporting checked artifacts: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+GuiExportResult GuiExportWorker::exportTaggedArtifacts(const std::wstring& dbPath,
+                                                       long long tagId,
+                                                       const std::wstring& outPath) {
+    GuiExportResult result;
+    try {
+        if (tagId < 0) throw std::runtime_error("No tag ID was supplied for export.");
+        ReadOnlyExportDb db(dbPath);
+        const std::string tagIdSql = std::to_string(tagId);
+        const std::string artifactIdSql = "SELECT artifact_id FROM artifact_tags WHERE tag_id=" + tagIdSql;
+        const std::string artifactSql =
+            "SELECT tag_id,tag_name,tagged_utc,artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,content_type,content_type_tree,logical_size_bytes,physical_size_bytes,usage_latest_utc,last_used_date_utc,modified_latest_utc,created_latest_utc,downloaded_latest_utc,where_froms,note_count,last_note_utc,last_note_text,confidence "
+            "FROM vw_tagged_artifacts WHERE tag_id=" + tagIdSql + " ORDER BY COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_used_date_utc,''), NULLIF(modified_latest_utc,''), artifact_id) DESC";
+        std::vector<std::pair<std::wstring, std::size_t>> supportFiles;
+        const std::size_t artifactRows = writeSqlCsv(db.get(), outPath, artifactSql);
+        supportFiles.push_back({outPath, artifactRows});
+        exportSupportForArtifactIdSql(db.get(), artifactIdSql, outPath, supportFiles);
+        const std::wstring notesPath = withSuffixBeforeExtension(outPath, L"_notes");
+        const std::string notesSql =
+            "SELECT n.note_id,n.created_utc,n.updated_utc,n.note_text,n.artifact_id,n.store_guid,n.inode_num,n.parent_inode_num,n.file_name,n.display_name,n.best_path,n.content_type,n.tags "
+            "FROM vw_artifact_notes n WHERE n.artifact_id IN (" + artifactIdSql + ") ORDER BY n.updated_utc DESC,n.created_utc DESC,n.note_id DESC";
+        supportFiles.push_back({notesPath, writeSqlCsv(db.get(), notesPath, notesSql)});
+        const std::wstring manifestPath = withSuffixBeforeExtension(outPath, L"_support_manifest");
+        writeSupportManifest(manifestPath, supportFiles);
+        result.ok = true;
+        result.rows = artifactRows;
+        result.manifestPath = manifestPath;
+        result.message = L"Exported tagged artifacts plus raw support files. Manifest: " + manifestPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"ERROR exporting tagged artifacts: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+} // namespace vestigant::spotlight

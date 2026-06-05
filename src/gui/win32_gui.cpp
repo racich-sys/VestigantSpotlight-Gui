@@ -7,6 +7,7 @@
 #include "db/sqlite_compat.h"
 #include "db/case_db.h"
 #include "gui/view_registry.h"
+#include "gui/gui_export_worker.h"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -80,7 +81,10 @@ bool gBulkCheckUpdate = false;
 std::vector<std::string> gCurrentRowArtifactIds;
 std::atomic<unsigned long long> gReviewRequestSeq{0};
 std::atomic_bool gShuttingDown{false};
+std::atomic_bool gExportPageActive{false};
 std::atomic_bool gExportFilteredActive{false};
+std::atomic_bool gExportCheckedActive{false};
+std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
@@ -136,7 +140,10 @@ constexpr int WM_SET_INGEST_STATUS = WM_APP + 2;
 constexpr int WM_SET_INGEST_PROGRESS = WM_APP + 3;
 constexpr int WM_REVIEW_PAGE_RESULT = WM_APP + 4;
 constexpr int WM_CLEAR_PROCESS_LOG = WM_APP + 5;
-constexpr int WM_EXPORT_FILTERED_RESULT = WM_APP + 6;
+constexpr int WM_EXPORT_PAGE_RESULT = WM_APP + 6;
+constexpr int WM_EXPORT_FILTERED_RESULT = WM_APP + 7;
+constexpr int WM_EXPORT_CHECKED_RESULT = WM_APP + 8;
+constexpr int WM_EXPORT_TAGGED_RESULT = WM_APP + 9;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
@@ -1784,50 +1791,37 @@ void loadReviewPage() {
 
 void exportCurrentPage(HWND owner) {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting."); return; }
-    std::wstring out = saveCsv(owner);
-    if (out.empty()) return;
-    try {
-        const ULONGLONG startedMs = GetTickCount64();
-        const auto& v = views()[static_cast<size_t>(selectedViewIndex())];
-        const std::string search = narrow(getText(gSearch));
-        const int ps = pageSize();
-        ReadOnlyDb db(gOpenedCaseDb);
-        const std::string where = buildWhere(v, search);
-        std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + reviewOrderByForPage(v, search, (gFilterColumn >= 0 && !gFilterValue.empty())) + " LIMIT ? OFFSET ?";
-        sqlite3_stmt* st = nullptr;
-        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
-        int bind = 1;
-        bindSearch(st, v, search, bind);
-        sqlite3_bind_int(st, bind++, ps);
-        sqlite3_bind_int64(st, bind++, static_cast<sqlite3_int64>(gCurrentPage) * ps);
-        std::ofstream f(narrow(out), std::ios::binary);
-        f << "\xEF\xBB\xBF";
-        f << csvEscape("checked") << ',' << csvEscape("tags");
-        for (size_t c = 0; c < v.columns.size(); ++c) {
-            f << ',' << csvEscape(v.columns[c]);
-        }
-        f << "\n";
-        while (true) {
-            int rc = sqlite3_step(st);
-            if (rc == SQLITE_DONE) break;
-            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
-            const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), v, st);
-            const bool checked = !artifactId.empty() && gCheckedArtifactIds.find(std::strtoll(artifactId.c_str(), nullptr, 10)) != gCheckedArtifactIds.end();
-            f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(narrow(tagsForArtifact(db.get(), artifactId)));
-            for (int c = 0; c < sqlite3_column_count(st); ++c) {
-                f << ',';
-                const unsigned char* raw = sqlite3_column_text(st, c);
-                f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
-            }
-            f << "\n";
-        }
-        sqlite3_finalize(st);
-        const ULONGLONG elapsedMs = GetTickCount64() - startedMs;
-        setReviewSummary(L"Exported current page in " + std::to_wstring(elapsedMs) + L" ms to: " + out);
-    } catch (const std::exception& ex) {
-        setReviewSummary(L"ERROR exporting current page: " + widen(ex.what()));
+    bool expected = false;
+    if (!gExportPageActive.compare_exchange_strong(expected, true)) {
+        setReviewSummary(L"Export Page is already running. Wait for the current export to finish.");
+        return;
     }
+    std::wstring out = saveCsv(owner);
+    if (out.empty()) { gExportPageActive.store(false); return; }
+    const int viewIdx = selectedViewIndex();
+    if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) { gExportPageActive.store(false); setReviewSummary(L"No valid view is selected for export."); return; }
+    const auto v = views()[static_cast<size_t>(viewIdx)];
+    GuiViewExportRequest request;
+    request.dbPath = gOpenedCaseDb;
+    request.view = v;
+    request.search = narrow(getText(gSearch));
+    request.filterColumn = gFilterColumn;
+    request.filterValue = gFilterValue;
+    request.orderBy = reviewOrderByForPage(v, request.search, (gFilterColumn >= 0 && !gFilterValue.empty()));
+    request.page = gCurrentPage;
+    request.pageSize = pageSize();
+    request.checkedArtifactIds = gCheckedArtifactIds;
+    request.outPath = out;
+
+    setReviewSummary(L"Export Current Page in progress... GUI remains active.");
+    if (gExportPage) EnableWindow(gExportPage, FALSE);
+    std::thread([owner, request]() {
+        const GuiExportResult result = GuiExportWorker::exportCurrentPage(request);
+        auto* msg = new std::wstring(result.message);
+        if (!PostMessageW(owner, WM_EXPORT_PAGE_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
+    }).detach();
 }
+
 
 
 void exportFilteredView(HWND owner) {
@@ -1838,7 +1832,7 @@ void exportFilteredView(HWND owner) {
         return;
     }
     const std::wstring searchText = getText(gSearch);
-    if (searchText.empty()) {
+    if (searchText.empty() && gFilterValue.empty()) {
         int answer = MessageBoxW(owner,
             L"This will export the entire selected view because no search/filter text is active. Large views may produce very large CSV files. Continue?",
             L"Vestigant Spotlight - Export Filtered View",
@@ -1847,219 +1841,74 @@ void exportFilteredView(HWND owner) {
     }
     std::wstring out = saveCsv(owner);
     if (out.empty()) { gExportFilteredActive.store(false); return; }
-
     const int viewIdx = selectedViewIndex();
-    const std::string search = narrow(searchText);
-    const std::wstring dbPath = gOpenedCaseDb;
-    const std::set<long long> checkedSnapshot = gCheckedArtifactIds;
+    if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) { gExportFilteredActive.store(false); setReviewSummary(L"No valid view is selected for export."); return; }
+    const auto v = views()[static_cast<size_t>(viewIdx)];
+    GuiViewExportRequest request;
+    request.dbPath = gOpenedCaseDb;
+    request.view = v;
+    request.search = narrow(searchText);
+    request.filterColumn = gFilterColumn;
+    request.filterValue = gFilterValue;
+    request.orderBy = reviewOrderBy(v);
+    request.checkedArtifactIds = gCheckedArtifactIds;
+    request.outPath = out;
 
     setReviewSummary(L"Export Filtered in progress... GUI remains active.");
     if (gExportFiltered) EnableWindow(gExportFiltered, FALSE);
-
-    std::thread([owner, viewIdx, search, out, dbPath, checkedSnapshot]() {
-        auto postResult = [owner](bool ok, const std::wstring& msg) {
-            auto* heapMsg = new std::wstring(msg);
-            if (!PostMessageW(owner, WM_EXPORT_FILTERED_RESULT, ok ? 1 : 0, reinterpret_cast<LPARAM>(heapMsg))) {
-                delete heapMsg;
-            }
-        };
-        try {
-            const ULONGLONG startedMs = GetTickCount64();
-            if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) throw std::runtime_error("Invalid selected view index");
-            const auto& v = views()[static_cast<size_t>(viewIdx)];
-            ReadOnlyDb db(dbPath);
-            const std::string where = buildWhere(v, search);
-            std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + reviewOrderBy(v);
-            sqlite3_stmt* st = nullptr;
-            if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
-            int bind = 1;
-            bindSearch(st, v, search, bind);
-            std::ofstream f(narrow(out), std::ios::binary);
-            if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open CSV for writing"); }
-            f << "\xEF\xBB\xBF";
-            f << csvEscape("checked") << ',' << csvEscape("tags");
-            for (size_t c = 0; c < v.columns.size(); ++c) f << ',' << csvEscape(v.columns[c]);
-            f << "\n";
-            unsigned long long rows = 0;
-            while (true) {
-                int rc = sqlite3_step(st);
-                if (rc == SQLITE_DONE) break;
-                if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
-                const std::string artifactId = resolveArtifactIdForVisibleRow(db.get(), v, st);
-                const long long artifactIdNum = artifactId.empty() ? 0LL : std::strtoll(artifactId.c_str(), nullptr, 10);
-                const bool checked = artifactIdNum != 0LL && checkedSnapshot.find(artifactIdNum) != checkedSnapshot.end();
-                f << csvEscape(checked ? "1" : "0") << ',' << csvEscape(narrow(tagsForArtifact(db.get(), artifactId)));
-                for (int c = 0; c < sqlite3_column_count(st); ++c) {
-                    f << ',';
-                    const unsigned char* raw = sqlite3_column_text(st, c);
-                    f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
-                }
-                f << "\n";
-                ++rows;
-            }
-            sqlite3_finalize(st);
-            const ULONGLONG elapsedMs = GetTickCount64() - startedMs;
-            postResult(true, L"Exported filtered view rows=" + std::to_wstring(rows) + L" in " + std::to_wstring(elapsedMs) + L" ms to: " + out);
-        } catch (const std::exception& ex) {
-            postResult(false, L"ERROR exporting filtered view: " + widen(ex.what()));
-        }
+    std::thread([owner, request]() {
+        const GuiExportResult result = GuiExportWorker::exportFilteredView(request);
+        auto* msg = new std::wstring(result.message);
+        if (!PostMessageW(owner, WM_EXPORT_FILTERED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
     }).detach();
 }
 
 
-std::wstring withSuffixBeforeExtension(const std::wstring& path, const std::wstring& suffix) {
-    const size_t slash = path.find_last_of(L"\\/");
-    const size_t dot = path.find_last_of(L'.');
-    if (dot != std::wstring::npos && (slash == std::wstring::npos || dot > slash)) return path.substr(0, dot) + suffix + path.substr(dot);
-    return path + suffix;
-}
-
-std::size_t writeSqlCsv(sqlite3* db, const std::wstring& outPath, const std::string& sql) {
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db));
-    std::ofstream f(narrow(outPath), std::ios::binary);
-    if (!f) { sqlite3_finalize(st); throw std::runtime_error("Unable to open CSV for writing"); }
-    f << "\xEF\xBB\xBF";
-    const int cols = sqlite3_column_count(st);
-    for (int c = 0; c < cols; ++c) {
-        if (c) f << ',';
-        f << csvEscape(sqlite3_column_name(st, c) ? sqlite3_column_name(st, c) : "");
-    }
-    f << "\n";
-    std::size_t rows = 0;
-    while (true) {
-        const int rc = sqlite3_step(st);
-        if (rc == SQLITE_DONE) break;
-        if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db); sqlite3_finalize(st); throw std::runtime_error(msg); }
-        for (int c = 0; c < cols; ++c) {
-            if (c) f << ',';
-            const unsigned char* raw = sqlite3_column_text(st, c);
-            f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
-        }
-        f << "\n";
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-void writeSupportManifest(const std::wstring& outPath, const std::vector<std::pair<std::wstring, std::size_t>>& files) {
-    std::ofstream f(narrow(outPath), std::ios::binary);
-    if (!f) throw std::runtime_error("Unable to open support manifest for writing");
-    f << "\xEF\xBB\xBF";
-    f << "file,row_count\n";
-    for (const auto& item : files) f << csvEscape(narrow(item.first)) << ',' << item.second << "\n";
-}
-
-void exportSupportForArtifactIdSql(sqlite3* db, const std::string& idSql, const std::wstring& baseCsvPath, std::vector<std::pair<std::wstring, std::size_t>>& manifestRows) {
-    const std::wstring rawKvPath = withSuffixBeforeExtension(baseCsvPath, L"_raw_key_values");
-    const std::wstring rawDatesPath = withSuffixBeforeExtension(baseCsvPath, L"_raw_date_candidates");
-    const std::wstring usagePath = withSuffixBeforeExtension(baseCsvPath, L"_usage_evidence");
-    const std::wstring timelinePath = withSuffixBeforeExtension(baseCsvPath, L"_timeline_events");
-
-    const std::string rawKvSql =
-        "SELECT r.raw_kv_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_id,r.parent_inode_num,r.full_path,r.record_state,r.field_name,r.field_value "
-        "FROM raw_key_values r JOIN artifacts a ON a.source_id=r.source_id AND a.store_guid=r.store_guid AND a.inode_num=r.inode_num "
-        "WHERE a.artifact_id IN (" + idSql + ") ORDER BY a.artifact_id,r.raw_kv_id";
-    manifestRows.push_back({rawKvPath, writeSqlCsv(db, rawKvPath, rawKvSql)});
-
-    const std::string rawDatesSql =
-        "SELECT raw_date_id,artifact_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,best_path,field_name,field_value,parsed_utc,parse_method,date_type,association_status,association_confidence "
-        "FROM raw_date_candidates WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,parsed_utc,raw_date_id";
-    manifestRows.push_back({rawDatesPath, writeSqlCsv(db, rawDatesPath, rawDatesSql)});
-
-    const std::string usageSql =
-        "SELECT usage_id,artifact_id,source_id,store_guid,inode_num,field_name,field_value,parsed_utc FROM usage_evidence "
-        "WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,parsed_utc,usage_id";
-    manifestRows.push_back({usagePath, writeSqlCsv(db, usagePath, usageSql)});
-
-    const std::string timelineSql =
-        "SELECT timeline_id,artifact_id,source_id,store_guid,inode_num,file_name,path,event_timestamp_utc,event_type,event_source_field,existence_status,deleted_or_orphaned_candidate "
-        "FROM timeline_events WHERE artifact_id IN (" + idSql + ") ORDER BY artifact_id,event_timestamp_utc,timeline_id";
-    manifestRows.push_back({timelinePath, writeSqlCsv(db, timelinePath, timelineSql)});
-}
 
 void exportCheckedArtifacts(HWND owner) {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting checked artifacts."); return; }
     if (gCheckedArtifactIds.empty()) { setReviewSummary(L"No checked artifacts to export."); return; }
-    std::wstring out = saveCsv(owner);
-    if (out.empty()) return;
-    try {
-        ReadOnlyDb db(gOpenedCaseDb);
-        std::ofstream f(narrow(out), std::ios::binary);
-        f << "\xEF\xBB\xBF";
-        const std::vector<const char*> cols = {
-            "artifact_id","tags","store_guid","inode_num","parent_inode_num","file_name","display_name","best_path",
-            "spotlight_display_path","normalized_mac_path","content_type","content_type_tree","last_updated_utc",
-            "first_used_candidate_utc","last_used_date_utc","used_dates_count","use_count_value","usage_field_summary",
-            "downloaded_date_utc","where_froms","is_mounted_volume_path","mounted_volume_name","external_volume_reason",
-            "existence_status","confidence"
-        };
-        for (size_t i = 0; i < cols.size(); ++i) { if (i) f << ','; f << csvEscape(cols[i]); }
-        f << "\n";
-        const std::string ids = checkedIdListSql();
-        std::string sql =
-            "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,spotlight_display_path,normalized_mac_path,"
-            "content_type,content_type_tree,last_updated_utc,first_used_candidate_utc,last_used_date_utc,used_dates_count,use_count_value,usage_field_summary,"
-            "downloaded_date_utc,where_froms,is_mounted_volume_path,mounted_volume_name,external_volume_reason,existence_status,confidence "
-            "FROM artifacts WHERE artifact_id IN (" + ids + ") ORDER BY artifact_id";
-        sqlite3_stmt* st = nullptr;
-        if (sqlite3_prepare_v2(db.get(), sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
-        size_t rows = 0;
-        while (true) {
-            int rc = sqlite3_step(st);
-            if (rc == SQLITE_DONE) break;
-            if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db.get()); sqlite3_finalize(st); throw std::runtime_error(msg); }
-            const std::string artifactId = stmtText(st, 0);
-            f << csvEscape(artifactId) << ',' << csvEscape(narrow(tagsForArtifact(db.get(), artifactId)));
-            for (int c = 1; c < sqlite3_column_count(st); ++c) {
-                f << ',';
-                const unsigned char* raw = sqlite3_column_text(st, c);
-                f << csvEscape(raw ? reinterpret_cast<const char*>(raw) : "");
-            }
-            f << "\n";
-            ++rows;
-        }
-        sqlite3_finalize(st);
-        std::vector<std::pair<std::wstring, std::size_t>> supportFiles;
-        exportSupportForArtifactIdSql(db.get(), ids, out, supportFiles);
-        const std::wstring manifestPath = withSuffixBeforeExtension(out, L"_support_manifest");
-        supportFiles.insert(supportFiles.begin(), {out, rows});
-        writeSupportManifest(manifestPath, supportFiles);
-        setReviewSummary(L"Exported " + std::to_wstring(static_cast<unsigned long long>(rows)) + L" checked artifact(s) plus raw support files. Manifest: " + manifestPath);
-    } catch (const std::exception& ex) {
-        setReviewSummary(L"ERROR exporting checked artifacts: " + widen(ex.what()));
+    bool expected = false;
+    if (!gExportCheckedActive.compare_exchange_strong(expected, true)) {
+        setReviewSummary(L"Export Checked is already running. Wait for the current export to finish.");
+        return;
     }
+    std::wstring out = saveCsv(owner);
+    if (out.empty()) { gExportCheckedActive.store(false); return; }
+
+    const std::wstring dbPath = gOpenedCaseDb;
+    const std::vector<long long> idsToExport(gCheckedArtifactIds.begin(), gCheckedArtifactIds.end());
+    setReviewSummary(L"Export Checked in progress... GUI remains active.");
+    if (gExportChecked) EnableWindow(gExportChecked, FALSE);
+
+    std::thread([owner, dbPath, idsToExport, out]() {
+        const GuiExportResult result = GuiExportWorker::exportCheckedArtifacts(dbPath, idsToExport, out);
+        auto* msg = new std::wstring(result.message);
+        if (!PostMessageW(owner, WM_EXPORT_CHECKED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
+    }).detach();
 }
 
 void exportTaggedArtifacts(HWND owner) {
     if (gOpenedCaseDb.empty()) { setTagSummary(L"Open a case database before exporting tagged artifacts."); return; }
     const long long tagId = selectedTagId();
     if (tagId < 0) { setTagSummary(L"Select a tag to export."); return; }
-    std::wstring out = saveCsv(owner);
-    if (out.empty()) return;
-    try {
-        ReadOnlyDb db(gOpenedCaseDb);
-        const std::string tagIdSql = std::to_string(tagId);
-        const std::string artifactIdSql = "SELECT artifact_id FROM artifact_tags WHERE tag_id=" + tagIdSql;
-        const std::string artifactSql =
-            "SELECT tag_id,tag_name,tagged_utc,artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,content_type,content_type_tree,logical_size_bytes,physical_size_bytes,usage_latest_utc,last_used_date_utc,modified_latest_utc,created_latest_utc,downloaded_latest_utc,where_froms,note_count,last_note_utc,last_note_text,confidence "
-            "FROM vw_tagged_artifacts WHERE tag_id=" + tagIdSql + " ORDER BY COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_used_date_utc,''), NULLIF(modified_latest_utc,''), artifact_id) DESC";
-        std::vector<std::pair<std::wstring, std::size_t>> supportFiles;
-        const std::size_t artifactRows = writeSqlCsv(db.get(), out, artifactSql);
-        supportFiles.push_back({out, artifactRows});
-        exportSupportForArtifactIdSql(db.get(), artifactIdSql, out, supportFiles);
-        const std::wstring notesPath = withSuffixBeforeExtension(out, L"_notes");
-        const std::string notesSql =
-            "SELECT n.note_id,n.created_utc,n.updated_utc,n.note_text,n.artifact_id,n.store_guid,n.inode_num,n.parent_inode_num,n.file_name,n.display_name,n.best_path,n.content_type,n.tags "
-            "FROM vw_artifact_notes n WHERE n.artifact_id IN (" + artifactIdSql + ") ORDER BY n.updated_utc DESC,n.created_utc DESC,n.note_id DESC";
-        supportFiles.push_back({notesPath, writeSqlCsv(db.get(), notesPath, notesSql)});
-        const std::wstring manifestPath = withSuffixBeforeExtension(out, L"_support_manifest");
-        writeSupportManifest(manifestPath, supportFiles);
-        setTagSummary(L"Exported tagged artifacts plus raw support files. Manifest: " + manifestPath);
-    } catch (const std::exception& ex) {
-        setTagSummary(L"ERROR exporting tagged artifacts: " + widen(ex.what()));
+    bool expected = false;
+    if (!gExportTaggedActive.compare_exchange_strong(expected, true)) {
+        setTagSummary(L"Export Tagged is already running. Wait for the current export to finish.");
+        return;
     }
+    std::wstring out = saveCsv(owner);
+    if (out.empty()) { gExportTaggedActive.store(false); return; }
+
+    const std::wstring dbPath = gOpenedCaseDb;
+    setTagSummary(L"Export Tagged in progress... GUI remains active.");
+    if (gTaggedList) EnableWindow(gTaggedList, FALSE);
+
+    std::thread([owner, dbPath, tagId, out]() {
+        const GuiExportResult result = GuiExportWorker::exportTaggedArtifacts(dbPath, tagId, out);
+        auto* msg = new std::wstring(result.message);
+        if (!PostMessageW(owner, WM_EXPORT_TAGGED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
+    }).detach();
 }
 
 
@@ -2158,25 +2007,27 @@ int selectedOrFocusedReviewRow() {
 std::wstring normalizeDetailValueForTable(std::wstring value) {
     if (value.empty()) return L"(empty)";
     std::wstring out;
-    out.reserve(value.size() + 32);
+    out.reserve(value.size());
     bool lastWasSpace = false;
     for (wchar_t ch : value) {
         if (ch == L'\r') continue;
-        if (ch == L'\n' || ch == L'\t') ch = L' ';
-        if (ch == L' ') {
+        const wchar_t current = (ch == L'\n' || ch == L'\t') ? L' ' : ch;
+        if (current == L' ') {
             if (lastWasSpace) continue;
             lastWasSpace = true;
         } else {
             lastWasSpace = false;
         }
-        out += ch;
+        out.push_back(current);
     }
-    while (!out.empty() && out.front() == L' ') out.erase(out.begin());
-    while (!out.empty() && out.back() == L' ') out.pop_back();
-    if (out.empty()) return L"(empty)";
-    return out;
+    if (!out.empty() && out.front() == L' ') out.erase(out.begin());
+    if (!out.empty() && out.back() == L' ') out.pop_back();
+    return out.empty() ? L"(empty)" : out;
 }
 
+// Detail-list helpers remain in the GUI translation unit because they operate
+// directly on the live Win32 ListView handle.  V1.0.22 restores only these
+// small rendering helpers; export/database work stays in gui_export_worker.
 void ensureDetailsListColumns() {
     if (!gRowDetails) return;
     HWND header = ListView_GetHeader(gRowDetails);
@@ -2197,8 +2048,8 @@ void resizeDetailsListColumns() {
     if (!gRowDetails) return;
     RECT rc{};
     GetClientRect(gRowDetails, &rc);
-    int width = std::max(500, static_cast<int>(rc.right - rc.left) - GetSystemMetrics(SM_CXVSCROLL) - 8);
-    int fieldW = std::min(360, std::max(210, width / 4));
+    const int width = std::max(500, static_cast<int>(rc.right - rc.left) - GetSystemMetrics(SM_CXVSCROLL) - 8);
+    const int fieldW = std::min(360, std::max(210, width / 4));
     ListView_SetColumnWidth(gRowDetails, 0, fieldW);
     ListView_SetColumnWidth(gRowDetails, 1, std::max(260, width - fieldW - 4));
 }
@@ -2220,8 +2071,8 @@ void addDetailsListRow(const std::wstring& field, const std::wstring& value, boo
     item.pszText = const_cast<LPWSTR>(field.c_str());
     item.lParam = section ? (1000 + static_cast<LPARAM>(group)) : 0;
     ListView_InsertItem(gRowDetails, &item);
-    std::wstring v = section ? L"" : normalizeDetailValueForTable(value);
-    ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(v.c_str()));
+    std::wstring normalizedValue = section ? L"" : normalizeDetailValueForTable(value);
+    ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(normalizedValue.c_str()));
 }
 
 void setDetailsPaneMessage(const std::wstring& message) {
@@ -3325,11 +3176,32 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } return 0; }
     case WM_SET_INGEST_PROGRESS: { int pct = static_cast<int>(wp); if (pct < 0) pct = 0; if (pct > 100) pct = 100; if (gIngestProgress) SendMessageW(gIngestProgress, PBM_SETPOS, static_cast<WPARAM>(pct), 0); return 0; }
     case WM_REVIEW_PAGE_RESULT: { completeReviewPageLoad(reinterpret_cast<ReviewPageResult*>(lp)); return 0; }
+    case WM_EXPORT_PAGE_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setReviewSummary(*s); delete s; }
+        gExportPageActive.store(false);
+        if (gExportPage) EnableWindow(gExportPage, TRUE);
+        return 0;
+    }
     case WM_EXPORT_FILTERED_RESULT: {
         auto* s = reinterpret_cast<std::wstring*>(lp);
         if (s) { setReviewSummary(*s); delete s; }
         gExportFilteredActive.store(false);
         if (gExportFiltered) EnableWindow(gExportFiltered, TRUE);
+        return 0;
+    }
+    case WM_EXPORT_CHECKED_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setReviewSummary(*s); delete s; }
+        gExportCheckedActive.store(false);
+        if (gExportChecked) EnableWindow(gExportChecked, TRUE);
+        return 0;
+    }
+    case WM_EXPORT_TAGGED_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setTagSummary(*s); delete s; }
+        gExportTaggedActive.store(false);
+        if (gTaggedList) EnableWindow(gTaggedList, TRUE);
         return 0;
     }
     case WM_SIZE: { layoutControls(hwnd); return 0; }

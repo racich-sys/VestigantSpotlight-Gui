@@ -229,6 +229,7 @@ std::vector<ApfsDirectoryEntry> ApfsVolumeReader::enumerateDirectory(std::uint64
             name.reserve(toCopy);
             for (std::size_t b = 0; b < toCopy; ++b) {
                 const unsigned char c = node[nameOff + b];
+                if (c == 0) break;
                 name.push_back((c >= 32 && c != 127) ? static_cast<char>(c) : '_');
             }
             ApfsDirectoryEntry entry;

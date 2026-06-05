@@ -169,7 +169,12 @@ int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
     fs::remove_all(out, ec);
-    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runIosAppDbParserSmokeTest() && runApfsModuleSmokeTest() && runLzfseCodecSmokeTest();
+    bool ok = true;
+    if (appVersion().empty()) { std::cerr << "App version empty\n"; ok = false; }
+    if (!runSchemaSmokeTest(out)) { std::cerr << "Schema smoke test failed\n"; ok = false; }
+    if (!runIosAppDbParserSmokeTest()) { std::cerr << "iOS app DB parser smoke test failed\n"; ok = false; }
+    if (!runApfsModuleSmokeTest()) { std::cerr << "APFS module smoke test failed\n"; ok = false; }
+    if (!runLzfseCodecSmokeTest()) { std::cerr << "Apple/lzfse codec smoke test failed\n"; ok = false; }
     if (!ok) {
         std::cerr << "VestigantSpotlightTests failed for version " << appVersion() << "\n";
         return 1;
