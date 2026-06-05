@@ -1,0 +1,20 @@
+V1.0.8 validation summary
+
+Package focus:
+- Modularize low-risk iOS app database parser classification/routing logic.
+- Add APFS/AFF4 reader module boundary for future lower-bound B-tree iterator work.
+- Preserve V1.0.7 AFF4/APFS copy-out behavior while reducing app_runner.cpp growth pressure.
+
+Checks performed in packaging environment:
+- C++ syntax checks for new modules: PASS
+- CMake configure/build: PASS
+- VestigantSpotlightTests: PASS
+- CLI version check: PASS, reports Vestigant Spotlight v1.0.8
+- V0_9 script/validation/codex artifact grep: PASS
+- self-test/fake-evidence route grep: PASS
+- ZIP integrity/SHA256: PASS
+
+Windows/MSVC validation required:
+- Build-V1_0_8.ps1
+- Run-V1_0_8-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+- GUI runtime smoke test

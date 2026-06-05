@@ -1,6 +1,8 @@
 #include "core/app_info.h"
 #include "db/case_db.h"
 #include "parsers/apfs_volume_reader.h"
+#include "parsers/apfs_aff4_reader.h"
+#include "parsers/ios_app_db_parser.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -23,6 +25,18 @@ fs::path testIoPath(const fs::path& p) {
 }
 
 
+bool runIosAppDbParserSmokeTest() {
+    if (iosAppDbRecordCategory("APPLE_MESSAGES", "message", "guid,text,date") != "MESSAGE_RECORDS") return false;
+    if (iosAppDbRecordCategory("WhatsApp", "ZWAMESSAGE", "ZMESSAGEDATE,ZTEXT") != "MESSAGE_RECORDS") return false;
+    if (!iosAppDbShouldUseWhatsappSpecialParser("WhatsApp", "ZWAMESSAGE", "MESSAGE_RECORDS")) return false;
+    if (!iosAppDbShouldUseAppleMessagesSpecialParser("APPLE_MESSAGES", "message", "MESSAGE_RECORDS")) return false;
+    if (!iosAppDbShouldUseKnowledgeCSpecialParser("KNOWLEDGEC_EVENTS")) return false;
+    if (iosAppDbBuildKnowledgeCTextSnippet("/app/intents", "com.example", "2024-01-01", "2024-01-02").find("bundle=com.example") == std::string::npos) return false;
+    const auto decision = iosAppDbBuildTableParseDecision("KnowledgeC", "ZOBJECT", "ZSTREAMNAME,ZSTARTDATE");
+    if (decision.recordCategory != "KNOWLEDGEC_EVENTS" || !decision.useKnowledgeCSpecialParser) return false;
+    return true;
+}
+
 bool runApfsModuleSmokeTest() {
     const std::uint64_t key = makeApfsSearchKey(15203ULL, kApfsTypeDirRecord);
     if (apfsKeyObjectId(key) != 15203ULL) return false;
@@ -36,6 +50,24 @@ bool runApfsModuleSmokeTest() {
     if (!apfsCopyStatusRepresentsCompleteFile("COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS")) return false;
     if (!apfsCopyStatusRepresentsPartialCandidate("COPIED_PARTIAL_COMPRESSED_OR_RSRC_FORK_CANDIDATE")) return false;
     if (apfsSanitizePathComponent("bad:/name") != "bad__name") return false;
+
+    ApfsAff4Reader reader;
+    const auto unavailable = reader.getDirectoryContents(2);
+    if (unavailable.lowerBoundReaderAvailable) return false;
+    if (unavailable.warnings.empty()) return false;
+
+    std::vector<unsigned char> node(64, 0);
+    const std::uint64_t raw = makeApfsSearchKey(2, kApfsTypeDirRecord);
+    for (int i = 0; i < 8; ++i) node[8 + i] = static_cast<unsigned char>((raw >> (i * 8)) & 0xff);
+    node[16] = 3; node[17] = 0; node[18] = 0; node[19] = 0; // name_len_and_hash = 3 including NUL
+    node[20] = 'x'; node[21] = 'y'; node[22] = 0;
+    const std::uint64_t child = 99;
+    for (int i = 0; i < 8; ++i) node[40 + i] = static_cast<unsigned char>((child >> (i * 8)) & 0xff);
+    ApfsBtreeKvLocation kv;
+    kv.keyOffset = 8; kv.keyLength = 15; kv.valueOffset = 40; kv.valueLength = 8; kv.rawKey = raw; kv.objectId = 2; kv.recordType = kApfsTypeDirRecord;
+    std::string detail;
+    auto entry = ApfsAff4Reader::decodeDirectoryRecord(node, kv, detail);
+    if (!entry || entry->parentId != 2 || entry->childFileId != 99 || entry->name != "xy") return false;
     return true;
 }
 
@@ -84,11 +116,11 @@ int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
     fs::remove_all(out, ec);
-    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runApfsModuleSmokeTest();
+    const bool ok = !appVersion().empty() && runSchemaSmokeTest(out) && runIosAppDbParserSmokeTest() && runApfsModuleSmokeTest();
     if (!ok) {
         std::cerr << "VestigantSpotlightTests failed for version " << appVersion() << "\n";
         return 1;
     }
-    std::cout << "Schema/APFS module smoke test passed for Vestigant Spotlight v" << appVersion() << ": " << out << "\n";
+    std::cout << "Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v" << appVersion() << ": " << out << "\n";
     return 0;
 }

@@ -104,7 +104,9 @@ REM ---------------------------------------------------------------------------
   echo src\ingest\store_discovery.cpp^|store_discovery.obj
   echo src\ingest\evidence_preservation.cpp^|evidence_preservation.obj
   echo src\parsers\native_storedb_parser.cpp^|native_storedb_parser.obj
+  echo src\parsers\ios_app_db_parser.cpp^|ios_app_db_parser.obj
   echo src\parsers\apfs_volume_reader.cpp^|apfs_volume_reader.obj
+  echo src\parsers\apfs_aff4_reader.cpp^|apfs_aff4_reader.obj
   echo src\enrich_sql\sqlite_enrichment.cpp^|sqlite_enrichment.obj
   echo src\export_sql\sqlite_exporter.cpp^|sqlite_exporter.obj
   echo src\app\case_store.cpp^|case_store.obj

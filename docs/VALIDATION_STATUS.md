@@ -1,3 +1,10 @@
+## V1.0.8
+
+- Added `src/parsers/ios_app_db_parser.h/.cpp` for iOS app database table classification, special-parser routing, and KnowledgeC snippet assembly.
+- Added `src/parsers/apfs_aff4_reader.h/.cpp` with a callback-driven APFS lower-bound directory-iterator scaffold and directory-record decoder.
+- Added parser module smoke tests and build integration for CMake and MSVC no-CMake builds.
+- Preserved V1.0.7 live AFF4/APFS copy-out behavior; live traversal replacement is delayed until iterator parity can be benchmarked.
+
 V1.0.7: Added dedicated APFS module boundary and fixed direct AFF4/APFS copy-status/staging classification.
 
 # Vestigant Spotlight V1.0.0 Notes

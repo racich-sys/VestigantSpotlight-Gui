@@ -13,6 +13,7 @@
 #include "ingest/store_discovery.h"
 #include "parsers/native_storedb_parser.h"
 #include "parsers/apfs_volume_reader.h"
+#include "parsers/ios_app_db_parser.h"
 #include <fstream>
 #include <array>
 #include <stdexcept>
@@ -3866,72 +3867,9 @@ std::string sqlIdentLocal(const std::string& name) {
 }
 
 std::string classifyIosAppDbRecordTable(const std::string& category, const std::string& tableName, const std::string& columns) {
-    const std::string c = toLower(category);
-    const std::string t = toLower(tableName);
-    const std::string cols = toLower(columns);
-    if (c.find("knowledgec") != std::string::npos || c.find("coreduet") != std::string::npos) {
-        if (t == "zobject") return "KNOWLEDGEC_EVENTS";
-        if (t == "zstructuredmetadata") return "KNOWLEDGEC_METADATA";
-        if (t.find("zobject") != std::string::npos || cols.find("zstreamname") != std::string::npos) return "KNOWLEDGEC_EVENTS";
-        return "KNOWLEDGEC_SUPPORT_TABLE";
-    }
-    if (c.find("apple_messages") != std::string::npos) {
-        // SMS.db/iMessage needs schema-specific handling.  The primary message table is
-        // joined to chat, attachment, and handle tables below; join/support tables are
-        // not independently promoted to MESSAGE_RECORDS because that overstates sparse
-        // relationship rows as messages.
-        if (t == "message") return "MESSAGE_RECORDS";
-        if (t == "attachment") return "MESSAGE_ATTACHMENTS";
-        if (t == "handle" || t == "chat") return "MESSAGE_PARTICIPANTS";
-        if (t == "recoverable_message_part" || t == "deleted_messages" ||
-            t == "sync_deleted_messages" || t == "chat_recoverable_message_join" ||
-            t == "unsynced_removed_recoverable_messages" || t.find("recoverable") != std::string::npos) {
-            return "MESSAGE_DELETED_OR_RECOVERABLE";
-        }
-        if (t.find("_join") != std::string::npos) return "MESSAGES_JOIN_TABLE";
-        if (t.find("message") != std::string::npos || t.find("chat") != std::string::npos || t.find("sync_deleted") != std::string::npos) return "MESSAGES_SUPPORT_TABLE";
-        return "MESSAGES_SUPPORT_TABLE";
-    }
-    if (c.find("call_history") != std::string::npos) {
-        if (t.find("call") != std::string::npos || cols.find("call") != std::string::npos) return "CALL_RECORDS";
-        if (t.find("contact") != std::string::npos || t.find("handle") != std::string::npos || t.find("participant") != std::string::npos) return "CALL_PARTICIPANTS";
-        return "CALL_SUPPORT_TABLE";
-    }
-    if (c.find("whatsapp") != std::string::npos) {
-        if (t == "zwamessage" || t.find("message") != std::string::npos || cols.find("zmessagedate") != std::string::npos) return "MESSAGE_RECORDS";
-        if (t == "zwamediaitem" || t.find("media") != std::string::npos || t.find("attachment") != std::string::npos || t == "zwavcardmention") return "MESSAGE_ATTACHMENTS";
-        if (t == "zwachatsession" || t.find("chat") != std::string::npos || t.find("session") != std::string::npos || t.find("thread") != std::string::npos) return "CHAT_RECORDS";
-        if (t == "zwaaddressbookcontact" || t == "zwaprofilepushname" || t == "zwagroupmember" || t.find("contact") != std::string::npos || t.find("member") != std::string::npos) return "MESSAGE_PARTICIPANTS";
-        if (t.find("call") != std::string::npos || cols.find("zcall") != std::string::npos) return "CALL_RECORDS";
-        return "COMMUNICATIONS_SUPPORT_TABLE";
-    }
-    if (c.find("signal") != std::string::npos || c.find("telegram") != std::string::npos) {
-        if (t.find("message") != std::string::npos || cols.find("message") != std::string::npos) return "MESSAGE_RECORDS";
-        if (t.find("chat") != std::string::npos || t.find("session") != std::string::npos || t.find("thread") != std::string::npos) return "CHAT_RECORDS";
-        if (t.find("media") != std::string::npos || t.find("attachment") != std::string::npos) return "MESSAGE_ATTACHMENTS";
-        return "COMMUNICATIONS_SUPPORT_TABLE";
-    }
-    if (c.find("safari") != std::string::npos || c.find("chrome") != std::string::npos || c.find("webkit") != std::string::npos) {
-        if (t.find("history") != std::string::npos || t.find("url") != std::string::npos || cols.find("url") != std::string::npos) return "WEB_HISTORY";
-        if (t.find("visit") != std::string::npos) return "WEB_VISITS";
-        if (t.find("cache") != std::string::npos) return "WEB_CACHE";
-        return "WEB_SUPPORT_TABLE";
-    }
-    if (c.find("mail") != std::string::npos) {
-        if (t.find("message") != std::string::npos || t.find("mail") != std::string::npos) return "MAIL_RECORDS";
-        if (t.find("attach") != std::string::npos) return "MESSAGE_ATTACHMENTS";
-        return "MAIL_SUPPORT_TABLE";
-    }
-    if (c.find("calendar") != std::string::npos) {
-        if (t.find("event") != std::string::npos || t.find("calendar") != std::string::npos) return "CALENDAR_RECORDS";
-        return "CALENDAR_SUPPORT_TABLE";
-    }
-    if (c.find("contact") != std::string::npos) {
-        if (t.find("person") != std::string::npos || t.find("contact") != std::string::npos || t.find("address") != std::string::npos) return "CONTACT_RECORDS";
-        return "CONTACT_SUPPORT_TABLE";
-    }
-    return "DATABASE_SUPPORT_TABLE";
+    return iosAppDbRecordCategory(category, tableName, columns);
 }
+
 
 long long sqliteScalarCount(sqlite3* ext, const std::string& tableName) {
     std::string sql = "SELECT COUNT(*) FROM " + sqlIdentLocal(tableName);
@@ -4475,35 +4413,21 @@ std::size_t parseWhatsAppIosTableRows(const std::string& sourceId,
 }
 
 bool shouldUseWhatsappSpecialParser(const IosAppDbInv& inv, const std::string& table, const std::string& recCat) {
-    const std::string c = toLower(inv.cat);
-    if (c.find("whatsapp") == std::string::npos) return false;
-    const std::string t = toLower(table);
-    if (recCat == "MESSAGE_RECORDS" || recCat == "MESSAGE_ATTACHMENTS" || recCat == "MESSAGE_PARTICIPANTS" || recCat == "CHAT_RECORDS" || recCat == "CALL_RECORDS") return true;
-    return t.find("zwa") == 0;
+    return iosAppDbShouldUseWhatsappSpecialParser(inv.cat, table, recCat);
 }
 
 bool shouldUseAppleMessagesSpecialParser(const IosAppDbInv& inv, const std::string& table, const std::string& recCat) {
-    const std::string c = toLower(inv.cat);
-    const std::string t = toLower(table);
-    if (c.find("apple_messages") == std::string::npos) return false;
-    return (t == "message" && recCat == "MESSAGE_RECORDS") ||
-           (t == "attachment" && recCat == "MESSAGE_ATTACHMENTS") ||
-           ((t == "handle" || t == "chat") && recCat == "MESSAGE_PARTICIPANTS");
+    return iosAppDbShouldUseAppleMessagesSpecialParser(inv.cat, table, recCat);
 }
 
 
 std::string buildKnowledgeCTextSnippet(const std::string& stream,
                                        const std::string& bundleId,
-                                       const std::string& creationDate,
+                                       const std::string& startOrCreateDate,
                                        const std::string& endDate) {
-    std::string out;
-    if (!stream.empty()) out += "stream=" + stream;
-    if (!bundleId.empty()) out += (out.empty() ? "" : "; ") + std::string("bundle_id=") + bundleId;
-    if (!creationDate.empty()) out += (out.empty() ? "" : "; ") + std::string("creation_raw=") + creationDate;
-    if (!endDate.empty()) out += (out.empty() ? "" : "; ") + std::string("end_raw=") + endDate;
-    if (out.size() > 2000) out.resize(2000);
-    return out;
+    return iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, startOrCreateDate, endDate);
 }
+
 
 std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
                                           const IosAppDbInv& inv,

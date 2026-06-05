@@ -1,6 +1,6 @@
 #include "core/app_info.h"
 namespace vestigant::spotlight {
 std::string appName() { return "Vestigant Spotlight"; }
-std::string appVersion() { return "1.0.7"; }
+std::string appVersion() { return "1.0.8"; }
 std::string appTitle() { return appName() + " v" + appVersion(); }
 }
