@@ -46,6 +46,7 @@ struct RunOptions {
     bool experimentalFullNativeValues = false;
     bool decodeCoreNativeValues = false;
     bool diagnosticFullNativeDb = false; // opt-in: persist all native key/value rows for support/debug; normal iOS runs keep only high-value rows.
+    bool aff4ApfsDiagnosticOutputs = false; // opt-in: write heavy AFF4/APFS structural probe CSVs; normal source-probe keeps stage/copy/summary outputs only.
     bool materializeIosFfsInventory = false; // opt-in support mode: persist full iOS FFS inventory rows into the active case DB. Normal Spotlight-first runs keep/cache-reference only.
     bool materializeIosAppDbRecords = false; // opt-in support mode: parse/persist app DB record rows. Normal Spotlight-first runs skip broad app DB materialization.
     std::size_t maxNativeRecords = 0;  // 0 = unlimited; diagnostics+full-native defaults to a bounded sample

@@ -18,14 +18,14 @@ function Parse-DecmpfsAlgorithm { param([string]$Hex) if([string]::IsNullOrWhite
 $FileComparePath = Require-File (Join-Path $CompareRoot "aff4_apfs_external_spotlight_file_compare.csv")
 $StagePath = Require-File (Join-Path $CaseRoot "aff4_apfs_extracted_storev2_stage_files.csv")
 $CopyOutPath = Require-File (Join-Path $CaseRoot "aff4_apfs_spotlight_file_copy_out.csv")
-$XattrPath = Require-File (Join-Path $CaseRoot "aff4_apfs_spotlight_xattr_probe.csv")
+$XattrPath = Join-Path $CaseRoot "aff4_apfs_spotlight_xattr_probe.csv"
 $OutputCsv = Join-Path $CompareRoot ($OutputPrefix + "_diagnostics.csv")
 $OutputJson = Join-Path $CompareRoot ($OutputPrefix + "_diagnostics_summary.json")
 $OutputMd = Join-Path $CompareRoot ($OutputPrefix + "_diagnostics.md")
 
 $stageByRel=@{}; Import-Csv -LiteralPath $StagePath | ForEach-Object { Add-List $stageByRel (Normalize-RelPath $_.staged_relative_path) $_; Add-List $stageByRel (StoreKeyFromParts $_.storev2_group_name $_.storev2_relative_path) $_ }
 $copyByRel=@{}; $copyByChild=@{}; Import-Csv -LiteralPath $CopyOutPath | ForEach-Object { Add-List $copyByRel (StoreKeyFromParts $_.storev2_group_name $_.storev2_relative_path) $_; Add-List $copyByChild ([string]$_.target_child_file_id) $_ }
-$xattrByFile=@{}; Import-Csv -LiteralPath $XattrPath | ForEach-Object { Add-List $xattrByFile ([string]$_.file_object_id) $_ }
+$xattrByFile=@{}; if (Test-Path -LiteralPath $XattrPath -PathType Leaf) { Import-Csv -LiteralPath $XattrPath | ForEach-Object { Add-List $xattrByFile ([string]$_.file_object_id) $_ } }
 
 $headers=@("status","external_relative_path","external_size","vestigant_size","external_sha256","vestigant_sha256","stage_match_count","staged_child_file_id","staged_parent_object_id","staged_source_copy_status","staged_source_validation_status","stage_status","stage_notes","copyout_candidate_count","copyout_exact_hash_candidate_count","copyout_exact_size_candidate_count","copyout_statuses","copyout_validation_statuses","copyout_logical_size_sources","copyout_child_file_ids","copyout_resourcefork_or_compressed_candidate_count","xattr_names","decmpfs_algorithm_labels","resourcefork_stream_ids","resourcefork_stream_sizes","resourcefork_storage","diagnostic_classification")
 $writer = New-Object System.IO.StreamWriter($OutputCsv,$false,(New-Object System.Text.UTF8Encoding($false)))
@@ -63,7 +63,7 @@ try {
     }
 } finally { $writer.Close() }
 
-$summary=[ordered]@{ generated_utc=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); case_root=$CaseRoot; compare_root=$CompareRoot; status_filter=$StatusFilter; diagnostic_row_count=$rowCount; by_status=@(); by_classification=@() }
+$summary=[ordered]@{ generated_utc=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); case_root=$CaseRoot; compare_root=$CompareRoot; status_filter=$StatusFilter; diagnostic_row_count=$rowCount; xattr_probe_available=(Test-Path -LiteralPath $XattrPath -PathType Leaf); by_status=@(); by_classification=@() }
 foreach($k in ($statusCounts.Keys | Sort-Object)){ $summary.by_status += [ordered]@{ status=$k; count=$statusCounts[$k] } }
 foreach($k in ($classCounts.Keys | Sort-Object)){ $summary.by_classification += [ordered]@{ diagnostic_classification=$k; count=$classCounts[$k] } }
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $OutputJson -Encoding UTF8

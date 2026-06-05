@@ -4,8 +4,10 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace vestigant::spotlight {
@@ -46,6 +48,17 @@ struct ApfsExtractionStatus {
     std::string statusClass;
 };
 
+struct ApfsVolumeBtreeKvLocation {
+    std::uint32_t entryIndex = 0;
+    std::size_t keyOffset = 0;
+    std::size_t keyLength = 0;
+    std::size_t valueOffset = 0;
+    std::size_t valueLength = 0;
+    std::uint64_t rawKey = 0;
+    std::uint64_t objectId = 0;
+    std::uint8_t recordType = 0;
+};
+
 struct ApfsDirectoryIteratorBenchmarks {
     std::uint64_t lowerBoundLookups = 0;
     std::uint64_t leafNodesVisited = 0;
@@ -71,6 +84,17 @@ bool apfsCopyStatusRepresentsPartialCandidate(const std::string& copyStatus);
 
 class ApfsVolumeReader {
 public:
+    using NodeBytes = std::vector<unsigned char>;
+    using OmapResolver = std::function<std::uint64_t(std::uint64_t virtualOid)>;
+    using NodeReader = std::function<NodeBytes(std::uint64_t physicalAddressOrOid)>;
+    using LeafLocator = std::function<std::uint64_t(std::uint64_t searchKey)>;
+    using KvDecoder = std::function<bool(const NodeBytes& node,
+                                         std::uint32_t entryIndex,
+                                         ApfsVolumeBtreeKvLocation& out,
+                                         std::string& detail)>;
+    using NextLeafReader = std::function<std::uint64_t(const NodeBytes& node,
+                                                       std::uint64_t currentLeafPhysicalAddressOrOid)>;
+
     ApfsVolumeReader(std::string aff4StreamPath,
                      std::uint64_t volumeRootTreeOid,
                      std::uint64_t omapRootOid,
@@ -80,9 +104,15 @@ public:
     std::uint64_t volumeRootTreeOid() const noexcept { return volumeRootTreeOid_; }
     std::uint64_t omapRootOid() const noexcept { return omapRootOid_; }
 
-    // V1.0.7 deliberately exposes the production API before moving the current
-    // app_runner implementation.  The AFF4/APFS byte reader is still owned by the
-    // existing guarded pipeline; these methods are integration points for V1.0.8+.
+    void setOmapResolver(OmapResolver fn) { omapResolver_ = std::move(fn); }
+    void setNodeReader(NodeReader fn) { nodeReader_ = std::move(fn); }
+    void setLeafLocator(LeafLocator fn) { leafLocator_ = std::move(fn); }
+    void setKvDecoder(KvDecoder fn) { kvDecoder_ = std::move(fn); }
+    void setNextLeafReader(NextLeafReader fn) { nextLeafReader_ = std::move(fn); }
+
+    // Lower-bound directory iterator API.  It can be used immediately in tests
+    // with injected callbacks and can later be bound to the live AFF4/APFS
+    // block reader without changing app_runner orchestration.
     std::vector<ApfsDirectoryEntry> enumerateDirectory(std::uint64_t directoryInodeId);
     std::optional<std::uint64_t> resolvePathToInode(const std::string& absolutePath);
     bool extractFileToDisk(std::uint64_t fileInodeId, const std::filesystem::path& destinationPath);
@@ -94,6 +124,11 @@ private:
     std::uint64_t volumeRootTreeOid_ = 0;
     std::uint64_t omapRootOid_ = 0;
     Logger* log_ = nullptr;
+    OmapResolver omapResolver_;
+    NodeReader nodeReader_;
+    LeafLocator leafLocator_;
+    KvDecoder kvDecoder_;
+    NextLeafReader nextLeafReader_;
     ApfsDirectoryIteratorBenchmarks benchmarks_;
 };
 

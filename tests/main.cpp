@@ -84,6 +84,21 @@ bool runApfsModuleSmokeTest() {
     kv.keyOffset = decodedKeyAbs; kv.keyLength = decodedKeyLen; kv.valueOffset = decodedValAbs; kv.valueLength = decodedValLen; kv.rawKey = raw; kv.objectId = 2; kv.recordType = kApfsTypeDirRecord;
     auto entry = ApfsAff4Reader::decodeDirectoryRecord(node, kv, detail);
     if (!entry || entry->parentId != 2 || entry->childFileId != 99 || entry->name != "xy") return false;
+
+    ApfsVolumeReader volumeReader("synthetic.aff4", 1234, 5678, nullptr);
+    volumeReader.setLeafLocator([](std::uint64_t){ return 77ULL; });
+    volumeReader.setNodeReader([&](std::uint64_t oid){ return oid == 77ULL ? node : std::vector<unsigned char>{}; });
+    volumeReader.setKvDecoder([&](const std::vector<unsigned char>& n, std::uint32_t idx, ApfsVolumeBtreeKvLocation& out, std::string& d){
+        std::size_t ta=0, ka=0, kl=0, va=0, vl=0;
+        if (!apfsAff4DecodeGenericBtreeKvAbs(n, idx, ta, ka, kl, va, vl, d)) return false;
+        out.entryIndex = idx; out.keyOffset = ka; out.keyLength = kl; out.valueOffset = va; out.valueLength = vl;
+        out.rawKey = raw; out.objectId = 2; out.recordType = kApfsTypeDirRecord;
+        return true;
+    });
+    const auto children = volumeReader.enumerateDirectory(2);
+    if (children.size() != 1 || children[0].childFileId != 99 || children[0].name != "xy") return false;
+    const auto resolved = volumeReader.resolvePathToInode("/xy");
+    if (!resolved || *resolved != 99) return false;
     return true;
 }
 

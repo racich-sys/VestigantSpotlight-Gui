@@ -9507,6 +9507,7 @@ void CaseDatabase::insertCaseInfo(const RunOptions& opt) {
     put("skip_container_hash", opt.skipContainerHash ? "true" : "false");
     put("force_container_hash", opt.forceContainerHash ? "true" : "false");
     put("diagnostic_full_native_db", opt.diagnosticFullNativeDb ? "true" : "false");
+    put("aff4_apfs_diagnostic_outputs", opt.aff4ApfsDiagnosticOutputs ? "true" : "false");
     put("materialize_ios_ffs_inventory", opt.materializeIosFfsInventory ? "true" : "false");
     put("materialize_ios_app_db_records", opt.materializeIosAppDbRecords ? "true" : "false");
     put("max_native_records", std::to_string(opt.maxNativeRecords));

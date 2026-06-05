@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <set>
 
 namespace vestigant::spotlight {
 namespace {
@@ -153,17 +154,126 @@ ApfsVolumeReader::ApfsVolumeReader(std::string aff4StreamPath,
       log_(log) {}
 
 std::vector<ApfsDirectoryEntry> ApfsVolumeReader::enumerateDirectory(std::uint64_t directoryInodeId) {
+    std::vector<ApfsDirectoryEntry> children;
+    const std::uint64_t searchKey = makeApfsSearchKey(directoryInodeId, kApfsTypeDirRecord);
     benchmarks_.lowerBoundLookups++;
-    if (log_) {
-        log_->info("APFS module directory iterator API not yet wired to AFF4 block reader; requested inode=" + std::to_string(directoryInodeId));
+    if (!nodeReader_ || !kvDecoder_) {
+        benchmarks_.malformedNodeStops++;
+        if (log_) log_->warn("APFS directory iterator cannot run: node reader or key/value decoder is not configured.");
+        return children;
     }
-    return {};
+
+    std::uint64_t currentNode = 0;
+    if (leafLocator_) {
+        currentNode = leafLocator_(searchKey);
+    } else {
+        currentNode = omapResolver_ ? omapResolver_(volumeRootTreeOid_) : volumeRootTreeOid_;
+    }
+    if (currentNode == 0) return children;
+
+    std::set<std::uint64_t> visited;
+    while (currentNode != 0) {
+        if (!visited.insert(currentNode).second) {
+            benchmarks_.cycleStops++;
+            if (log_) log_->warn("APFS B-tree cycle detected during directory enumeration at node " + std::to_string(currentNode));
+            break;
+        }
+        NodeBytes node = nodeReader_(currentNode);
+        if (node.size() < 64U) {
+            benchmarks_.malformedNodeStops++;
+            if (log_) log_->warn("APFS B-tree node too small during directory enumeration at node " + std::to_string(currentNode));
+            break;
+        }
+        const std::uint16_t level = static_cast<std::uint16_t>(node[34]) | (static_cast<std::uint16_t>(node[35]) << 8U);
+        const std::uint32_t nkeys = static_cast<std::uint32_t>(node[36]) |
+                                    (static_cast<std::uint32_t>(node[37]) << 8U) |
+                                    (static_cast<std::uint32_t>(node[38]) << 16U) |
+                                    (static_cast<std::uint32_t>(node[39]) << 24U);
+        if (level > 0U && !leafLocator_) {
+            // Branch descent is intentionally callback-driven.  The current
+            // APFS module knows the deterministic search key and record
+            // termination rules, while the live reader supplies the OMAP and
+            // branch child decoding details.
+            benchmarks_.malformedNodeStops++;
+            if (log_) log_->warn("APFS branch node encountered without leaf locator callback; lower-bound lookup cannot continue safely.");
+            break;
+        }
+
+        bool passedTarget = false;
+        for (std::uint32_t i = 0; i < nkeys; ++i) {
+            ApfsVolumeBtreeKvLocation kv;
+            kv.entryIndex = i;
+            std::string detail;
+            if (!kvDecoder_(node, i, kv, detail)) continue;
+            if (kv.rawKey != 0) {
+                kv.objectId = apfsKeyObjectId(kv.rawKey);
+                kv.recordType = apfsKeyRecordType(kv.rawKey);
+            }
+            if (kv.objectId > directoryInodeId) {
+                passedTarget = true;
+                break;
+            }
+            if (kv.objectId != directoryInodeId || kv.recordType != kApfsTypeDirRecord) continue;
+            if (kv.valueOffset + 8U > node.size() || kv.keyOffset + 12U > node.size() || kv.keyLength < 12U) continue;
+            std::uint64_t childId = 0;
+            for (std::size_t b = 0; b < 8U; ++b) childId |= (static_cast<std::uint64_t>(node[kv.valueOffset + b]) << (b * 8U));
+            const std::uint32_t nameLenAndHash = static_cast<std::uint32_t>(node[kv.keyOffset + 8U]) |
+                                                 (static_cast<std::uint32_t>(node[kv.keyOffset + 9U]) << 8U) |
+                                                 (static_cast<std::uint32_t>(node[kv.keyOffset + 10U]) << 16U) |
+                                                 (static_cast<std::uint32_t>(node[kv.keyOffset + 11U]) << 24U);
+            const std::size_t nameLen = static_cast<std::size_t>(nameLenAndHash & 0x000003ffU);
+            const std::size_t nameOff = kv.keyOffset + 12U;
+            const std::size_t available = (kv.keyLength > 12U && nameOff <= node.size()) ? std::min<std::size_t>(kv.keyLength - 12U, node.size() - nameOff) : 0U;
+            std::string name;
+            const std::size_t toCopy = std::min(nameLen, available);
+            name.reserve(toCopy);
+            for (std::size_t b = 0; b < toCopy; ++b) {
+                const unsigned char c = node[nameOff + b];
+                name.push_back((c >= 32 && c != 127) ? static_cast<char>(c) : '_');
+            }
+            ApfsDirectoryEntry entry;
+            entry.parentId = directoryInodeId;
+            entry.childFileId = childId;
+            entry.name = name;
+            entry.provenance = "apfs_volume_reader_lower_bound_directory_iterator";
+            children.push_back(std::move(entry));
+        }
+        benchmarks_.leafNodesVisited++;
+        if (passedTarget) break;
+        if (!nextLeafReader_) break;
+        const std::uint64_t nextNode = nextLeafReader_(node, currentNode);
+        if (nextNode == 0 || nextNode == currentNode) break;
+        benchmarks_.nextLeafTransitions++;
+        currentNode = nextNode;
+    }
+    benchmarks_.directoryEntriesReturned = static_cast<std::uint64_t>(children.size());
+    return children;
 }
 
 std::optional<std::uint64_t> ApfsVolumeReader::resolvePathToInode(const std::string& absolutePath) {
     if (absolutePath.empty() || absolutePath == "/") return kApfsRootDirectoryInode;
-    if (log_) log_->info("APFS module path resolver API not yet wired to AFF4 block reader; requested path=" + absolutePath);
-    return std::nullopt;
+    std::uint64_t current = kApfsRootDirectoryInode;
+    std::size_t pos = 0;
+    while (pos < absolutePath.size()) {
+        while (pos < absolutePath.size() && absolutePath[pos] == '/') ++pos;
+        if (pos >= absolutePath.size()) break;
+        std::size_t next = absolutePath.find('/', pos);
+        std::string part = absolutePath.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        if (part.empty()) break;
+        const std::string want = asciiLowerLocal(part);
+        bool found = false;
+        for (const auto& child : enumerateDirectory(current)) {
+            if (asciiLowerLocal(child.name) == want) {
+                current = child.childFileId;
+                found = true;
+                break;
+            }
+        }
+        if (!found) return std::nullopt;
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return current;
 }
 
 bool ApfsVolumeReader::extractFileToDisk(std::uint64_t fileInodeId, const std::filesystem::path& destinationPath) {

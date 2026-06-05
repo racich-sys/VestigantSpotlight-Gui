@@ -206,10 +206,11 @@ if (Test-Path -LiteralPath $ExtractedSpotlightRoot) {
     Get-ChildItem -LiteralPath $ExtractedSpotlightRoot -Recurse -File -ErrorAction SilentlyContinue |
         Sort-Object FullName |
         ForEach-Object {
+            $rel = $_.FullName.Substring($ExtractedSpotlightRoot.Length).TrimStart([char]'\',[char]'/')
+            if ($rel -like "ApfsCopyOutByTarget\*" -or $rel -like "ApfsCopyOutByTarget/*") { return }
             if ($extractCopied -ge 300) { return }
             if ($_.Length -gt 67108864) { return }
             if (($extractBytes + $_.Length) -gt 134217728) { return }
-            $rel = $_.FullName.Substring($ExtractedSpotlightRoot.Length).TrimStart([char]'\',[char]'/')
             $dest = Join-Path (Join-Path $UploadRoot "ExtractedSpotlight") $rel
             $destParent = Split-Path -Parent $dest
             if ($destParent) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }

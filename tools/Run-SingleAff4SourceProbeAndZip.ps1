@@ -16,6 +16,7 @@ param(
     [string]$ExternalCompareOutRoot = "",
     [string]$UploadWorkRoot = "",
     [switch]$SkipExternalSpotlightHash,
+    [switch]$DiagnosticOutputs,
     [int]$CliTimeoutMinutes = 90
 )
 
@@ -283,9 +284,12 @@ $args = @(
     "--input", $item.FullName,
     "--out", $Out,
     "--reader-tools", $ReaderToolsRoot,
-    "--strict-single-aff4",
-    "--verbose"
+    "--strict-single-aff4"
 )
+if ($DiagnosticOutputs) {
+    $args += "--aff4-apfs-diagnostic-outputs"
+    $args += "--verbose"
+}
 if ($ForceContainerHash) { $args += "--force-container-hash" }
 if ($FullScan) { $args += "--full-scan" }
 if ($EnableAff4DynamicProbe -or $EnableAff4VirtualApfsProbe) { $args += "--enable-aff4-dynamic-probe" }
@@ -321,7 +325,7 @@ if ($exitCode -ne 0 -and !$ProbeTimedOut) {
         "ExitCode: $exitCode",
         "Case output: $Out",
         "Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
-        "This V1.0.11 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
+        "This V1.0.13 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
     ) | Set-Content -LiteralPath $failureNote -Encoding UTF8
     if (!$SkipUploadZip) {
         try {
@@ -364,18 +368,6 @@ $expectedRunOutputs = @(
     "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md",
     "aff4_apfs_v1_diagnostic_checklist.csv",
     "aff4_apfs_v1_diagnostic_plan_summary.json",
-    "aff4_apfs_spotlight_target_scan.csv",
-    "aff4_apfs_spotlight_target_scan_summary.json",
-    "aff4_apfs_logical_directory_walk.csv",
-    "aff4_apfs_logical_directory_walk_summary.json",
-    "aff4_apfs_spotlight_file_extent_probe.csv",
-    "aff4_apfs_spotlight_file_extent_probe_summary.json",
-    "aff4_apfs_spotlight_inode_probe.csv",
-    "aff4_apfs_spotlight_inode_probe_summary.json",
-        "aff4_apfs_spotlight_xattr_probe.csv",
-        "aff4_apfs_spotlight_xattr_probe_summary.json",
-        "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md",
-    "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md",
     "aff4_apfs_spotlight_file_copy_out.csv",
     "aff4_apfs_spotlight_file_copy_out_summary.json",
     "AFF4_APFS_SPOTLIGHT_FILE_COPY_OUT.md",
@@ -394,6 +386,22 @@ $expectedRunOutputs = @(
     "aff4_apfs_staged_storev2_raw_date_candidates_sample.csv",
     "aff4_apfs_staged_storev2_raw_failures_sample.csv"
 )
+if ($DiagnosticOutputs) {
+    $expectedRunOutputs += @(
+        "aff4_apfs_spotlight_target_scan.csv",
+        "aff4_apfs_spotlight_target_scan_summary.json",
+        "aff4_apfs_logical_directory_walk.csv",
+        "aff4_apfs_logical_directory_walk_summary.json",
+        "aff4_apfs_spotlight_file_extent_probe.csv",
+        "aff4_apfs_spotlight_file_extent_probe_summary.json",
+        "aff4_apfs_spotlight_inode_probe.csv",
+        "aff4_apfs_spotlight_inode_probe_summary.json",
+        "aff4_apfs_spotlight_xattr_probe.csv",
+        "aff4_apfs_spotlight_xattr_probe_summary.json",
+        "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md",
+        "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md"
+    )
+}
 $missingRunOutputs = New-Object System.Collections.Generic.List[string]
 foreach ($relative in $expectedRunOutputs) {
     try {
@@ -483,26 +491,32 @@ if (!$SkipUploadZip) {
         "aff4_apfs_v1_diagnostic_checklist.csv",
         "aff4_apfs_v1_diagnostic_plan_summary.json",
         "run_status.txt",
-        "aff4_apfs_spotlight_target_scan.csv",
-        "aff4_apfs_logical_directory_walk.csv",
-        "aff4_apfs_logical_directory_walk_summary.json",
-        "aff4_apfs_spotlight_file_extent_probe.csv",
-        "aff4_apfs_spotlight_inode_probe.csv",
-        "aff4_apfs_spotlight_inode_probe_summary.json",
-        "aff4_apfs_spotlight_xattr_probe.csv",
-        "aff4_apfs_spotlight_xattr_probe_summary.json",
-        "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md",
-        "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md",
         "wrapper_case_path_manifest.txt",
         "UPLOAD_MANIFEST.txt",
         "aff4_apfs_spotlight_file_copy_out.csv",
+        "aff4_apfs_spotlight_file_copy_out_summary.json",
         "aff4_apfs_extracted_storev2_stage_groups.csv",
+        "aff4_apfs_extracted_storev2_stage_files.csv",
         "aff4_apfs_extracted_storev2_stage_summary.json",
         "aff4_apfs_staged_storev2_parser_probe.csv",
         "aff4_apfs_staged_storev2_parser_probe_summary.json",
         "aff4_apfs_staged_storev2_enrichment_probe_summary.json",
         "aff4_apfs_staged_storev2_artifacts_sample.csv"
     )
+    if ($DiagnosticOutputs) {
+        $expectedZipEntries += @(
+            "aff4_apfs_spotlight_target_scan.csv",
+            "aff4_apfs_logical_directory_walk.csv",
+            "aff4_apfs_logical_directory_walk_summary.json",
+            "aff4_apfs_spotlight_file_extent_probe.csv",
+            "aff4_apfs_spotlight_inode_probe.csv",
+            "aff4_apfs_spotlight_inode_probe_summary.json",
+            "aff4_apfs_spotlight_xattr_probe.csv",
+            "aff4_apfs_spotlight_xattr_probe_summary.json",
+            "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md",
+            "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md"
+        )
+    }
     if (![string]::IsNullOrWhiteSpace($ExternalSpotlightRoot) -and $CanRunExternalCompare) {
         $expectedZipEntries += "aff4_apfs_external_spotlight_compare_summary.json"
         $expectedZipEntries += "AFF4_APFS_EXTERNAL_SPOTLIGHT_COMPARE.md"

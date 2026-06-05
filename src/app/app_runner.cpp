@@ -3867,11 +3867,6 @@ std::string sqlIdentLocal(const std::string& name) {
     return out;
 }
 
-std::string classifyIosAppDbRecordTable(const std::string& category, const std::string& tableName, const std::string& columns) {
-    return iosAppDbRecordCategory(category, tableName, columns);
-}
-
-
 long long sqliteScalarCount(sqlite3* ext, const std::string& tableName) {
     std::string sql = "SELECT COUNT(*) FROM " + sqlIdentLocal(tableName);
     sqlite3_stmt* st = nullptr;
@@ -4413,23 +4408,6 @@ std::size_t parseWhatsAppIosTableRows(const std::string& sourceId,
     return rows;
 }
 
-bool shouldUseWhatsappSpecialParser(const IosAppDbInv& inv, const std::string& table, const std::string& recCat) {
-    return iosAppDbShouldUseWhatsappSpecialParser(inv.cat, table, recCat);
-}
-
-bool shouldUseAppleMessagesSpecialParser(const IosAppDbInv& inv, const std::string& table, const std::string& recCat) {
-    return iosAppDbShouldUseAppleMessagesSpecialParser(inv.cat, table, recCat);
-}
-
-
-std::string buildKnowledgeCTextSnippet(const std::string& stream,
-                                       const std::string& bundleId,
-                                       const std::string& startOrCreateDate,
-                                       const std::string& endDate) {
-    return iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, startOrCreateDate, endDate);
-}
-
-
 std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
                                           const IosAppDbInv& inv,
                                           sqlite3* ext,
@@ -4497,7 +4475,7 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
         const std::string docTitle = columnValue(st, docTitleCol, 1000);
         const std::string serialized = columnValue(st, serializedInteractionCol, 1000);
         std::string title = docTitle.empty() ? ("User Interaction: " + stream) : ("Opened Document: " + docTitle);
-        std::string snippet = buildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128));
+        std::string snippet = iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128));
         if (!intentClass.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_class=") + intentClass;
         if (!intentVerb.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_verb=") + intentVerb;
         if (!docTitle.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("document_title=") + docTitle;
@@ -4566,7 +4544,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                                 columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
                                 "User Interaction: " + stream, "", stream,
-                                buildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
+                                iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
                                 "parsed_knowledgec_generic_row",
                                 "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_48");
             ++rows;
@@ -8322,6 +8300,7 @@ bool shouldSkipLibAff4DynamicProbeForKnownBlockingLayout(const fs::path& caseDir
 
 void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                                    const EvidenceSource& source,
+                                   const RunOptions& opt,
                                    const fs::path& originalInput,
                                    Logger& log);
 
@@ -9003,7 +8982,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
             appendRunStatus(caseDir, "aff4_dynamic_load_probe_guard", "skipped known blocking BlackBag/LZ4 discontiguous AFF4 layout");
             appendRunStatus(caseDir, "aff4_direct_map_reader_probe", "read AFF4 map/index/data ZIP members directly and decode bounded LZ4 chunks");
             log.warn("Skipping libaff4 dynamic AFF4_open probe: " + skipReason);
-            writeAff4DirectMapReaderProbe(caseDir, source, originalInput, log);
+            writeAff4DirectMapReaderProbe(caseDir, source, opt, originalInput, log);
             addRow("AFF4_open_guard", "SKIPPED_KNOWN_BLOCKING_LAYOUT", originalInput, 0, 0, -1, {}, skipReason);
             addApfsRow("AFF4_open_guard", "SKIPPED_KNOWN_BLOCKING_LAYOUT", 0, -1, {}, "BLOCKED_BY_KNOWN_READER_HANG",
                        "The AFF4 metadata identifies a BlackBag-style APFS DiscontiguousImage with LZ4 ImageStream storage. This build skips libaff4 AFF4_open to avoid the observed Windows hang and records the direct ZIP map/index parser as the next required reader path.",
@@ -12528,22 +12507,29 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
     addApfsRow("virtual_apfs_probe", "NOT_SUPPORTED_ON_THIS_PLATFORM", 0, -1, {}, "NOT_RUN", "AFF4 virtual APFS probe requires Windows libaff4 dynamic loading in this build.", {}, "Run the Windows build for this probe.");
 #endif
 
-    writeOutputs();
-    writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, nxSummary, apfsDescriptorRows, log);
-    writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, nxSummary, apfsVolumeRows, log);
-    writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, nxSummary, apfsCheckpointMapRows, apfsCheckpointMappedObjectRows, log);
-    writeObjectResolutionOutputs();
+    const bool writeHeavyApfsDiagnostics = opt.verbose || opt.diagnosticFullNativeDb || opt.aff4ApfsDiagnosticOutputs;
     const bool strictAff4PolicyForOutputs = opt.strictSingleAff4 || isAff4SourcePath(originalInput);
-    writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, nxSummary, apfsResolvedVolumeSuperblockRows, apfsVolumeOmapProbeRows, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeNodeProbeRows, apfsRootTreeRecordSampleRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, "child", strictAff4PolicyForOutputs, log);
-    writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, "descendant", strictAff4PolicyForOutputs, log);
-    writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, apfsRootTreeRecordSampleRows, apfsRootTreeChildRecordSampleRows, apfsRootTreeDescendantRecordSampleRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, apfsSpotlightTargetScanRows, apfsSpotlightNameScanSampleRows, apfsSpotlightCopyAttemptRows, apfsSpotlightTargetScanMetrics, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, apfsSpotlightInodeProbeRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, apfsSpotlightXattrProbeRows, apfsSpotlightCopyAttemptRows, strictAff4PolicyForOutputs, log);
-    writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, apfsSpotlightFileExtentProbeRows, strictAff4PolicyForOutputs, log);
+    if (writeHeavyApfsDiagnostics) {
+        log.info("AFF4/APFS diagnostic output mode enabled: writing structural probe CSV outputs.");
+        writeOutputs();
+        writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, nxSummary, apfsDescriptorRows, log);
+        writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, nxSummary, apfsVolumeRows, log);
+        writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, nxSummary, apfsCheckpointMapRows, apfsCheckpointMappedObjectRows, log);
+        writeObjectResolutionOutputs();
+        writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, nxSummary, apfsResolvedVolumeSuperblockRows, apfsVolumeOmapProbeRows, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, apfsVolumeRootTreeLookupRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, apfsRootTreeNodeProbeRows, apfsRootTreeRecordSampleRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeChildNodeProbeRows, apfsRootTreeChildRecordSampleRows, "child", strictAff4PolicyForOutputs, log);
+        writeAff4ApfsRootTreeTraversalProbeOutputs(caseDir, source, originalInput, apfsRootTreeDescendantNodeProbeRows, apfsRootTreeDescendantRecordSampleRows, "descendant", strictAff4PolicyForOutputs, log);
+        writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, apfsRootTreeRecordSampleRows, apfsRootTreeChildRecordSampleRows, apfsRootTreeDescendantRecordSampleRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, apfsSpotlightTargetScanRows, apfsSpotlightNameScanSampleRows, apfsSpotlightCopyAttemptRows, apfsSpotlightTargetScanMetrics, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, apfsSpotlightInodeProbeRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, apfsSpotlightXattrProbeRows, apfsSpotlightCopyAttemptRows, strictAff4PolicyForOutputs, log);
+        writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, apfsSpotlightFileExtentProbeRows, strictAff4PolicyForOutputs, log);
+    } else {
+        log.info("Normal AFF4/APFS source-probe mode: structural diagnostic CSV outputs suppressed; writing copy-out/stage outputs only.");
+        appendRunStatus(caseDir, "aff4_apfs_structural_diagnostics_suppressed", "use --aff4-apfs-diagnostic-outputs or --verbose to write structural probe CSVs");
+    }
     writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
     writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
     log.info("AFF4 CPP Lite dynamic-load probe written: " + pathString(csvPath));
@@ -12807,6 +12793,7 @@ struct Aff4DirectSqliteCandidateRow {
 
 void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                                    const EvidenceSource& source,
+                                   const RunOptions& opt,
                                    const fs::path& originalInput,
                                    Logger& log) {
     struct ProbeRow {
@@ -14171,7 +14158,17 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         row.firstPhysicalOffset = extents.empty() ? 0ULL : extents.front().physicalOffset;
                         if (overlap) { row.copyStatus = "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS"; row.validationStatus = "OVERLAP_ORDER_GATE_FAILED"; row.notes = "Direct indexed extents overlapped; skipped to avoid shifted output."; directSpotlightFileCopyOutRows.push_back(row); continue; }
                         if (invalidLength || expectedEnd == 0 || expectedEnd > kDirectMaxSingleCopyOutBytes) { row.copyStatus = "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH"; row.validationStatus = "SIZE_GATE_FAILED"; row.notes = "Direct indexed extent chain was empty, invalid, or above per-file safety cap."; directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        const fs::path groupDir = directStageRoot / safeStageComponent(cr.storeV2GroupName.empty() ? "Ungrouped" : cr.storeV2GroupName);
+                        // V1.0.13: write raw APFS copy-out rows to a unique per-target folder.
+                        // Earlier builds wrote many duplicate Store-V2 component names into
+                        // ExtractedSpotlight/StagedStoreV2/Ungrouped/<name>.  Later rows could
+                        // overwrite the file that an earlier, higher-scored staging row referenced,
+                        // causing the stage CSV to report the selected row size/hash while the actual
+                        // staged file came from the last duplicate writer.  Keep copy-out provenance
+                        // separate from the normalized StagedStoreV2 tree so stage selection copies
+                        // immutable per-row sources.
+                        const fs::path directCopyOutRoot = caseDir / "ExtractedSpotlight" / "ApfsCopyOutByTarget";
+                        const std::string rawGroupLabel = safeStageComponent(cr.storeV2GroupName.empty() ? "Ungrouped" : cr.storeV2GroupName);
+                        const fs::path groupDir = directCopyOutRoot / ("seq_" + std::to_string(cr.sequence) + "_fid_" + std::to_string(cr.childFileId) + "_parent_" + std::to_string(cr.parentObjectId) + "_" + rawGroupLabel);
                         const fs::path outPath = groupDir / safeRelativeStorePath(cr);
                         std::error_code mkEc;
                         fs::create_directories(outPath.parent_path(), mkEc);
@@ -14559,17 +14556,26 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
         log.warn(std::string("Unable to write AFF4_DIRECT_SQLITE_CANDIDATE_CARVE.md: ") + ex.what());
     }
     if (directBestNx.attempted || directBestNx.found) {
-        writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, directBestNx, directDescriptorRows, log);
-        writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, directBestNx, directVolumeRows, log);
-        writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, directBestNx, directCheckpointMapRows, directCheckpointObjectRows, log);
-        writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, directBestNx, directResolvedVolumeRows, directVolumeOmapRows, directVolumeRootTreeLookupRows, true, log);
-        writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, directVolumeRootTreeLookupRows, true, log);
-        writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, directRootTreeNodeRows, directRootTreeRecordRows, true, log);
-        writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, directRootTreeRecordRows, std::vector<ApfsRootTreeRecordSampleRow>{}, std::vector<ApfsRootTreeRecordSampleRow>{}, true, log);
-        writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, directSpotlightTargetRows, directSpotlightNameSampleRows, directSpotlightCopyAttemptRows, directSpotlightScanMetrics, true, log);
-        writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, directSpotlightInodeRows, true, log);
-        writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, directSpotlightXattrRows, directSpotlightCopyAttemptRows, true, log);
-        writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, true, log);
+        const bool writeHeavyApfsDiagnostics = opt.verbose || opt.diagnosticFullNativeDb || opt.aff4ApfsDiagnosticOutputs;
+        if (writeHeavyApfsDiagnostics) {
+            log.info("AFF4/APFS diagnostic output mode enabled: writing structural probe CSV outputs.");
+            writeAff4ApfsContainerViewOutputs(caseDir, source, originalInput, directBestNx, directDescriptorRows, log);
+            writeAff4ApfsVolumeSuperblockOutputs(caseDir, source, originalInput, directBestNx, directVolumeRows, log);
+            writeAff4ApfsCheckpointMapOutputs(caseDir, source, originalInput, directBestNx, directCheckpointMapRows, directCheckpointObjectRows, log);
+            writeAff4ApfsResolvedVolumeOutputs(caseDir, source, originalInput, directBestNx, directResolvedVolumeRows, directVolumeOmapRows, directVolumeRootTreeLookupRows, true, log);
+            writeAff4ApfsVolumeRootTreeLookupOutputs(caseDir, source, originalInput, directVolumeRootTreeLookupRows, true, log);
+            writeAff4ApfsRootTreeNodeProbeOutputs(caseDir, source, originalInput, directRootTreeNodeRows, directRootTreeRecordRows, true, log);
+            writeAff4ApfsFilesystemNamespaceSeedOutputs(caseDir, source, originalInput, directRootTreeRecordRows, std::vector<ApfsRootTreeRecordSampleRow>{}, std::vector<ApfsRootTreeRecordSampleRow>{}, true, log);
+            writeAff4ApfsSpotlightTargetScanOutputs(caseDir, source, originalInput, directSpotlightTargetRows, directSpotlightNameSampleRows, directSpotlightCopyAttemptRows, directSpotlightScanMetrics, true, log);
+            writeAff4ApfsSpotlightInodeProbeOutputs(caseDir, source, originalInput, directSpotlightInodeRows, true, log);
+            writeAff4ApfsSpotlightXattrProbeOutputs(caseDir, source, originalInput, directSpotlightXattrRows, directSpotlightCopyAttemptRows, true, log);
+            writeAff4ApfsSpotlightFileExtentProbeOutputs(caseDir, source, originalInput, directSpotlightFileExtentRows, true, log);
+        } else {
+            log.info("Normal AFF4/APFS source-probe mode: structural diagnostic CSV outputs suppressed; writing copy-out/stage outputs only.");
+            appendRunStatus(caseDir, "aff4_apfs_structural_diagnostics_suppressed", "use --aff4-apfs-diagnostic-outputs or --verbose to write structural probe CSVs");
+        }
+        // Copy-out and staging outputs remain enabled in normal mode because they
+        // describe actual extracted evidence and feed the external comparison.
         writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, true, log);
         writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, directSpotlightFileCopyOutRows, true, log);
     }

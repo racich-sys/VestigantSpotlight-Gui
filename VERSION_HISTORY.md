@@ -1,4 +1,28 @@
-## V1.0.11
+## V1.0.13
+
+- Isolated raw AFF4/APFS copy-out row outputs into unique per-target folders under `ExtractedSpotlight/ApfsCopyOutByTarget`.
+- Prevents duplicate same-name Store-V2 candidates from overwriting the file selected by normalized staging.
+- Thin upload packaging now excludes raw `ApfsCopyOutByTarget` duplicate sources while keeping normalized `StagedStoreV2` samples and CSV provenance.
+- Expected benchmark: stage CSV, actual staged file sizes, and external Vestigant manifest should agree for matching staged relative paths.
+
+## V1.0.12
+
+## V1.0.12
+
+- Added opt-in AFF4/APFS structural diagnostic CSV output mode.
+- Normal AFF4/APFS source-probe runs now suppress heavy structural APFS diagnostic CSVs while keeping copy-out, staging, parser, enrichment, and external-comparison outputs.
+- Added `--aff4-apfs-diagnostic-outputs` / `--diagnostic-apfs-csvs` for full support runs.
+- Added callback-driven `ApfsVolumeReader::enumerateDirectory()` lower-bound iterator implementation for isolated APFS directory walk testing.
+- Removed low-risk duplicated iOS parser wrapper functions from `app_runner.cpp`.
+- Confirmed GUI view registry ownership remains centralized in `view_registry`.
+- Updated wrapper validation so suppressed diagnostics do not block normal external comparison.
+
+Delayed:
+- Full iOS row parser migration awaits parser-independent row sink.
+- Live APFS traversal replacement awaits iterator parity benchmarks.
+- LZFSE/LZVN remains pending vetted codec and test vectors.
+
+## V1.0.12
 
 - Continued APFS/AFF4 modularization without changing the already-working Store-V2 staging pipeline from V1.0.8.
 - Moved APFS B-tree table-of-contents key/value decoding into `src/parsers/apfs_aff4_reader.*` and left `app_runner.cpp` with thin compatibility wrappers.

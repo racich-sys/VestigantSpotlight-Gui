@@ -1,0 +1,7 @@
+V1.0.13 validation summary
+
+Implemented: raw APFS copy-out source isolation to stop duplicate same-name candidate overwrite before normalized Store-V2 staging.
+
+Expected external-compare improvement: staged file sizes/hashes should agree between stage CSV, case file inventory, and external vestigant manifest.
+
+Local validation: source text updated; full Windows/MSVC and live AFF4/APFS validation must be run by the user.
