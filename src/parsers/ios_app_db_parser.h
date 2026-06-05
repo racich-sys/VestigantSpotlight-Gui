@@ -1,8 +1,22 @@
 #pragma once
 
+#include "db/case_db.h"
+#include "db/sqlite_compat.h"
+
+#include <cstddef>
+#include <filesystem>
 #include <string>
 
 namespace vestigant::spotlight {
+
+struct IosAppDbInventory {
+    long long id = 0;
+    std::string norm;
+    std::string name;
+    std::string cat;
+    std::string app;
+    std::filesystem::path extracted;
+};
 
 struct IosAppDbTableParseDecision {
     std::string recordCategory;
@@ -15,6 +29,8 @@ struct IosAppDbTableParseDecision {
 std::string iosAppDbRecordCategory(const std::string& databaseCategory,
                                    const std::string& tableName,
                                    const std::string& columnsCsv);
+
+bool iosAppDbIsTargetRecordCategory(const std::string& category);
 
 bool iosAppDbShouldUseWhatsappSpecialParser(const std::string& databaseCategory,
                                             const std::string& tableName,
@@ -34,5 +50,12 @@ std::string iosAppDbBuildKnowledgeCTextSnippet(const std::string& stream,
 IosAppDbTableParseDecision iosAppDbBuildTableParseDecision(const std::string& databaseCategory,
                                                            const std::string& tableName,
                                                            const std::string& columnsCsv);
+
+std::size_t iosAppDbParseTable(const std::string& sourceId,
+                               const IosAppDbInventory& inv,
+                               sqlite3* ext,
+                               const std::string& table,
+                               const IosAppDbTableParseDecision& parseDecision,
+                               SqlStatement& parsedIns);
 
 } // namespace vestigant::spotlight

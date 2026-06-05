@@ -1,4 +1,4 @@
-# V1.0.13 Copy-Out Source Isolation
+# V1.0.15 Copy-Out Source Isolation
 
 ## Issue
 
@@ -8,7 +8,7 @@ The root cause was raw APFS copy-out path collision. Multiple APFS candidate row
 
 ## Fix
 
-V1.0.13 writes raw APFS copy-out rows to unique immutable per-target folders under:
+V1.0.15 writes raw APFS copy-out rows to unique immutable per-target folders under:
 
 `ExtractedSpotlight/ApfsCopyOutByTarget/seq_<target_sequence>_fid_<child_file_id>_parent_<parent_object_id>_<group>/...`
 
@@ -20,4 +20,4 @@ This keeps copy-out provenance separate from normalized Store-V2 staging and pre
 
 ## Expected benchmark
 
-After V1.0.13, `aff4_apfs_extracted_storev2_stage_files.csv`, the actual files under `ExtractedSpotlight/StagedStoreV2`, and `aff4_apfs_external_spotlight_vestigant_manifest.csv` should agree on staged file sizes/hashes for the same relative path. The number of `RELATIVE_PATH_SIZE_MISMATCH` rows should fall, especially for BADA95B6 Store-V2 components such as `0.indexArrays`.
+After V1.0.15, `aff4_apfs_extracted_storev2_stage_files.csv`, the actual files under `ExtractedSpotlight/StagedStoreV2`, and `aff4_apfs_external_spotlight_vestigant_manifest.csv` should agree on staged file sizes/hashes for the same relative path. The number of `RELATIVE_PATH_SIZE_MISMATCH` rows should fall, especially for BADA95B6 Store-V2 components such as `0.indexArrays`.

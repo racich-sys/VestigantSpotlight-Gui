@@ -3895,702 +3895,8 @@ std::string sqliteColumnList(sqlite3* ext, const std::string& tableName) {
     return out;
 }
 
-struct IosAppDbInv {
-    long long id = 0;
-    std::string norm;
-    std::string name;
-    std::string cat;
-    std::string app;
-    fs::path extracted;
-};
+using IosAppDbInv = IosAppDbInventory;
 
-std::string sqliteColumnText(sqlite3_stmt* st, int index) {
-    const unsigned char* txt = sqlite3_column_text(st, index);
-    return txt ? reinterpret_cast<const char*>(txt) : std::string();
-}
-
-std::string formatUnixSecondsUtc(long long seconds) {
-    if (seconds <= 0) return {};
-    std::time_t t = static_cast<std::time_t>(seconds);
-    std::tm tm{};
-#if defined(_WIN32)
-    if (gmtime_s(&tm, &t) != 0) return {};
-#else
-    if (!gmtime_r(&t, &tm)) return {};
-#endif
-    char buf[32]{};
-    if (std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm) == 0) return {};
-    return std::string(buf);
-}
-
-std::pair<std::string, std::string> normalizeIosAppTimestamp(const std::string& raw, const std::string& columnName) {
-    const std::string v = trim(raw);
-    if (v.empty()) return {};
-    if (v.find('-') != std::string::npos && v.find('T') != std::string::npos) return {v, columnName + ":iso"};
-    try {
-        long double n = std::stold(v);
-        if (n <= 0) return {};
-        long double seconds = 0;
-        std::string method;
-        if (n > 10000000000000000.0L) {
-            seconds = (n / 1000000000.0L) + 978307200.0L;
-            method = columnName + ":apple_epoch_nanoseconds";
-        } else if (n > 100000000000000.0L) {
-            seconds = n / 1000000.0L;
-            method = columnName + ":unix_epoch_microseconds";
-        } else if (n > 1000000000000.0L) {
-            seconds = n / 1000.0L;
-            method = columnName + ":unix_epoch_milliseconds";
-        } else if (n > 1000000000.0L) {
-            seconds = n;
-            method = columnName + ":unix_epoch_seconds";
-        } else {
-            seconds = n + 978307200.0L;
-            method = columnName + ":apple_epoch_seconds";
-        }
-        const auto utc = formatUnixSecondsUtc(static_cast<long long>(seconds));
-        if (utc.empty()) return {};
-        return {utc, method};
-    } catch (...) {
-        return {};
-    }
-}
-
-int findColumnIndex(const std::map<std::string, int>& lowerColumns, const std::vector<std::string>& candidates, bool allowContains = false) {
-    for (const auto& c : candidates) {
-        auto it = lowerColumns.find(toLower(c));
-        if (it != lowerColumns.end()) return it->second;
-    }
-    if (allowContains) {
-        for (const auto& c : candidates) {
-            const std::string needle = toLower(c);
-            for (const auto& kv : lowerColumns) {
-                if (kv.first.find(needle) != std::string::npos) return kv.second;
-            }
-        }
-    }
-    return -1;
-}
-
-std::string columnValue(sqlite3_stmt* st, int index, std::size_t maxLen = 2000) {
-    if (index < 0) return {};
-    std::string v = sqliteColumnText(st, index);
-    if (v.size() > maxLen) v.resize(maxLen);
-    return v;
-}
-
-bool isTargetIosRecordCategory(const std::string& category) {
-    static const std::set<std::string> target = {
-        "MESSAGE_RECORDS", "MESSAGE_ATTACHMENTS", "MESSAGE_PARTICIPANTS", "MESSAGE_DELETED_OR_RECOVERABLE",
-        "CALL_RECORDS", "CALL_PARTICIPANTS",
-        "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE",
-        "MAIL_RECORDS", "CALENDAR_RECORDS", "CONTACT_RECORDS",
-        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS"
-    };
-    return target.find(category) != target.end();
-}
-
-
-bool sqliteTableExistsLocal(sqlite3* ext, const std::string& tableName) {
-    sqlite3_stmt* st = nullptr;
-    int rc = sqlite3_prepare_v2(ext, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", -1, &st, nullptr);
-    if (rc != SQLITE_OK || !st) return false;
-    sqlite3_bind_text(st, 1, tableName.c_str(), -1, SQLITE_TRANSIENT);
-    bool ok = sqlite3_step(st) == SQLITE_ROW;
-    sqlite3_finalize(st);
-    return ok;
-}
-
-bool sqliteColumnExistsLocal(sqlite3* ext, const std::string& tableName, const std::string& columnName) {
-    std::string sql = "PRAGMA table_info(" + sqlIdentLocal(tableName) + ")";
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return false;
-    const std::string target = toLower(columnName);
-    bool found = false;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const unsigned char* txt = sqlite3_column_text(st, 1);
-        if (txt && toLower(reinterpret_cast<const char*>(txt)) == target) { found = true; break; }
-    }
-    sqlite3_finalize(st);
-    return found;
-}
-
-std::string sqliteOptionalColumnExpr(sqlite3* ext, const std::string& tableName, const std::string& alias, const std::string& columnName, const std::string& outAlias) {
-    if (sqliteColumnExistsLocal(ext, tableName, columnName)) return alias + "." + sqlIdentLocal(columnName) + " AS " + sqlIdentLocal(outAlias);
-    return "NULL AS " + sqlIdentLocal(outAlias);
-}
-
-void bindIosParsedRecord(SqlStatement& parsedIns,
-                         const std::string& sourceId,
-                         const IosAppDbInv& inv,
-                         const std::string& table,
-                         const std::string& recordCategory,
-                         const std::string& sourcePk,
-                         const std::string& recordTimestampUtc,
-                         const std::string& timestampSource,
-                         const std::string& contactOrParticipant,
-                         const std::string& url,
-                         const std::string& title,
-                         const std::string& filePath,
-                         const std::string& itemIdentifier,
-                         const std::string& textSnippet,
-                         const std::string& parseStatus,
-                         const std::string& provenance) {
-    int i = 1;
-    parsedIns.bind(i++, sourceId);
-    parsedIns.bind(i++, inv.id);
-    parsedIns.bind(i++, inv.norm);
-    parsedIns.bind(i++, inv.name);
-    parsedIns.bind(i++, inv.cat);
-    parsedIns.bind(i++, inv.app);
-    parsedIns.bind(i++, table);
-    parsedIns.bind(i++, recordCategory);
-    parsedIns.bind(i++, sourcePk);
-    parsedIns.bind(i++, recordTimestampUtc);
-    parsedIns.bind(i++, timestampSource);
-    parsedIns.bind(i++, contactOrParticipant);
-    parsedIns.bind(i++, url);
-    parsedIns.bind(i++, title);
-    parsedIns.bind(i++, filePath);
-    parsedIns.bind(i++, itemIdentifier);
-    parsedIns.bind(i++, textSnippet);
-    parsedIns.bind(i++, parseStatus);
-    parsedIns.bind(i++, provenance);
-    parsedIns.bind(i++, nowUtc());
-    parsedIns.stepDone();
-    parsedIns.reset();
-}
-
-std::size_t parseAppleMessagesSmsDbMessageRows(const std::string& sourceId,
-                                               const IosAppDbInv& inv,
-                                               sqlite3* ext,
-                                               SqlStatement& parsedIns) {
-    if (!sqliteTableExistsLocal(ext, "message")) return 0;
-    constexpr int MaxRowsPerTable = 100000;
-    const bool hasHandle = sqliteTableExistsLocal(ext, "handle");
-    const bool hasChatJoin = sqliteTableExistsLocal(ext, "chat") && sqliteTableExistsLocal(ext, "chat_message_join");
-    const bool hasAttachmentJoin = sqliteTableExistsLocal(ext, "attachment") && sqliteTableExistsLocal(ext, "message_attachment_join");
-    std::string sql = "SELECT m.ROWID AS rowid, "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "guid", "message_guid") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "text", "message_text") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "date", "message_date") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "date_read", "date_read") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "date_delivered", "date_delivered") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "is_from_me", "is_from_me") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "is_sent", "is_sent") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "is_delivered", "is_delivered") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "is_read", "is_read") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "service", "message_service") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "account", "message_account") + ", "
-        + sqliteOptionalColumnExpr(ext, "message", "m", "handle_id", "message_handle_id") + ", ";
-    if (hasHandle) {
-        sql += "h.id AS resolved_handle, h.service AS handle_service, ";
-    } else {
-        sql += "NULL AS resolved_handle, NULL AS handle_service, ";
-    }
-    if (hasChatJoin) {
-        sql += "(SELECT group_concat(COALESCE(c.chat_identifier,c.display_name,c.guid), '|') FROM chat_message_join cmj JOIN chat c ON c.ROWID=cmj.chat_id WHERE cmj.message_id=m.ROWID) AS chat_context, ";
-    } else {
-        sql += "NULL AS chat_context, ";
-    }
-    if (hasAttachmentJoin) {
-        sql += "a.ROWID AS attachment_rowid, "
-               "a.guid AS attachment_guid, "
-               "a.transfer_name AS attachment_transfer_name, "
-               "a.filename AS attachment_filename, "
-               "a.mime_type AS attachment_mime_type, "
-               "a.uti AS attachment_uti, "
-               "a.total_bytes AS attachment_total_bytes, "
-               "a.created_date AS attachment_created_date ";
-    } else {
-        sql += "NULL AS attachment_rowid, NULL AS attachment_guid, NULL AS attachment_transfer_name, NULL AS attachment_filename, NULL AS attachment_mime_type, NULL AS attachment_uti, NULL AS attachment_total_bytes, NULL AS attachment_created_date ";
-    }
-    sql += "FROM message m ";
-    if (hasHandle) sql += "LEFT JOIN handle h ON h.ROWID=m.handle_id ";
-    if (hasAttachmentJoin) sql += "LEFT JOIN message_attachment_join maj ON maj.message_id=m.ROWID LEFT JOIN attachment a ON a.ROWID=maj.attachment_id ";
-    sql += "ORDER BY m.ROWID LIMIT ?";
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const std::string rowid = columnValue(st, 0, 128);
-        const std::string guid = columnValue(st, 1, 512);
-        const std::string text = columnValue(st, 2, 2000);
-        const auto msgTs = normalizeIosAppTimestamp(columnValue(st, 3, 128), "message.date");
-        const auto readTs = normalizeIosAppTimestamp(columnValue(st, 4, 128), "message.date_read");
-        const auto deliveredTs = normalizeIosAppTimestamp(columnValue(st, 5, 128), "message.date_delivered");
-        const std::string isFromMe = columnValue(st, 6, 16);
-        const std::string isSent = columnValue(st, 7, 16);
-        const std::string isDelivered = columnValue(st, 8, 16);
-        const std::string isRead = columnValue(st, 9, 16);
-        const std::string service = columnValue(st, 10, 128);
-        const std::string account = columnValue(st, 11, 512);
-        std::string contact = columnValue(st, 13, 512);
-        if (contact.empty()) contact = columnValue(st, 12, 128);
-        const std::string handleService = columnValue(st, 14, 128);
-        const std::string chat = columnValue(st, 15, 1000);
-        const std::string attachmentRowId = columnValue(st, 16, 128);
-        const std::string attachmentGuid = columnValue(st, 17, 512);
-        const std::string attachmentTransferName = columnValue(st, 18, 1000);
-        const std::string attachmentFilename = columnValue(st, 19, 1500);
-        const std::string attachmentMime = columnValue(st, 20, 256);
-        const std::string attachmentUti = columnValue(st, 21, 256);
-        const std::string attachmentBytes = columnValue(st, 22, 64);
-        const auto attachmentTs = normalizeIosAppTimestamp(columnValue(st, 23, 128), "attachment.created_date");
-        std::string direction = "unknown_direction";
-        if (isFromMe == "1") direction = "outgoing";
-        else if (isFromMe == "0") direction = "incoming";
-        std::string title = "Apple Messages " + direction;
-        if (!service.empty()) title += " service=" + service;
-        if (!attachmentTransferName.empty()) title += " attachment=" + attachmentTransferName;
-        std::string itemIdentifier = guid;
-        if (!attachmentGuid.empty()) itemIdentifier += "|attachment=" + attachmentGuid;
-        std::string snippet = text;
-        if (!attachmentFilename.empty() || !attachmentMime.empty() || !attachmentBytes.empty()) {
-            if (!snippet.empty()) snippet += " | ";
-            snippet += "attachment_name=" + attachmentTransferName + " attachment_path=" + attachmentFilename + " mime_type=" + attachmentMime + " uti=" + attachmentUti + " bytes=" + attachmentBytes;
-        }
-        std::string provenance = "ios_sms_db_message_joined_like_ileapp message_left_join_handle_chat_attachment direction=" + direction;
-        if (!chat.empty()) provenance += " chat=" + chat;
-        if (!handleService.empty()) provenance += " handle_service=" + handleService;
-        if (!account.empty()) provenance += " account=" + account;
-        if (!readTs.first.empty()) provenance += " read_utc=" + readTs.first;
-        if (!deliveredTs.first.empty()) provenance += " delivered_utc=" + deliveredTs.first;
-        if (!attachmentTs.first.empty()) provenance += " attachment_created_utc=" + attachmentTs.first;
-        if (!isSent.empty()) provenance += " is_sent=" + isSent;
-        if (!isDelivered.empty()) provenance += " is_delivered=" + isDelivered;
-        if (!isRead.empty()) provenance += " is_read=" + isRead;
-        if (!attachmentRowId.empty()) provenance += " attachment_rowid=" + attachmentRowId;
-        bindIosParsedRecord(parsedIns, sourceId, inv, "message", "MESSAGE_RECORDS", rowid,
-                            msgTs.first, msgTs.second, contact, "", title, attachmentFilename,
-                            itemIdentifier, snippet, "parsed_apple_messages_smsdb_message_joined", provenance);
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-std::size_t parseAppleMessagesSmsDbParticipantRows(const std::string& sourceId,
-                                                   const IosAppDbInv& inv,
-                                                   sqlite3* ext,
-                                                   const std::string& table,
-                                                   SqlStatement& parsedIns) {
-    const std::string t = toLower(table);
-    if (t != "handle" && t != "chat") return 0;
-    if (!sqliteTableExistsLocal(ext, table)) return 0;
-    constexpr int MaxRowsPerTable = 100000;
-    std::string sql;
-    if (t == "handle") {
-        sql = "SELECT h.ROWID AS rowid, "
-            + sqliteOptionalColumnExpr(ext, "handle", "h", "id", "handle_id_value") + ", "
-            + sqliteOptionalColumnExpr(ext, "handle", "h", "service", "handle_service") + ", "
-            + sqliteOptionalColumnExpr(ext, "handle", "h", "country", "country") + ", "
-            + sqliteOptionalColumnExpr(ext, "handle", "h", "uncanonicalized_id", "uncanonicalized_id") + ", "
-            + sqliteOptionalColumnExpr(ext, "handle", "h", "person_centric_id", "person_centric_id")
-            + " FROM handle h ORDER BY h.ROWID LIMIT ?";
-    } else {
-        sql = "SELECT c.ROWID AS rowid, "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "guid", "chat_guid") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "chat_identifier", "chat_identifier") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "service_name", "service_name") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "display_name", "display_name") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "group_id", "group_id") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "account_login", "account_login") + ", "
-            + sqliteOptionalColumnExpr(ext, "chat", "c", "last_read_message_timestamp", "last_read_message_timestamp")
-            + " FROM chat c ORDER BY c.ROWID LIMIT ?";
-    }
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const std::string rowid = columnValue(st, 0, 128);
-        if (t == "handle") {
-            const std::string handleId = columnValue(st, 1, 512);
-            const std::string service = columnValue(st, 2, 128);
-            const std::string country = columnValue(st, 3, 64);
-            const std::string uncanon = columnValue(st, 4, 512);
-            const std::string personId = columnValue(st, 5, 256);
-            std::string title = "Apple Messages handle";
-            if (!service.empty()) title += " service=" + service;
-            std::string snippet = "country=" + country + " uncanonicalized_id=" + uncanon + " person_centric_id=" + personId;
-            bindIosParsedRecord(parsedIns, sourceId, inv, "handle", "MESSAGE_PARTICIPANTS", rowid,
-                                "", "", handleId, "", title, "", handleId, snippet,
-                                "parsed_apple_messages_smsdb_handle", "ios_sms_db_handle_participant");
-        } else {
-            const std::string guid = columnValue(st, 1, 512);
-            const std::string chatIdentifier = columnValue(st, 2, 512);
-            const std::string service = columnValue(st, 3, 128);
-            const std::string displayName = columnValue(st, 4, 512);
-            const std::string groupId = columnValue(st, 5, 512);
-            const std::string accountLogin = columnValue(st, 6, 512);
-            const auto lastReadTs = normalizeIosAppTimestamp(columnValue(st, 7, 128), "chat.last_read_message_timestamp");
-            std::string title = displayName.empty() ? "Apple Messages chat" : displayName;
-            if (!service.empty()) title += " service=" + service;
-            std::string snippet = "group_id=" + groupId + " account_login=" + accountLogin;
-            bindIosParsedRecord(parsedIns, sourceId, inv, "chat", "MESSAGE_PARTICIPANTS", rowid,
-                                lastReadTs.first, lastReadTs.second, chatIdentifier, "", title, "", guid, snippet,
-                                "parsed_apple_messages_smsdb_chat", "ios_sms_db_chat_participant");
-        }
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-std::size_t parseAppleMessagesSmsDbAttachmentRows(const std::string& sourceId,
-                                                  const IosAppDbInv& inv,
-                                                  sqlite3* ext,
-                                                  SqlStatement& parsedIns) {
-    if (!sqliteTableExistsLocal(ext, "attachment")) return 0;
-    constexpr int MaxRowsPerTable = 100000;
-    const bool hasJoin = sqliteTableExistsLocal(ext, "message_attachment_join") && sqliteTableExistsLocal(ext, "message");
-    std::string sql = "SELECT a.ROWID AS rowid, "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "guid", "attachment_guid") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "filename", "filename") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "transfer_name", "transfer_name") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "mime_type", "mime_type") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "uti", "uti") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "total_bytes", "total_bytes") + ", "
-        + sqliteOptionalColumnExpr(ext, "attachment", "a", "created_date", "created_date") + ", ";
-    if (hasJoin) {
-        sql += "(SELECT group_concat(m.guid, '|') FROM message_attachment_join maj JOIN message m ON m.ROWID=maj.message_id WHERE maj.attachment_id=a.ROWID) AS message_guids ";
-    } else {
-        sql += "NULL AS message_guids ";
-    }
-    sql += "FROM attachment a ORDER BY a.ROWID LIMIT ?";
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const std::string rowid = columnValue(st, 0, 128);
-        const std::string guid = columnValue(st, 1, 512);
-        const std::string filename = columnValue(st, 2, 1500);
-        const std::string transferName = columnValue(st, 3, 1000);
-        const std::string mime = columnValue(st, 4, 256);
-        const std::string uti = columnValue(st, 5, 256);
-        const std::string totalBytes = columnValue(st, 6, 64);
-        const auto ts = normalizeIosAppTimestamp(columnValue(st, 7, 128), "attachment.created_date");
-        const std::string msgGuids = columnValue(st, 8, 1000);
-        std::string snippet = "mime_type=" + mime + " uti=" + uti + " total_bytes=" + totalBytes;
-        std::string provenance = "ios_sms_db_attachment";
-        if (!msgGuids.empty()) provenance += " message_guids=" + msgGuids;
-        bindIosParsedRecord(parsedIns, sourceId, inv, "attachment", "MESSAGE_ATTACHMENTS", rowid,
-                            ts.first, ts.second, "", "", transferName, filename, guid, snippet,
-                            "parsed_apple_messages_smsdb_attachment", provenance);
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-
-std::string firstColumnValue(sqlite3_stmt* st,
-                             const std::map<std::string, int>& cols,
-                             const std::vector<std::string>& candidates,
-                             std::size_t maxLen = 2000) {
-    int idx = findColumnIndex(cols, candidates, false);
-    if (idx < 0) idx = findColumnIndex(cols, candidates, true);
-    return columnValue(st, idx, maxLen);
-}
-
-std::size_t parseWhatsAppIosTableRows(const std::string& sourceId,
-                                      const IosAppDbInv& inv,
-                                      sqlite3* ext,
-                                      const std::string& table,
-                                      const std::string& recordCategory,
-                                      SqlStatement& parsedIns) {
-    const std::string t = toLower(table);
-    const std::string c = toLower(inv.cat);
-    if (c.find("whatsapp") == std::string::npos) return 0;
-    if (!sqliteTableExistsLocal(ext, table)) return 0;
-    constexpr int MaxRowsPerTable = 100000;
-    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ?";
-    sqlite3_stmt* st = nullptr;
-    int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    if (rc != SQLITE_OK) {
-        sql = "SELECT * FROM " + sqlIdentLocal(table) + " LIMIT ?";
-        rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    }
-    if (rc != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    const int colCount = sqlite3_column_count(st);
-    std::map<std::string, int> cols;
-    for (int i = 0; i < colCount; ++i) {
-        const char* name = sqlite3_column_name(st, i);
-        if (name) cols[toLower(name)] = i;
-    }
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        std::string recCat = recordCategory;
-        std::string sourcePk = firstColumnValue(st, cols, {"__rowid__", "z_pk", "rowid", "id"}, 128);
-        std::string dateRaw;
-        std::string dateSource;
-        std::string contact;
-        std::string url;
-        std::string title;
-        std::string filePath;
-        std::string itemIdentifier;
-        std::string textSnippet;
-        std::string parseStatus = "parsed_whatsapp_ios_row";
-        std::string provenance = "ios_whatsapp_schema_reference=whatsapp_chat_exporter_0_13_0 table=" + table;
-        if (t == "zwamessage" || t.find("message") != std::string::npos) {
-            recCat = "MESSAGE_RECORDS";
-            dateRaw = firstColumnValue(st, cols, {"zmessagedate", "zdate", "date"}, 128);
-            dateSource = "ZWAMESSAGE.ZMESSAGEDATE";
-            const std::string fromMe = firstColumnValue(st, cols, {"zisfromme", "zfromme"}, 32);
-            std::string direction = "unknown_direction";
-            if (fromMe == "1") direction = "outgoing";
-            else if (fromMe == "0") direction = "incoming";
-            contact = firstColumnValue(st, cols, {"zfromjid", "ztojid", "zparticipantjid", "zsenderjid", "zcontactjid", "zgroupmember"}, 512);
-            itemIdentifier = firstColumnValue(st, cols, {"zstanzaid", "zuniqueid", "zguid", "zuuid"}, 512);
-            textSnippet = firstColumnValue(st, cols, {"ztext", "zmessage", "zcaption", "ztitle"}, 2000);
-            title = "WhatsApp message " + direction;
-            const std::string msgType = firstColumnValue(st, cols, {"zmessagetype", "zmediatype", "ztype"}, 64);
-            const std::string msgStatus = firstColumnValue(st, cols, {"zmessagestatus", "zstatus"}, 64);
-            if (!msgType.empty()) title += " type=" + msgType;
-            if (!msgStatus.empty()) provenance += " status=" + msgStatus;
-            provenance += " direction=" + direction;
-        } else if (t == "zwamediaitem" || t.find("media") != std::string::npos || t == "zwavcardmention") {
-            recCat = "MESSAGE_ATTACHMENTS";
-            dateRaw = firstColumnValue(st, cols, {"zcreationdate", "zmediadate", "zdate", "zmediarefreshtimestamp"}, 128);
-            dateSource = table + ".media_date";
-            contact = firstColumnValue(st, cols, {"zownerjid", "zsenderjid", "zcontactjid", "zmemberjid"}, 512);
-            url = firstColumnValue(st, cols, {"zmediaurl", "zurl", "zthumbnailurl"}, 1000);
-            title = firstColumnValue(st, cols, {"ztitle", "zvcardsstring", "zcaption", "zfilename"}, 1000);
-            filePath = firstColumnValue(st, cols, {"zlocalpath", "zfileurl", "zfilename", "zpath", "zmedialocalpath"}, 1500);
-            itemIdentifier = firstColumnValue(st, cols, {"zmediaid", "zstanzaid", "zguid", "zuuid", "zsha256"}, 512);
-            textSnippet = "media_type=" + firstColumnValue(st, cols, {"zmediatype", "zmimetype", "zmime_type", "zuti"}, 256) +
-                          " media_size=" + firstColumnValue(st, cols, {"zfilesize", "zsize", "zbytes"}, 64);
-            if (title.empty()) title = "WhatsApp media/attachment";
-        } else if (t == "zwachatsession" || t.find("chat") != std::string::npos || t.find("session") != std::string::npos) {
-            recCat = "CHAT_RECORDS";
-            dateRaw = firstColumnValue(st, cols, {"zlastmessagedate", "zdate", "zcreationdate"}, 128);
-            dateSource = table + ".chat_date";
-            contact = firstColumnValue(st, cols, {"zcontactjid", "zpartnername", "zgroupinfo", "zjid"}, 512);
-            title = firstColumnValue(st, cols, {"zpartnername", "zgroupname", "zdisplayname", "ztitle"}, 1000);
-            itemIdentifier = firstColumnValue(st, cols, {"zcontactjid", "zgroupinfo", "zguid", "zuuid"}, 512);
-            textSnippet = "archived=" + firstColumnValue(st, cols, {"zarchived"}, 32) +
-                          " unread=" + firstColumnValue(st, cols, {"zunreadcount", "zunread"}, 32);
-            if (title.empty()) title = "WhatsApp chat/session";
-        } else if (t == "zwaaddressbookcontact" || t == "zwaprofilepushname" || t == "zwagroupmember" || t.find("contact") != std::string::npos || t.find("member") != std::string::npos) {
-            recCat = "MESSAGE_PARTICIPANTS";
-            dateRaw = firstColumnValue(st, cols, {"zdate", "zlastupdated", "zmodificationdate"}, 128);
-            dateSource = table + ".contact_date";
-            contact = firstColumnValue(st, cols, {"zwhatsappid", "zjid", "zmemberjid", "zcontactjid", "zphone", "zfullphone"}, 512);
-            title = firstColumnValue(st, cols, {"zfullname", "zpushname", "zfirstname", "zlastname", "znickname", "zdisplayname"}, 1000);
-            itemIdentifier = contact;
-            textSnippet = "about=" + firstColumnValue(st, cols, {"zabouttext", "zstatus", "znotes"}, 1000);
-            if (title.empty()) title = "WhatsApp contact/member";
-        } else if (t.find("call") != std::string::npos) {
-            recCat = "CALL_RECORDS";
-            dateRaw = firstColumnValue(st, cols, {"zdate", "zstartdate", "zcalltime", "ztimestamp"}, 128);
-            dateSource = table + ".call_date";
-            contact = firstColumnValue(st, cols, {"zfromjid", "ztojid", "zpeerjid", "zcontactjid", "zparticipantjid"}, 512);
-            itemIdentifier = firstColumnValue(st, cols, {"zcallidstring", "zcallid", "zguid", "zuuid"}, 512);
-            title = "WhatsApp call";
-            textSnippet = "duration=" + firstColumnValue(st, cols, {"zduration", "zcallduration"}, 64) +
-                          " type=" + firstColumnValue(st, cols, {"zcalltype", "ztype"}, 64) +
-                          " result=" + firstColumnValue(st, cols, {"zresult", "zoutcome"}, 64);
-        } else {
-            sqlite3_finalize(st);
-            return 0;
-        }
-        const auto ts = normalizeIosAppTimestamp(dateRaw, dateSource);
-        bindIosParsedRecord(parsedIns, sourceId, inv, table, recCat, sourcePk,
-                            ts.first, ts.second, contact, url, title, filePath,
-                            itemIdentifier, textSnippet, parseStatus, provenance);
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
-                                          const IosAppDbInv& inv,
-                                          sqlite3* ext,
-                                          const std::string& table,
-                                          SqlStatement& parsedIns) {
-    const std::string lowerTable = toLower(table);
-    if (lowerTable != "zobject") return 0;
-    constexpr int MaxRowsPerTable = 100000;
-
-    const bool hasStructuredMetadata = sqliteTableExistsLocal(ext, "ZSTRUCTUREDMETADATA") || sqliteTableExistsLocal(ext, "zstructuredmetadata");
-    const bool hasJoinColumn = sqliteColumnExistsLocal(ext, table, "ZSTRUCTUREDMETADATA") || sqliteColumnExistsLocal(ext, table, "zstructuredmetadata");
-
-    std::string sql;
-    if (hasStructuredMetadata && hasJoinColumn) {
-        const std::string metaTable = sqliteTableExistsLocal(ext, "ZSTRUCTUREDMETADATA") ? "ZSTRUCTUREDMETADATA" : "zstructuredmetadata";
-        sql = "SELECT o.rowid AS __rowid__, "
-              + sqliteOptionalColumnExpr(ext, table, "o", "ZSTREAMNAME", "zstreamname") + ", "
-              + sqliteOptionalColumnExpr(ext, table, "o", "ZVALUESTRING", "zvaluestring") + ", "
-              + sqliteOptionalColumnExpr(ext, table, "o", "ZSTARTDATE", "zstartdate") + ", "
-              + sqliteOptionalColumnExpr(ext, table, "o", "ZENDDATE", "zenddate") + ", "
-              + sqliteOptionalColumnExpr(ext, table, "o", "ZCREATIONDATE", "zcreationdate") + ", "
-              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__INTENTCLASS", "metadata_intent_class") + ", "
-              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__INTENTVERB", "metadata_intent_verb") + ", "
-              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKDOCUMENTMETADATAKEY__TITLE", "metadata_document_title") + ", "
-              + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__SERIALIZEDINTERACTION", "metadata_serialized_interaction")
-              + " FROM " + sqlIdentLocal(table) + " o LEFT JOIN " + sqlIdentLocal(metaTable) + " m ON o.ZSTRUCTUREDMETADATA=m.Z_PK "
-              + "WHERE COALESCE(o.ZSTREAMNAME,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
-    } else {
-        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
-    }
-
-    sqlite3_stmt* st = nullptr;
-    int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    if (rc != SQLITE_OK || !st) {
-        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ?";
-        rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    }
-    if (rc != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    const int colCount = sqlite3_column_count(st);
-    std::map<std::string, int> cols;
-    for (int i = 0; i < colCount; ++i) {
-        const char* name = sqlite3_column_name(st, i);
-        if (name) cols[toLower(name)] = i;
-    }
-    const int rowidCol = findColumnIndex(cols, {"__rowid__", "z_pk", "zuuid", "uuid", "identifier"}, true);
-    const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
-    const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
-    const int startDateCol = findColumnIndex(cols, {"zstartdate"}, true);
-    const int endDateCol = findColumnIndex(cols, {"zenddate"}, true);
-    const int creationDateCol = findColumnIndex(cols, {"zcreationdate"}, true);
-    const int intentClassCol = findColumnIndex(cols, {"metadata_intent_class", "z_dkintentmetadatakey__intentclass"}, true);
-    const int intentVerbCol = findColumnIndex(cols, {"metadata_intent_verb", "z_dkintentmetadatakey__intentverb"}, true);
-    const int docTitleCol = findColumnIndex(cols, {"metadata_document_title", "z_dkdocumentmetadatakey__title"}, true);
-    const int serializedInteractionCol = findColumnIndex(cols, {"metadata_serialized_interaction", "z_dkintentmetadatakey__serializedinteraction"}, true);
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const std::string stream = columnValue(st, streamNameCol, 256);
-        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
-        const std::string bundleId = columnValue(st, valueStringCol, 512);
-        const auto startTs = normalizeIosAppTimestamp(columnValue(st, startDateCol, 128), "ZSTARTDATE");
-        const auto creationTs = normalizeIosAppTimestamp(columnValue(st, creationDateCol, 128), "ZCREATIONDATE");
-        const std::string intentClass = columnValue(st, intentClassCol, 512);
-        const std::string intentVerb = columnValue(st, intentVerbCol, 256);
-        const std::string docTitle = columnValue(st, docTitleCol, 1000);
-        const std::string serialized = columnValue(st, serializedInteractionCol, 1000);
-        std::string title = docTitle.empty() ? ("User Interaction: " + stream) : ("Opened Document: " + docTitle);
-        std::string snippet = iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, columnValue(st, creationDateCol, 128), columnValue(st, endDateCol, 128));
-        if (!intentClass.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_class=") + intentClass;
-        if (!intentVerb.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_verb=") + intentVerb;
-        if (!docTitle.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("document_title=") + docTitle;
-        if (!serialized.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("serialized_interaction_preview=") + serialized;
-        if (snippet.size() > 2000) snippet.resize(2000);
-        bindIosParsedRecord(parsedIns, sourceId, inv, table, "KNOWLEDGEC_EVENTS",
-                            columnValue(st, rowidCol, 256),
-                            !startTs.first.empty() ? startTs.first : creationTs.first,
-                            !startTs.second.empty() ? startTs.second : creationTs.second,
-                            bundleId,
-                            "",
-                            title,
-                            "",
-                            stream,
-                            snippet,
-                            "parsed_knowledgec_zobject_interaction_joined_metadata",
-                            hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v0_9_48" : "read_only_sqlite_coreduet_knowledgec table=" + table);
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
-
-std::size_t parseIosAppDbTableRows(const std::string& sourceId,
-                                   const IosAppDbInv& inv,
-                                   sqlite3* ext,
-                                   const std::string& table,
-                                   const std::string& recordCategory,
-                                   SqlStatement& parsedIns) {
-    if (!isTargetIosRecordCategory(recordCategory)) return 0;
-    constexpr int MaxRowsPerTable = 50000;
-    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ?";
-    sqlite3_stmt* st = nullptr;
-    int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    if (rc != SQLITE_OK) {
-        sql = "SELECT * FROM " + sqlIdentLocal(table) + " LIMIT ?";
-        rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
-    }
-    if (rc != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
-    const int colCount = sqlite3_column_count(st);
-    std::map<std::string, int> cols;
-    for (int i = 0; i < colCount; ++i) {
-        const char* name = sqlite3_column_name(st, i);
-        if (name) cols[toLower(name)] = i;
-    }
-    const int pkCol = findColumnIndex(cols, {"__rowid__", "ROWID", "id", "guid", "Z_PK", "ZUUID", "uuid", "identifier"}, true);
-    const int dateCol = findColumnIndex(cols, {"date", "timestamp", "time", "created_date", "creation_date", "start_date", "end_date", "message_date", "visit_time", "last_visit_time", "zdate", "zstartdate", "zenddate", "zcreationdate", "zmodificationdate"}, true);
-    const int contactCol = findColumnIndex(cols, {"handle_id", "handle", "address", "phone", "email", "sender", "recipient", "destination", "caller", "callee", "zaddress", "zdisplayname"}, true);
-    const int urlCol = findColumnIndex(cols, {"url", "url_string", "request_url", "redirect_source", "zurl", "webpageurl"}, true);
-    const int titleCol = findColumnIndex(cols, {"title", "subject", "summary", "display_name", "name", "ztitle", "zsummary"}, true);
-    const int pathCol = findColumnIndex(cols, {"path", "filename", "file_name", "transfer_name", "uti", "mime_type", "zfilename", "zpath"}, true);
-    const int itemCol = findColumnIndex(cols, {"guid", "uuid", "identifier", "message_id", "chat_id", "handle_id", "persistent_id", "zidentifier"}, true);
-    const int textCol = findColumnIndex(cols, {"text", "body", "message", "snippet", "preview", "comment", "notes", "ztext", "zbody"}, true);
-    std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
-        const std::string dateRaw = columnValue(st, dateCol, 128);
-        const char* dateNamePtr = dateCol >= 0 ? sqlite3_column_name(st, dateCol) : "";
-        const auto ts = normalizeIosAppTimestamp(dateRaw, dateNamePtr ? std::string(dateNamePtr) : std::string());
-        if (recordCategory == "KNOWLEDGEC_EVENTS") {
-            const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
-            const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
-            const std::string stream = columnValue(st, streamNameCol, 256);
-            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
-            const std::string bundleId = columnValue(st, valueStringCol, 512);
-            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
-                                columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
-                                "User Interaction: " + stream, "", stream,
-                                iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
-                                "parsed_knowledgec_generic_row",
-                                "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_48");
-            ++rows;
-            continue;
-        }
-        if (recordCategory == "MESSAGE_DELETED_OR_RECOVERABLE") {
-            const int guidCol = findColumnIndex(cols, {"guid", "message_guid", "chat_id", "message_id", "zmessage", "zmessageguid"}, true);
-            const int deleteDateCol = findColumnIndex(cols, {"delete_date", "deleted_date", "date", "zdate", "zdeleteddate", "zcreatedate"}, true);
-            const auto delTs = normalizeIosAppTimestamp(columnValue(st, deleteDateCol, 128), "deleted_or_recoverable_date");
-            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
-                                columnValue(st, pkCol, 256), delTs.first, delTs.second, "", "",
-                                "Apple Messages deleted/recoverable record", "", columnValue(st, guidCol, 512),
-                                "Deleted/recoverable Apple Messages table row; table=" + table,
-                                "parsed_apple_deleted_or_recoverable_record",
-                                "read_only_sqlite_dynamic_schema table=" + table + "; deleted_or_recoverable_table_v0_9_48");
-            ++rows;
-            continue;
-        }
-        int i = 1;
-        parsedIns.bind(i++, sourceId);
-        parsedIns.bind(i++, inv.id);
-        parsedIns.bind(i++, inv.norm);
-        parsedIns.bind(i++, inv.name);
-        parsedIns.bind(i++, inv.cat);
-        parsedIns.bind(i++, inv.app);
-        parsedIns.bind(i++, table);
-        parsedIns.bind(i++, recordCategory);
-        parsedIns.bind(i++, columnValue(st, pkCol, 256));
-        parsedIns.bind(i++, ts.first);
-        parsedIns.bind(i++, ts.second);
-        parsedIns.bind(i++, columnValue(st, contactCol, 512));
-        parsedIns.bind(i++, columnValue(st, urlCol, 1000));
-        parsedIns.bind(i++, columnValue(st, titleCol, 1000));
-        parsedIns.bind(i++, columnValue(st, pathCol, 1000));
-        parsedIns.bind(i++, columnValue(st, itemCol, 512));
-        parsedIns.bind(i++, columnValue(st, textCol, 2000));
-        parsedIns.bind(i++, "parsed_generic_app_db_row");
-        parsedIns.bind(i++, "read_only_sqlite_dynamic_schema table=" + table);
-        parsedIns.bind(i++, nowUtc());
-        parsedIns.stepDone();
-        parsedIns.reset();
-        ++rows;
-    }
-    sqlite3_finalize(st);
-    return rows;
-}
 
 void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& caseDir, const std::string& sourceId, Logger& log) {
     std::vector<IosAppDbInv> invs;
@@ -4678,33 +3984,11 @@ void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& case
                 ins.bind(9, cols);
                 ins.bind(10, recCat);
                 ins.bind(11, rowCount >= 0 ? "table_counted" : "table_count_failed");
-                ins.bind(12, isTargetIosRecordCategory(recCat) ? "schema/table-counted and generic parsed-record extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
+                ins.bind(12, iosAppDbIsTargetRecordCategory(recCat) ? "schema/table-counted and generic parsed-record extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
                 ins.bind(13, nowUtc());
                 ins.stepDone(); ins.reset();
-                if (rowCount > 0 && isTargetIosRecordCategory(recCat)) {
-                    if (parseDecision.useWhatsAppSpecialParser) {
-                        std::size_t specialRows = parseWhatsAppIosTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                        if (specialRows > 0) parsedRows += specialRows;
-                        else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    } else if (parseDecision.useAppleMessagesSpecialParser) {
-                        std::size_t specialRows = 0;
-                        const std::string lowerTable = toLower(table);
-                        if (lowerTable == "message") {
-                            specialRows = parseAppleMessagesSmsDbMessageRows(sourceId, inv, ext, parsedIns);
-                        } else if (lowerTable == "attachment") {
-                            specialRows = parseAppleMessagesSmsDbAttachmentRows(sourceId, inv, ext, parsedIns);
-                        } else if (lowerTable == "handle" || lowerTable == "chat") {
-                            specialRows = parseAppleMessagesSmsDbParticipantRows(sourceId, inv, ext, table, parsedIns);
-                        }
-                        if (specialRows > 0) parsedRows += specialRows;
-                        else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    } else if (parseDecision.useKnowledgeCSpecialParser) {
-                        std::size_t specialRows = parseKnowledgeCIosZObjectRows(sourceId, inv, ext, table, parsedIns);
-                        if (specialRows > 0) parsedRows += specialRows;
-                        else parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    } else {
-                        parsedRows += parseIosAppDbTableRows(sourceId, inv, ext, table, recCat, parsedIns);
-                    }
+                if (rowCount > 0 && iosAppDbIsTargetRecordCategory(recCat)) {
+                    parsedRows += iosAppDbParseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
                 }
                 ++tableRows; ++tableCount;
             }
@@ -7564,6 +6848,248 @@ bool isLikelyStoreV2GroupDirectoryName(const std::string& name) {
     return true;
 }
 
+
+long long apfsStoreV2StageCandidateScore(const ApfsSpotlightFileCopyOutRow& r) {
+    long long score = 0;
+    if (r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_ZLIB" ||
+        r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_PLAIN" ||
+        r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS" ||
+        r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS" ||
+        r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZBITMAP_UNCOMPRESSED_MARKERS") {
+        score += 140000;
+    } else if (r.copyStatus == "COPIED_GAPLESS_EXTENT_CHAIN" || r.copyStatus == "COPIED_DIRECT_INDEXED_EXTENT_CHAIN") {
+        score += 50000;
+    } else if (r.copyStatus == "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS") {
+        score += 48000;
+    } else if (apfsCopyStatusRepresentsPartialCandidate(r.copyStatus)) {
+        score += 10000;
+    }
+
+    score += cacheNameFileIdClosenessScore(r.targetName, r.targetChildFileId);
+
+    if (r.validationStatus == "TRIMMED_TO_INODE_LOGICAL_SIZE") score += 25000;
+    if (r.logicalSizeSource == "INO_EXT_TYPE_DSTREAM.size") score += 22000;
+    if (r.logicalSizeSource == "extent_chain_allocated_size") score -= 18000;
+    if (r.validationStatus.find("SIZE_MATCH") != std::string::npos) score += 8000;
+    if (r.validationStatus == "PARTIAL_LOGICAL_SIZE_EXCEEDS_EXTENT_CHAIN") score -= 2000;
+    if (r.notes.find("_shifted_right_4") != std::string::npos) score -= 7000;
+    if (r.notes.find("INODE_PARENT_MISMATCH") != std::string::npos) score -= 20000;
+    score += static_cast<long long>(std::min<std::uint64_t>(r.outputSizeBytes, 1024ULL * 1024ULL) / 65536ULL);
+    return score;
+}
+
+std::string apfsStoreV2CandidateStageKeyForCompare(const ApfsSpotlightFileCopyOutRow& r) {
+    const std::uint64_t groupRoot = r.storeV2RootObjectId ? r.storeV2RootObjectId : r.targetParentObjectId;
+    std::string rel = r.storeV2RelativePath.empty() ? r.targetName : r.storeV2RelativePath;
+    for (char& ch : rel) { if (ch == '\\') ch = '/'; }
+    if (!r.storeV2GroupName.empty()) {
+        std::string groupPrefix = r.storeV2GroupName;
+        for (char& ch : groupPrefix) { if (ch == '\\') ch = '/'; }
+        const std::string prefixed = groupPrefix + "/";
+        if (rel == groupPrefix) rel.clear();
+        else if (rel.rfind(prefixed, 0) == 0) rel.erase(0, prefixed.size());
+    }
+    if (rel.empty()) rel = r.targetName;
+    return std::to_string(r.volumeSequence) + ":" + std::to_string(r.fsOid) + ":" + std::to_string(groupRoot) + ":" + rel;
+}
+
+void writeAff4ApfsStoreV2CandidateDualProcessCompareOutputs(
+        const fs::path& caseDir,
+        const EvidenceSource& source,
+        const fs::path& originalInput,
+        const std::vector<ApfsSpotlightFileCopyOutRow>& copyRows,
+        const std::vector<std::pair<std::string, const ApfsSpotlightFileCopyOutRow*>>& stagedFiles,
+        bool strictSingleAff4,
+        Logger& log) {
+    struct CandidateStats {
+        std::string key;
+        std::uint32_t volumeSequence = 0;
+        std::uint64_t fsOid = 0;
+        std::string volumeName;
+        std::uint64_t groupRootObjectId = 0;
+        std::string storeV2GroupName;
+        std::string storeV2RelativePath;
+        std::string targetName;
+        std::string componentKind;
+        std::size_t candidateRows = 0;
+        std::size_t copiedCandidateRows = 0;
+        std::size_t partialCandidateRows = 0;
+        std::size_t skippedCandidateRows = 0;
+        std::uint64_t maxCandidateSizeBytes = 0;
+        std::uint64_t totalCandidateBytes = 0;
+        long long bestScore = std::numeric_limits<long long>::min();
+        const ApfsSpotlightFileCopyOutRow* bestRow = nullptr;
+        const ApfsSpotlightFileCopyOutRow* stagedRow = nullptr;
+        std::string stagedRelativePath;
+    };
+
+    std::map<std::string, CandidateStats> byKey;
+
+    auto considerRow = [&](const ApfsSpotlightFileCopyOutRow& r) {
+        const std::string kind = storeV2ComponentKind(r.targetName);
+        if (kind.empty() && r.storeV2RootObjectId == 0) return;
+        const std::string key = apfsStoreV2CandidateStageKeyForCompare(r);
+        auto& s = byKey[key];
+        if (s.key.empty()) {
+            s.key = key;
+            s.volumeSequence = r.volumeSequence;
+            s.fsOid = r.fsOid;
+            s.volumeName = r.volumeName;
+            s.groupRootObjectId = r.storeV2RootObjectId ? r.storeV2RootObjectId : r.targetParentObjectId;
+            s.storeV2GroupName = r.storeV2GroupName;
+            s.storeV2RelativePath = r.storeV2RelativePath.empty() ? r.targetName : r.storeV2RelativePath;
+            s.targetName = r.targetName;
+            s.componentKind = kind;
+        }
+        ++s.candidateRows;
+        s.totalCandidateBytes += r.outputSizeBytes;
+        s.maxCandidateSizeBytes = std::max<std::uint64_t>(s.maxCandidateSizeBytes, r.outputSizeBytes);
+        const auto c = classifyApfsExtractionStatus(r.copyStatus);
+        if (c.copied && !c.partial) ++s.copiedCandidateRows;
+        else if (c.partial) ++s.partialCandidateRows;
+        else ++s.skippedCandidateRows;
+        const long long score = apfsStoreV2StageCandidateScore(r);
+        if (!s.bestRow || score > s.bestScore || (score == s.bestScore && r.outputSizeBytes > s.bestRow->outputSizeBytes)) {
+            s.bestScore = score;
+            s.bestRow = &r;
+        }
+    };
+
+    for (const auto& r : copyRows) considerRow(r);
+
+    for (const auto& staged : stagedFiles) {
+        const ApfsSpotlightFileCopyOutRow* r = staged.second;
+        if (!r) continue;
+        const std::string key = apfsStoreV2CandidateStageKeyForCompare(*r);
+        auto& s = byKey[key];
+        if (s.key.empty()) {
+            s.key = key;
+            s.volumeSequence = r->volumeSequence;
+            s.fsOid = r->fsOid;
+            s.volumeName = r->volumeName;
+            s.groupRootObjectId = r->storeV2RootObjectId ? r->storeV2RootObjectId : r->targetParentObjectId;
+            s.storeV2GroupName = r->storeV2GroupName;
+            s.storeV2RelativePath = r->storeV2RelativePath.empty() ? r->targetName : r->storeV2RelativePath;
+            s.targetName = r->targetName;
+            s.componentKind = storeV2ComponentKind(r->targetName);
+        }
+        s.stagedRow = r;
+        s.stagedRelativePath = staged.first;
+    }
+
+    std::size_t rows = 0;
+    std::size_t exactBestStaged = 0;
+    std::size_t stagedNotBest = 0;
+    std::size_t noStaged = 0;
+    std::size_t duplicateCandidateKeys = 0;
+    std::size_t selectedWithSyntheticZeros = 0;
+    std::size_t selectedDecmpfs = 0;
+    std::size_t skippedOnlyKeys = 0;
+
+    const fs::path csvPath = caseDir / "aff4_apfs_storev2_candidate_dual_process_compare.csv";
+    try {
+        std::ofstream out(csvPath, std::ios::binary);
+        out << "source_id,input_path,input_type,sequence,candidate_key,volume_sequence,fs_oid,volume_name,group_root_object_id,storev2_group_name,storev2_relative_path,target_name,component_kind,candidate_rows,copied_candidate_rows,partial_candidate_rows,skipped_candidate_rows,max_candidate_size_bytes,total_candidate_bytes,best_sequence,best_score,best_child_file_id,best_copy_status,best_validation_status,best_output_relative_path,best_output_size_bytes,best_output_sha256,staged,staged_sequence,staged_child_file_id,staged_relative_path,staged_output_size_bytes,staged_output_sha256,selection_status,strict_single_aff4_policy,notes\n";
+        std::uint32_t seq = 0;
+        for (const auto& kv : byKey) {
+            const auto& s = kv.second;
+            ++rows;
+            if (s.candidateRows > 1) ++duplicateCandidateKeys;
+            const bool staged = s.stagedRow != nullptr;
+            if (!staged) ++noStaged;
+            if (s.copiedCandidateRows == 0 && s.partialCandidateRows == 0) ++skippedOnlyKeys;
+            std::string selectionStatus;
+            std::string notes;
+            if (!s.bestRow && !staged) {
+                selectionStatus = "NO_COPIED_OR_STAGED_ROW";
+            } else if (staged && s.bestRow && s.stagedRow == s.bestRow) {
+                selectionStatus = "STAGED_SELECTED_BEST_COPYOUT_CANDIDATE";
+                ++exactBestStaged;
+            } else if (staged && s.bestRow && s.stagedRow->sequence == s.bestRow->sequence) {
+                selectionStatus = "STAGED_SELECTED_BEST_COPYOUT_SEQUENCE";
+                ++exactBestStaged;
+            } else if (staged && s.bestRow) {
+                selectionStatus = "STAGED_ROW_DIFFERS_FROM_BEST_COPYOUT_CANDIDATE";
+                ++stagedNotBest;
+                notes = "review scoring/provenance; staged row did not match highest-scored candidate";
+            } else if (!staged && s.bestRow) {
+                selectionStatus = "BEST_COPYOUT_CANDIDATE_NOT_STAGED";
+                notes = "candidate was copied but not selected into normalized Store-V2 stage";
+            } else {
+                selectionStatus = "STAGED_WITHOUT_COPYOUT_BEST_ROW";
+            }
+            if (s.stagedRow) {
+                if (s.stagedRow->copyStatus == "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS") ++selectedWithSyntheticZeros;
+                if (s.stagedRow->copyStatus.rfind("COPIED_DECOMPFS_RESOURCE_FORK", 0) == 0) ++selectedDecmpfs;
+            }
+
+            const auto* b = s.bestRow;
+            const auto* st = s.stagedRow;
+            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ','
+                << seq++ << ',' << csvEscape(s.key) << ',' << s.volumeSequence << ',' << s.fsOid << ',' << csvEscape(s.volumeName) << ',' << s.groupRootObjectId << ','
+                << csvEscape(s.storeV2GroupName) << ',' << csvEscape(s.storeV2RelativePath) << ',' << csvEscape(s.targetName) << ',' << csvEscape(s.componentKind) << ','
+                << s.candidateRows << ',' << s.copiedCandidateRows << ',' << s.partialCandidateRows << ',' << s.skippedCandidateRows << ','
+                << s.maxCandidateSizeBytes << ',' << s.totalCandidateBytes << ','
+                << (b ? b->sequence : 0) << ',' << (b ? s.bestScore : 0) << ',' << (b ? b->targetChildFileId : 0) << ','
+                << csvEscape(b ? b->copyStatus : "") << ',' << csvEscape(b ? b->validationStatus : "") << ',' << csvEscape(b ? b->outputRelativePath : "") << ','
+                << (b ? b->outputSizeBytes : 0) << ',' << csvEscape(b ? b->outputSha256 : "") << ','
+                << (staged ? "1" : "0") << ',' << (st ? st->sequence : 0) << ',' << (st ? st->targetChildFileId : 0) << ','
+                << csvEscape(s.stagedRelativePath) << ',' << (st ? st->outputSizeBytes : 0) << ',' << csvEscape(st ? st->outputSha256 : "") << ','
+                << csvEscape(selectionStatus) << ',' << (strictSingleAff4 ? "1" : "0") << ',' << csvEscape(notes) << "\n";
+        }
+        if (byKey.empty()) {
+            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(originalInput)) << ',' << csvEscape(inputSourceType(originalInput)) << ",0,,0,0,,0,,,,,0,0,0,0,0,0,0,0,0,,,,0,,0,0,,0,,NO_STOREV2_CANDIDATES,1,no Store-V2 candidate copy-out rows were available\n";
+        }
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_storev2_candidate_dual_process_compare.csv: ") + ex.what());
+    }
+
+    try {
+        std::ofstream out(caseDir / "aff4_apfs_storev2_candidate_dual_process_compare_summary.json", std::ios::binary);
+        out << "{\n";
+        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        out << "  \"app_version\": \"" << appVersion() << "\",\n";
+        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
+        out << "  \"probe_scope\": \"AFF4_APFS_STOREV2_COPYOUT_VS_STAGE_CANDIDATE_COMPARE\",\n";
+        out << "  \"strict_single_aff4_policy\": " << (strictSingleAff4 ? "true" : "false") << ",\n";
+        out << "  \"candidate_keys\": " << rows << ",\n";
+        out << "  \"duplicate_candidate_keys\": " << duplicateCandidateKeys << ",\n";
+        out << "  \"staged_selected_best_candidate\": " << exactBestStaged << ",\n";
+        out << "  \"staged_row_differs_from_best_candidate\": " << stagedNotBest << ",\n";
+        out << "  \"candidate_keys_not_staged\": " << noStaged << ",\n";
+        out << "  \"skipped_only_candidate_keys\": " << skippedOnlyKeys << ",\n";
+        out << "  \"staged_with_synthetic_zero_provenance\": " << selectedWithSyntheticZeros << ",\n";
+        out << "  \"staged_decpmfs_or_resource_fork_rows\": " << selectedDecmpfs << "\n";
+        out << "}\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_storev2_candidate_dual_process_compare_summary.json: ") + ex.what());
+    }
+
+    try {
+        std::ofstream out(caseDir / "AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md", std::ios::binary);
+        out << "# AFF4/APFS Store-V2 Candidate Dual-Process Compare\n\n";
+        out << "Version: " << appVersion() << "\n\n";
+        out << "## Purpose\n\n";
+        out << "This output compares the AFF4/APFS copy-out candidate process against the normalized Store-V2 staging process. It is a regression guard for duplicate APFS directory candidates, staged-file overwrite risk, synthetic zero provenance, and best-candidate selection drift.\n\n";
+        out << "## Summary\n\n";
+        out << "- Candidate keys: `" << rows << "`\n";
+        out << "- Duplicate candidate keys: `" << duplicateCandidateKeys << "`\n";
+        out << "- Staged rows selecting best candidate: `" << exactBestStaged << "`\n";
+        out << "- Staged rows differing from best candidate: `" << stagedNotBest << "`\n";
+        out << "- Candidate keys not staged: `" << noStaged << "`\n";
+        out << "- Skipped-only candidate keys: `" << skippedOnlyKeys << "`\n";
+        out << "- Staged rows with synthetic-zero provenance: `" << selectedWithSyntheticZeros << "`\n";
+        out << "- Staged decmpfs/resource-fork rows: `" << selectedDecmpfs << "`\n\n";
+        out << "## Interpretation\n\n";
+        out << "`STAGED_ROW_DIFFERS_FROM_BEST_COPYOUT_CANDIDATE` should be reviewed first because it means normalized staging did not choose the highest-scored copied row for the same Store-V2 component key. This does not classify evidence as invalid; it identifies a deterministic candidate-selection discrepancy for support review.\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md: ") + ex.what());
+    }
+
+    log.info("AFF4/APFS Store-V2 candidate dual-process compare written: " + pathString(csvPath));
+}
+
 void writeAff4ApfsExtractedStoreV2StageOutputs(const fs::path& caseDir,
                                                const EvidenceSource& source,
                                                const fs::path& originalInput,
@@ -7651,27 +7177,7 @@ void writeAff4ApfsExtractedStoreV2StageOutputs(const fs::path& caseDir,
         }
         std::set<std::string> usedNames;
         auto stageRowPreferenceScore = [](const ApfsSpotlightFileCopyOutRow& r) -> long long {
-            long long score = 0;
-            if (r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_ZLIB" || r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_PLAIN" || r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZVN_UNCOMPRESSED_MARKERS" || r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZFSE_UNCOMPRESSED_MARKERS" || r.copyStatus == "COPIED_DECOMPFS_RESOURCE_FORK_LZBITMAP_UNCOMPRESSED_MARKERS") score += 140000;
-            else if (r.copyStatus == "COPIED_GAPLESS_EXTENT_CHAIN" || r.copyStatus == "COPIED_DIRECT_INDEXED_EXTENT_CHAIN") score += 50000;
-            else if (r.copyStatus == "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS") score += 48000;
-            else if (apfsCopyStatusRepresentsPartialCandidate(r.copyStatus)) score += 10000;
-
-            // For duplicated Store-V2 Cache/N.txt rows, the correct APFS directory-entry file ID
-            // is normally numerically close to the cache filename.  Wrong fallback candidates can
-            // have the same Store-V2 path but unrelated file IDs and larger misleading data-fork
-            // extents.  Prefer the path/object pair that is closest to the numeric filename.
-            score += cacheNameFileIdClosenessScore(r.targetName, r.targetChildFileId);
-
-            if (r.validationStatus == "TRIMMED_TO_INODE_LOGICAL_SIZE") score += 25000;
-            if (r.logicalSizeSource == "INO_EXT_TYPE_DSTREAM.size") score += 22000;
-            if (r.logicalSizeSource == "extent_chain_allocated_size") score -= 18000;
-            if (r.validationStatus.find("SIZE_MATCH") != std::string::npos) score += 8000;
-            if (r.validationStatus == "PARTIAL_LOGICAL_SIZE_EXCEEDS_EXTENT_CHAIN") score -= 2000;
-            if (r.notes.find("_shifted_right_4") != std::string::npos) score -= 7000;
-            if (r.notes.find("INODE_PARENT_MISMATCH") != std::string::npos) score -= 20000;
-            score += static_cast<long long>(std::min<std::uint64_t>(r.outputSizeBytes, 1024ULL * 1024ULL) / 65536ULL);
-            return score;
+            return apfsStoreV2StageCandidateScore(r);
         };
         auto stagePathKeyForRow = [&](const ApfsSpotlightFileCopyOutRow& r) -> std::string {
             std::string rel = r.storeV2RelativePath.empty() ? r.targetName : r.storeV2RelativePath;
@@ -7775,6 +7281,8 @@ void writeAff4ApfsExtractedStoreV2StageOutputs(const fs::path& caseDir,
         else if (g.storeDb > 0) g.status = "STAGED_STORE_DB_GROUP";
         else g.status = "STAGED_AUXILIARY_STORE_COMPONENT_GROUP";
     }
+
+    writeAff4ApfsStoreV2CandidateDualProcessCompareOutputs(caseDir, source, originalInput, copyRows, stagedFiles, strictSingleAff4, log);
 
     const fs::path groupCsv = caseDir / "aff4_apfs_extracted_storev2_stage_groups.csv";
     try {
@@ -12532,26 +12040,30 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
     }
     writeAff4ApfsSpotlightFileCopyOutOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
     writeAff4ApfsExtractedStoreV2StageOutputs(caseDir, source, originalInput, apfsSpotlightFileCopyOutRows, strictAff4PolicyForOutputs, log);
-    log.info("AFF4 CPP Lite dynamic-load probe written: " + pathString(csvPath));
-    log.info("AFF4 virtual APFS probe written: " + pathString(apfsCsvPath));
-    log.info("AFF4 APFS container view written: " + pathString(caseDir / "aff4_apfs_container_superblock.csv"));
-    log.info("AFF4 APFS volume superblock probe written: " + pathString(caseDir / "aff4_apfs_volume_superblocks.csv"));
-    log.info("AFF4 APFS checkpoint map probe written: " + pathString(caseDir / "aff4_apfs_checkpoint_map.csv"));
-    log.info("AFF4 APFS object-resolution probe written: " + pathString(caseDir / "aff4_apfs_object_id_probe.csv"));
-    log.info("AFF4 APFS OMAP probe written: " + pathString(caseDir / "aff4_apfs_omap_phys_probe.csv"));
-    log.info("AFF4 APFS OMAP B-tree root probe written: " + pathString(caseDir / "aff4_apfs_omap_btree_root_probe.csv"));
-    log.info("AFF4 APFS OMAP lookup probe written: " + pathString(caseDir / "aff4_apfs_omap_lookup_probe.csv"));
-    log.info("AFF4 APFS OMAP B-tree TOC probe written: " + pathString(caseDir / "aff4_apfs_omap_btree_toc_probe.csv"));
-    log.info("AFF4 APFS OMAP leaf key/value decode written: " + pathString(caseDir / "aff4_apfs_omap_leaf_kv_decode.csv"));
-    log.info("AFF4 APFS OMAP leaf lookup results written: " + pathString(caseDir / "aff4_apfs_omap_leaf_lookup_results.csv"));
-    log.info("AFF4 APFS resolved volume superblocks written: " + pathString(caseDir / "aff4_apfs_resolved_volume_superblocks.csv"));
-    log.info("AFF4 APFS volume OMAP probe written: " + pathString(caseDir / "aff4_apfs_volume_omap_probe.csv"));
-    log.info("AFF4 APFS volume root-tree lookup written: " + pathString(caseDir / "aff4_apfs_volume_root_tree_lookup.csv"));
-    log.info("AFF4 APFS root-tree node probe written: " + pathString(caseDir / "aff4_apfs_root_tree_node_probe.csv"));
-    log.info("AFF4 APFS Spotlight target scan written: " + pathString(caseDir / "aff4_apfs_spotlight_target_scan.csv"));
-    log.info("AFF4 APFS Spotlight inode probe written: " + pathString(caseDir / "aff4_apfs_spotlight_inode_probe.csv"));
-    log.info("AFF4 APFS Spotlight XATTR probe written: " + pathString(caseDir / "aff4_apfs_spotlight_xattr_probe.csv"));
-    log.info("AFF4 APFS Spotlight file-extent probe written: " + pathString(caseDir / "aff4_apfs_spotlight_file_extent_probe.csv"));
+    log.info("AFF4 APFS Spotlight file copy-out output written: " + pathString(caseDir / "aff4_apfs_spotlight_file_copy_out.csv"));
+    log.info("AFF4 APFS extracted Store-V2 stage output written: " + pathString(caseDir / "aff4_apfs_extracted_storev2_stage_summary.json"));
+    if (writeHeavyApfsDiagnostics) {
+        log.info("AFF4 CPP Lite dynamic-load probe written: " + pathString(csvPath));
+        log.info("AFF4 virtual APFS probe written: " + pathString(apfsCsvPath));
+        log.info("AFF4 APFS container view written: " + pathString(caseDir / "aff4_apfs_container_superblock.csv"));
+        log.info("AFF4 APFS volume superblock probe written: " + pathString(caseDir / "aff4_apfs_volume_superblocks.csv"));
+        log.info("AFF4 APFS checkpoint map probe written: " + pathString(caseDir / "aff4_apfs_checkpoint_map.csv"));
+        log.info("AFF4 APFS object-resolution probe written: " + pathString(caseDir / "aff4_apfs_object_id_probe.csv"));
+        log.info("AFF4 APFS OMAP probe written: " + pathString(caseDir / "aff4_apfs_omap_phys_probe.csv"));
+        log.info("AFF4 APFS OMAP B-tree root probe written: " + pathString(caseDir / "aff4_apfs_omap_btree_root_probe.csv"));
+        log.info("AFF4 APFS OMAP lookup probe written: " + pathString(caseDir / "aff4_apfs_omap_lookup_probe.csv"));
+        log.info("AFF4 APFS OMAP B-tree TOC probe written: " + pathString(caseDir / "aff4_apfs_omap_btree_toc_probe.csv"));
+        log.info("AFF4 APFS OMAP leaf key/value decode written: " + pathString(caseDir / "aff4_apfs_omap_leaf_kv_decode.csv"));
+        log.info("AFF4 APFS OMAP leaf lookup results written: " + pathString(caseDir / "aff4_apfs_omap_leaf_lookup_results.csv"));
+        log.info("AFF4 APFS resolved volume superblocks written: " + pathString(caseDir / "aff4_apfs_resolved_volume_superblocks.csv"));
+        log.info("AFF4 APFS volume OMAP probe written: " + pathString(caseDir / "aff4_apfs_volume_omap_probe.csv"));
+        log.info("AFF4 APFS volume root-tree lookup written: " + pathString(caseDir / "aff4_apfs_volume_root_tree_lookup.csv"));
+        log.info("AFF4 APFS root-tree node probe written: " + pathString(caseDir / "aff4_apfs_root_tree_node_probe.csv"));
+        log.info("AFF4 APFS Spotlight target scan written: " + pathString(caseDir / "aff4_apfs_spotlight_target_scan.csv"));
+        log.info("AFF4 APFS Spotlight inode probe written: " + pathString(caseDir / "aff4_apfs_spotlight_inode_probe.csv"));
+        log.info("AFF4 APFS Spotlight XATTR probe written: " + pathString(caseDir / "aff4_apfs_spotlight_xattr_probe.csv"));
+        log.info("AFF4 APFS Spotlight file-extent probe written: " + pathString(caseDir / "aff4_apfs_spotlight_file_extent_probe.csv"));
+    }
 }
 
 
@@ -14158,7 +13670,7 @@ void writeAff4DirectMapReaderProbe(const fs::path& caseDir,
                         row.firstPhysicalOffset = extents.empty() ? 0ULL : extents.front().physicalOffset;
                         if (overlap) { row.copyStatus = "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS"; row.validationStatus = "OVERLAP_ORDER_GATE_FAILED"; row.notes = "Direct indexed extents overlapped; skipped to avoid shifted output."; directSpotlightFileCopyOutRows.push_back(row); continue; }
                         if (invalidLength || expectedEnd == 0 || expectedEnd > kDirectMaxSingleCopyOutBytes) { row.copyStatus = "SKIPPED_SIZE_LIMIT_OR_INVALID_LENGTH"; row.validationStatus = "SIZE_GATE_FAILED"; row.notes = "Direct indexed extent chain was empty, invalid, or above per-file safety cap."; directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        // V1.0.13: write raw APFS copy-out rows to a unique per-target folder.
+                        // V1.0.15: write raw APFS copy-out rows to a unique per-target folder.
                         // Earlier builds wrote many duplicate Store-V2 component names into
                         // ExtractedSpotlight/StagedStoreV2/Ungrouped/<name>.  Later rows could
                         // overwrite the file that an earlier, higher-scored staging row referenced,

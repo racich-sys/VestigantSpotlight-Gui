@@ -325,7 +325,7 @@ if ($exitCode -ne 0 -and !$ProbeTimedOut) {
         "ExitCode: $exitCode",
         "Case output: $Out",
         "Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))",
-        "This V1.0.13 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
+        "This V1.0.15 wrapper packages available partial diagnostics so the next review can identify the failing parser stage."
     ) | Set-Content -LiteralPath $failureNote -Encoding UTF8
     if (!$SkipUploadZip) {
         try {
@@ -375,6 +375,9 @@ $expectedRunOutputs = @(
     "aff4_apfs_extracted_storev2_stage_files.csv",
     "aff4_apfs_extracted_storev2_stage_summary.json",
     "AFF4_APFS_EXTRACTED_STOREV2_STAGE.md",
+    "aff4_apfs_storev2_candidate_dual_process_compare.csv",
+    "aff4_apfs_storev2_candidate_dual_process_compare_summary.json",
+    "AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md",
     "aff4_apfs_staged_storev2_parser_probe.csv",
     "aff4_apfs_staged_storev2_parser_probe_summary.json",
     "AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md",

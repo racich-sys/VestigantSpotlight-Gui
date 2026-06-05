@@ -1,21 +1,17 @@
-# V1.0.13
+# V1.0.15
 
-- Isolated raw AFF4/APFS copy-out files from normalized Store-V2 staging to prevent same-name duplicate APFS candidates from overwriting selected staging sources.
-- Raw APFS copy-out rows now write to `ExtractedSpotlight/ApfsCopyOutByTarget/seq_<target>_fid_<id>_parent_<id>_<group>/...`.
-- Normalized investigator-facing Store-V2 files remain under `ExtractedSpotlight/StagedStoreV2/<group>/...`.
-- Thin-upload packaging excludes `ExtractedSpotlight/ApfsCopyOutByTarget` so support bundles do not balloon with raw duplicate copy-out files.
+- Added AFF4/APFS Store-V2 candidate dual-process comparison.
+- New outputs:
+  - `aff4_apfs_storev2_candidate_dual_process_compare.csv`
+  - `aff4_apfs_storev2_candidate_dual_process_compare_summary.json`
+  - `AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md`
+- The compare output audits raw APFS copy-out candidates against normalized `StagedStoreV2` selections.
+- Added packaging and wrapper validation for the new compare outputs.
+- Added LZFSE/LZVN source review documentation explaining why APFS structural documentation is authoritative for locating compressed content but not sufficient by itself to enable production codec output.
+- Kept normal-mode AFF4/APFS structural diagnostics suppressed while keeping copy-out/staging/parser/enrichment/external-compare outputs enabled.
 
-## V1.0.13
+# V1.0.14
 
-- Added opt-in AFF4/APFS structural diagnostic CSV output mode.
-- Normal AFF4/APFS source-probe runs now suppress heavy structural APFS diagnostic CSVs while keeping copy-out, staging, parser, enrichment, and external-comparison outputs.
-- Added `--aff4-apfs-diagnostic-outputs` / `--diagnostic-apfs-csvs` for full support runs.
-- Added callback-driven `ApfsVolumeReader::enumerateDirectory()` lower-bound iterator implementation for isolated APFS directory walk testing.
-- Removed low-risk duplicated iOS parser wrapper functions from `app_runner.cpp`.
-- Confirmed GUI view registry ownership remains centralized in `view_registry`.
-- Updated wrapper validation so suppressed diagnostics do not block normal external comparison.
-
-Delayed:
-- Full iOS row parser migration awaits parser-independent row sink.
-- Live APFS traversal replacement awaits iterator parity benchmarks.
-- LZFSE/LZVN remains pending vetted codec and test vectors.
+- Moved iOS app DB row parsing into `src/parsers/ios_app_db_parser.cpp`.
+- Corrected AFF4/APFS normal-mode logging around suppressed diagnostics.
+- Preserved Store-V2 staged parser handoff.
