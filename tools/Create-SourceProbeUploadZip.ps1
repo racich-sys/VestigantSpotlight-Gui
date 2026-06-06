@@ -19,6 +19,8 @@ $ThinUploadDeniedLeafNames = @{
     "image_file_inventory.csv" = $true
 }
 
+$ThinUploadMaxDynamicExportCsvBytes = 50MB
+
 function Test-ThinUploadDeniedRelativeName {
     param([Parameter(Mandatory=$true)][string]$RelativeName)
     $leaf = Split-Path -Leaf $RelativeName
@@ -99,6 +101,12 @@ function Copy-FirstExistingCaseFile {
 
     foreach ($p in $candidates) {
         if (Test-Path -LiteralPath $p) {
+            $item = Get-Item -LiteralPath $p -ErrorAction Stop
+            $relForPolicy = $RelativeName.Replace('\\', '/')
+            if (($relForPolicy -like 'exports/*.csv') -and ($item.Length -gt $ThinUploadMaxDynamicExportCsvBytes)) {
+                return $false
+            }
+
             $dest = Join-Path $UploadRoot $OutputName
             $destParent = Split-Path -Parent $dest
             if ($destParent) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }

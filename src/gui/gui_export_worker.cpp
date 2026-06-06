@@ -41,7 +41,7 @@ int exportSqliteBusyRetryHandler(void*, int count) {
 void configureExportSqliteConnection(sqlite3* db) {
     if (!db) return;
     sqlite3_busy_handler(db, exportSqliteBusyRetryHandler, nullptr);
-    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536; PRAGMA case_sensitive_like=OFF;", nullptr, nullptr, nullptr);
 }
 
 std::string csvEscape(const std::string& s) {

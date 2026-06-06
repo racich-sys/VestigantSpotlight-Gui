@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 1.0.28.2 LANGUAGES C CXX)
+project(VestigantSpotlightInv VERSION 1.0.31 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +38,7 @@ set(CORE_SOURCES
   src/db/case_db.cpp
   src/ingest/source_profiles.cpp
   src/ingest/store_discovery.cpp src/ingest/evidence_preservation.cpp
+  src/ingest/evidence_intake.cpp
   src/parsers/native_storedb_parser.cpp
   src/parsers/ios_app_db_parser.cpp
   src/parsers/apfs_volume_reader.cpp

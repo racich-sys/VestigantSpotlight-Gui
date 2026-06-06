@@ -1,3 +1,43 @@
+# Version History
+
+## V1.0.31
+
+- Reviewed V1.0.30 Windows/MSVC build log and macOS AFF4/APFS thin ZIP before changes.
+- Added `src/ingest/evidence_intake.h/.cpp` as a behavior-preserving intake helper module boundary.
+- Moved CSV row counting, iOS ZIP path normalization, app database staging path sanitization, and iOS app database hint/category helpers out of `app_runner.cpp`.
+- Added temporary SQLite PRAGMAs around regenerable iOS CSV fallback import, with WAL/NORMAL restore after import or rollback.
+- Added `PRAGMA case_sensitive_like=OFF` to GUI review/export read connections while preserving current broad search semantics.
+- Documented the user `repeat` shorthand and updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
+- Local Linux CMake build and self-test passed.
+- No APFS traversal, AFF4 read, Store-V2 parser, SQLite schema, or forensic interpretation behavior was intentionally changed.
+
+## V1.0.30
+
+- Reviewed V1.0.29 Windows/MSVC build log and macOS AFF4/APFS thin ZIP before changes.
+- Moved iOS app database record-inventory orchestration into `IosAppDbParser::parseRecordInventories(...)`.
+- Reduced `app_runner.cpp` iOS app DB inventory function to a delegating wrapper with status callback preservation.
+- Added GUI export thread registry and joined active export workers during `WM_DESTROY` instead of detaching Export Page/Filtered/Checked/Tagged workers.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
+- No AFF4/APFS traversal, copy-out, Store-V2 parsing, iOS CoreSpotlight schema, or forensic interpretation changes.
+
+
+V1.0.29 is a narrow hardening release after V1.0.28.2 linked successfully but the PowerShell build wrapper still checked for the stale `1.0.27` version string.
+
+## Changes
+
+- Corrected the versioned PowerShell build wrapper to expect `1.0.29`.
+- Closed the parent process copy of redirected subprocess log handles immediately after child process creation.
+- Replaced global DLL-directory mutation with `LoadLibraryExW` secure per-module loading for the guarded AFF4 dynamic probe.
+- Suspended Win32 ListView redraw during bulk review grid population.
+- Added a 50 MB cap for dynamically copied thin-upload export CSVs in both the C++ upload bundler and the standalone PowerShell thin-upload helper.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
+
+## Validation
+
+- Local C++20 syntax checks passed for `src/app/app_runner.cpp`, `src/parsers/apfs_diagnostic_exporter.cpp`, `src/gui/gui_export_worker.cpp`, and `src/core/app_info.cpp`.
+- CMake configure completed with Apple/lzfse detected.
+- Windows/MSVC validation remains required.
+
 # V1.0.28.2
 
 V1.0.28.2 is a narrow build/link hotfix after the V1.0.28.1 MSVC build failed with duplicate `isLikelyStoreV2GroupDirectoryName` symbols between `app_runner.obj` and `apfs_diagnostic_exporter.obj`.

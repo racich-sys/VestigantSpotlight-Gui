@@ -111,6 +111,7 @@ REM ---------------------------------------------------------------------------
   echo src\ingest\source_profiles.cpp^|source_profiles.obj
   echo src\ingest\store_discovery.cpp^|store_discovery.obj
   echo src\ingest\evidence_preservation.cpp^|evidence_preservation.obj
+  echo src\ingest\evidence_intake.cpp^|evidence_intake.obj
   echo src\parsers\native_storedb_parser.cpp^|native_storedb_parser.obj
   echo src\parsers\ios_app_db_parser.cpp^|ios_app_db_parser.obj
   echo src\parsers\apfs_volume_reader.cpp^|apfs_volume_reader.obj

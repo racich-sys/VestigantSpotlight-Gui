@@ -1,4 +1,14 @@
-# V1.0.27
+# Version History
+
+## V1.0.30
+
+- Reviewed V1.0.29 Windows/MSVC build log and macOS AFF4/APFS thin ZIP before changes.
+- Moved iOS app database record-inventory orchestration into `IosAppDbParser::parseRecordInventories(...)`.
+- Reduced `app_runner.cpp` iOS app DB inventory function to a delegating wrapper with status callback preservation.
+- Added GUI export thread registry and joined active export workers during `WM_DESTROY` instead of detaching Export Page/Filtered/Checked/Tagged workers.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
+- No AFF4/APFS traversal, copy-out, Store-V2 parsing, iOS CoreSpotlight schema, or forensic interpretation changes.
+
 
 V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and external comparison completed but the thin ZIP failed during PowerShell relative-path inventory generation.
 

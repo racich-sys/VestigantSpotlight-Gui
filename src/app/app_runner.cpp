@@ -10,6 +10,7 @@
 #include "enrich_sql/sqlite_enrichment.h"
 #include "export_sql/sqlite_exporter.h"
 #include "ingest/evidence_preservation.h"
+#include "ingest/evidence_intake.h"
 #include "ingest/source_profiles.h"
 #include "ingest/store_discovery.h"
 #include "parsers/native_storedb_parser.h"
@@ -337,6 +338,12 @@ int runProcessNoWindowRedirected(const std::wstring& commandLine, const fs::path
         return static_cast<int>(err ? err : 1);
     }
 
+    // Close the parent's copy immediately after successful process creation.
+    // The child process keeps its inherited stdout/stderr handle, while the
+    // parent avoids holding the log file open for the duration of the process.
+    CloseHandle(logHandle);
+    logHandle = INVALID_HANDLE_VALUE;
+
     if (jobHandle) {
         if (!AssignProcessToJobObject(jobHandle, pi.hProcess)) {
             CloseHandle(jobHandle);
@@ -349,7 +356,7 @@ int runProcessNoWindowRedirected(const std::wstring& commandLine, const fs::path
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     if (jobHandle) CloseHandle(jobHandle);
-    CloseHandle(logHandle);
+    if (logHandle != INVALID_HANDLE_VALUE) CloseHandle(logHandle);
     return exitCode;
 }
 
@@ -823,6 +830,26 @@ void copyThinUploadFileIfAllowed(const fs::path& src,
     copyFileIfExists(src, dst, manifest, missingStatus);
 }
 
+constexpr std::uintmax_t kThinUploadMaxDynamicExportCsvBytes = 50ULL * 1024ULL * 1024ULL;
+
+void copyThinUploadExportCsvIfAllowed(const fs::path& src,
+                                      const fs::path& dst,
+                                      const fs::path& relativeName,
+                                      std::ofstream& manifest) {
+    if (thinUploadDeniedRelativeName(relativeName)) {
+        manifest << "REDACTED_BY_THIN_UPLOAD_POLICY," << pathString(src) << "," << pathString(dst) << "\n";
+        return;
+    }
+    std::error_code sizeEc;
+    const std::uintmax_t bytes = fs::file_size(src, sizeEc);
+    if (!sizeEc && bytes > kThinUploadMaxDynamicExportCsvBytes) {
+        manifest << "REDACTED_SIZE_LIMIT_EXCEEDED," << pathString(src) << "," << pathString(dst)
+                 << ",bytes=" << bytes << "\n";
+        return;
+    }
+    copyFileIfExists(src, dst, manifest);
+}
+
 void createUploadBundle(const fs::path& caseDir) {
     try {
         appendRunStatus(caseDir, "upload_bundle_start", "copy focused upload files");
@@ -854,7 +881,7 @@ void createUploadBundle(const fs::path& caseDir) {
                 }
                 std::error_code fileEc;
                 if (entry.is_regular_file(fileEc) && entry.path().extension() == ".csv") {
-                    copyThinUploadFileIfAllowed(entry.path(), uploadDir / "exports" / entry.path().filename(), fs::path("exports") / entry.path().filename(), manifest);
+                    copyThinUploadExportCsvIfAllowed(entry.path(), uploadDir / "exports" / entry.path().filename(), fs::path("exports") / entry.path().filename(), manifest);
                 }
             }
         } else {
@@ -3243,163 +3270,6 @@ fs::path stageZipEvidenceSourceFromCache(const fs::path& cacheDir,
     return stageRoot;
 }
 
-std::size_t countCsvDataRows(const fs::path& csvPath) {
-    std::ifstream in(csvPath, std::ios::binary);
-    if (!in) return 0;
-
-    std::array<char, 1024 * 1024> buffer{};
-    std::size_t newlineCount = 0;
-    bool sawAnyBytes = false;
-    char lastByte = '\0';
-
-    while (in) {
-        in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-        const std::streamsize n = in.gcount();
-        if (n <= 0) break;
-        sawAnyBytes = true;
-        lastByte = buffer[static_cast<std::size_t>(n) - 1U];
-        newlineCount += static_cast<std::size_t>(std::count(buffer.data(), buffer.data() + n, '\n'));
-    }
-
-    if (!sawAnyBytes) return 0;
-    std::size_t physicalLines = newlineCount;
-    if (lastByte != '\n') ++physicalLines;
-    return physicalLines > 0 ? physicalLines - 1U : 0U;
-}
-
-bool endsWithCpp(const std::string& value, const std::string& suffix) {
-    return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::string normalizeIosPathFromZipEntryCpp(const std::string& fullName) {
-    if (trim(fullName).empty()) return "";
-    std::string p = fullName;
-    std::replace(p.begin(), p.end(), '\\', '/');
-    const std::string low = toLower(p);
-    auto pos = low.find("/private/var/");
-    if (pos != std::string::npos) return toLower(p.substr(pos));
-    pos = low.find("/var/");
-    if (pos != std::string::npos) return "/private" + toLower(p.substr(pos));
-    while (!p.empty() && p.front() == '/') p.erase(p.begin());
-    return "/" + toLower(p);
-}
-
-std::string basenameFromZipEntryCpp(std::string p) {
-    std::replace(p.begin(), p.end(), '\\', '/');
-    while (!p.empty() && p.back() == '/') p.pop_back();
-    auto pos = p.find_last_of('/');
-    return pos == std::string::npos ? p : p.substr(pos + 1);
-}
-
-std::string extensionFromNameCpp(const std::string& name) {
-    const auto pos = name.find_last_of('.');
-    if (pos == std::string::npos || pos + 1 >= name.size()) return "";
-    return toLower(name.substr(pos));
-}
-
-std::string protectionClassHintCpp(const std::string& path) {
-    const std::string p = toLower(path);
-    if (p.find("nsfileprotectioncompleteuntilfirstuserauthentication") != std::string::npos) return "NSFileProtectionCompleteUntilFirstUserAuthentication";
-    if (p.find("nsfileprotectioncompleteunlessopen") != std::string::npos) return "NSFileProtectionCompleteUnlessOpen";
-    if (p.find("nsfileprotectioncompletewhenuserinactive") != std::string::npos) return "NSFileProtectionCompleteWhenUserInactive";
-    if (p.find("nsfileprotectioncomplete") != std::string::npos) return "NSFileProtectionComplete";
-    if (p.find("/priority/") != std::string::npos) return "Priority";
-    return "Unknown";
-}
-
-bool isSignalPathCpp(const std::string& lowerPath) {
-    return lowerPath.find("org.whispersystems.signal") != std::string::npos ||
-           lowerPath.find("signal.messenger") != std::string::npos ||
-           lowerPath.find("/signal/") != std::string::npos;
-}
-
-bool isChromeBrowserPathCpp(const std::string& lowerPath) {
-    return lowerPath.find("com.google.chrome") != std::string::npos ||
-           lowerPath.find("/chrome/") != std::string::npos ||
-           lowerPath.find("/google/chrome") != std::string::npos;
-}
-
-std::string domainHintCpp(const std::string& path) {
-    const std::string p = toLower(path);
-    if (p.find("/library/sms/") != std::string::npos || endsWithCpp(p, "/sms.db")) return "Messages";
-    if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos) return "Keychain";
-    if (p.find("callhistory") != std::string::npos) return "CallHistory";
-    if (p.find("whatsapp") != std::string::npos) return "WhatsApp";
-    if (isSignalPathCpp(p)) return "Signal";
-    if (p.find("telegram") != std::string::npos) return "Telegram";
-    if (p.find("safari") != std::string::npos) return "Safari";
-    if (isChromeBrowserPathCpp(p)) return "Chrome";
-    if (p.find("/mail/") != std::string::npos) return "Mail";
-    if (p.find("/calendar/") != std::string::npos) return "Calendar";
-    if (p.find("/addressbook/") != std::string::npos || p.find("contacts") != std::string::npos) return "Contacts";
-    if (p.find("fileprovider") != std::string::npos || p.find("clouddocs") != std::string::npos || p.find("mobile documents") != std::string::npos) return "FileProviderOrCloudDocs";
-    return "Other";
-}
-
-std::string appContainerHintCpp(const std::string& path) {
-    std::string p = path;
-    std::replace(p.begin(), p.end(), '\\', '/');
-    const std::string low = toLower(p);
-    const std::string appNeedle1 = "/containers/data/application/";
-    const std::string appNeedle2 = "/containers/application/";
-    const std::string groupNeedle = "/containers/shared/appgroup/";
-    auto extractSeg = [&](std::size_t pos, std::size_t n) -> std::string {
-        std::size_t start = pos + n;
-        std::size_t end = p.find('/', start);
-        return p.substr(start, end == std::string::npos ? std::string::npos : end - start);
-    };
-    auto pos = low.find(appNeedle1);
-    if (pos != std::string::npos) return "ApplicationContainer:" + extractSeg(pos, appNeedle1.size());
-    pos = low.find(appNeedle2);
-    if (pos != std::string::npos) return "ApplicationContainer:" + extractSeg(pos, appNeedle2.size());
-    pos = low.find(groupNeedle);
-    if (pos != std::string::npos) return "AppGroup:" + extractSeg(pos, groupNeedle.size());
-    return "";
-}
-
-fs::path extractedIosAppDbPathForZipEntryCpp(const fs::path& caseDir, const std::string& fullName) {
-    std::string rel = fullName;
-    std::replace(rel.begin(), rel.end(), '\\', '/');
-    while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
-
-    const fs::path normalized = fs::path(rel).lexically_normal();
-    fs::path out = caseDir / "EvidenceStaging" / "ios_app_databases";
-
-    for (const auto& part : normalized) {
-        std::string safePart = part.string();
-        if (safePart.empty() || safePart == "." || safePart == ".." || safePart == "/" || safePart == "\\") continue;
-        for (char& ch : safePart) {
-            if (ch == ':' || ch == '<' || ch == '>' || ch == '"' || ch == '|' || ch == '?' || ch == '*' || ch == '\r' || ch == '\n' || ch == '\t') ch = '_';
-        }
-        if (!safePart.empty()) out /= safePart;
-    }
-    return out;
-}
-
-std::pair<std::string, std::string> databaseCategoryAndAppHintCpp(const std::string& path, const std::string& name) {
-    const std::string p = toLower(path);
-    const std::string n = toLower(name);
-    const bool dbLike = endsWithCpp(n, ".db") || endsWithCpp(n, ".sqlite") || endsWithCpp(n, ".sqlite3") || endsWithCpp(n, ".sqlitedb") || endsWithCpp(n, ".storedata") || n == "chatstorage.sqlite" || n == "contactsv2.sqlite" || n == "callhistory.sqlite";
-    if (!dbLike) return {"", ""};
-    if (n == "sms.db") return {"APPLE_MESSAGES", "Messages"};
-    if (n == "knowledgec.db" || p.find("/coreduet/knowledge/") != std::string::npos) return {"KNOWLEDGEC_COREDUET", "KnowledgeC"};
-    if (n == "interactionc.db" || p.find("/coreduet/people/") != std::string::npos) return {"COREDUET_INTERACTIONS", "CoreDuet"};
-    if (n == "globalknowledge.db" || p.find("/intelligenceplatform/globalknowledge.db") != std::string::npos) return {"KNOWLEDGEC_COREDUET", "KnowledgeC"};
-    if (p.find("/keychains/") != std::string::npos || p.find("/keychain/") != std::string::npos || n == "keychain-2.db" || n == "keychain-2-debug.db") return {"KEYCHAIN", "Keychain"};
-    if (p.find("callhistory") != std::string::npos || n.rfind("callhistory", 0) == 0) return {"CALL_HISTORY", "PhoneFaceTime"};
-    if ((p.find("group.net.whatsapp") != std::string::npos || p.find("/whatsapp/") != std::string::npos || p.find("whatsapp.shared") != std::string::npos) || n == "chatstorage.sqlite" || n == "contactsv2.sqlite") return {"WHATSAPP", "WhatsApp"};
-    if (isSignalPathCpp(p)) return {"SIGNAL", "Signal"};
-    if (p.find("telegram") != std::string::npos) return {"TELEGRAM", "Telegram"};
-    if (p.find("safari") != std::string::npos) return {"SAFARI_WEB", "Safari"};
-    if (isChromeBrowserPathCpp(p)) return {"CHROME_WEB", "Chrome"};
-    if (p.find("webkit") != std::string::npos) return {"WEBKIT", "WebKit"};
-    if (p.find("/mail/") != std::string::npos) return {"MAIL", "Mail"};
-    if (p.find("/calendar/") != std::string::npos || n.find("calendar") != std::string::npos) return {"CALENDAR", "Calendar"};
-    if (p.find("addressbook") != std::string::npos || p.find("contacts") != std::string::npos) return {"CONTACTS", "Contacts"};
-    return {"OTHER_SQLITE_OR_STORE_DATABASE", "Other"};
-}
-
-
 struct IosZipInventoryParseResult {
     std::size_t ffsRows = 0;
     std::size_t appDbRows = 0;
@@ -3905,8 +3775,12 @@ void importIosInventoryCsvs(CaseDatabase& db, const fs::path& caseDir, const std
         return;
     }
 
+    bool fastImportPragmasApplied = false;
     try {
         appendRunStatus(caseDir, "ios_ffs_inventory_csv_stream_import_start", "streaming CSV import without loading full inventories into memory");
+        applyIosCsvBulkImportPragmas(db);
+        fastImportPragmasApplied = true;
+        appendRunStatus(caseDir, "ios_ffs_inventory_csv_stream_import_pragmas", "synchronous=OFF journal_mode=MEMORY for regenerable CSV intake only; restored after import");
         db.begin();
         {
             auto del = db.prepare("DELETE FROM ios_ffs_file_inventory WHERE source_id=?");
@@ -4027,10 +3901,18 @@ void importIosInventoryCsvs(CaseDatabase& db, const fs::path& caseDir, const std
             }
         }
         db.commit();
+        if (fastImportPragmasApplied) {
+            restoreIosCsvBulkImportPragmasNoThrow(db);
+            fastImportPragmasApplied = false;
+        }
         log.info(std::string(materializeFullFfsInventory ? "Imported" : "Referenced") + " iOS FFS inventory rows=" + std::to_string(fileRows) + " app_database_rows=" + std::to_string(dbRows) + " using streaming CSV fallback");
         appendRunStatus(caseDir, "ios_ffs_inventory_import", "files=" + std::to_string(fileRows) + " app_databases=" + std::to_string(dbRows) + " method=csv_stream" + (materializeFullFfsInventory ? " materialized_ffs=1" : " materialized_ffs=0"));
     } catch (const std::exception& ex) {
         db.rollbackNoThrow();
+        if (fastImportPragmasApplied) {
+            restoreIosCsvBulkImportPragmasNoThrow(db);
+            fastImportPragmasApplied = false;
+        }
         log.warn(std::string("Unable to import iOS FFS/database inventory CSVs: ") + ex.what());
         appendRunStatus(caseDir, "ios_ffs_inventory_import_warning", ex.what());
     }
@@ -4077,152 +3959,8 @@ long long purgeOrphanSourceRows(CaseDatabase& db, const fs::path& caseDir, Logge
 }
 
 
-std::string sqlIdentLocal(const std::string& name) {
-    std::string out = "\"";
-    for (char c : name) out += (c == '"') ? "\"\"" : std::string(1, c);
-    out += "\"";
-    return out;
-}
-
-long long sqliteScalarCount(sqlite3* ext, const std::string& tableName) {
-    std::string sql = "SELECT COUNT(*) FROM " + sqlIdentLocal(tableName);
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) return -1;
-    long long count = -1;
-    if (sqlite3_step(st) == SQLITE_ROW) count = sqlite3_column_int64(st, 0);
-    sqlite3_finalize(st);
-    return count;
-}
-
-std::string sqliteColumnList(sqlite3* ext, const std::string& tableName) {
-    std::string sql = "PRAGMA table_info(" + sqlIdentLocal(tableName) + ")";
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) return "";
-    std::string out;
-    int shown = 0;
-    while (sqlite3_step(st) == SQLITE_ROW && shown < 40) {
-        const unsigned char* txt = sqlite3_column_text(st, 1);
-        if (txt) {
-            if (!out.empty()) out += ",";
-            out += reinterpret_cast<const char*>(txt);
-            ++shown;
-        }
-    }
-    sqlite3_finalize(st);
-    return out;
-}
-
-using IosAppDbInv = IosAppDbInventory;
-
-
 void parseIosAppDatabaseRecordInventories(CaseDatabase& db, const fs::path& caseDir, const std::string& sourceId, Logger& log) {
-    std::vector<IosAppDbInv> invs;
-    try {
-        auto q = db.prepare("SELECT ios_db_id,normalized_path,database_name,database_category,app_hint,extracted_path FROM ios_app_database_inventory WHERE source_id=? AND COALESCE(extracted_path,'')<>'' ORDER BY ios_db_id");
-        q.bind(1, sourceId);
-        while (q.stepRow()) {
-            IosAppDbInv inv;
-            inv.id = q.colInt64(0);
-            inv.norm = q.colText(1);
-            inv.name = q.colText(2);
-            inv.cat = q.colText(3);
-            inv.app = q.colText(4);
-            inv.extracted = fs::path(q.colText(5));
-            invs.push_back(inv);
-        }
-    } catch (const std::exception& ex) {
-        log.warn(std::string("Unable to enumerate extracted iOS app databases for record inventory: ") + ex.what());
-        appendRunStatus(caseDir, "ios_app_db_record_inventory_warning", ex.what());
-        return;
-    }
-    std::size_t tableRows = 0;
-    std::size_t opened = 0;
-    std::size_t parsedRows = 0;
-    try {
-        db.begin();
-        {
-            auto del = db.prepare("DELETE FROM ios_app_database_record_inventory WHERE source_id=?");
-            del.bind(1, sourceId);
-            del.stepDone();
-        }
-        {
-            auto del = db.prepare("DELETE FROM ios_app_parsed_records WHERE source_id=?");
-            del.bind(1, sourceId);
-            del.stepDone();
-        }
-        auto ins = db.prepare("INSERT INTO ios_app_database_record_inventory(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,row_count,sample_columns,record_category,parse_status,notes,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        auto parsedIns = db.prepare("INSERT INTO ios_app_parsed_records(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,contact_or_participant,url,title,file_path,item_identifier,text_snippet,parse_status,provenance,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-        auto upd = db.prepare("UPDATE ios_app_database_inventory SET parse_status=?, record_inventory_status=? WHERE ios_db_id=?");
-        for (const auto& inv : invs) {
-            std::string parseStatus = "not_opened";
-            std::string recordStatus = "no_tables_counted";
-            if (!fs::is_regular_file(inv.extracted)) {
-                parseStatus = "extracted_path_missing";
-                recordStatus = "database_file_not_found_after_extract";
-                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
-                continue;
-            }
-            sqlite3* ext = nullptr;
-            int rc = sqlite3_open_v2(pathString(inv.extracted).c_str(), &ext, SQLITE_OPEN_READONLY, nullptr);
-            if (rc != SQLITE_OK || !ext) {
-                parseStatus = "sqlite_open_failed";
-                recordStatus = ext ? sqlite3_errmsg(ext) : "sqlite handle not created";
-                if (ext) sqlite3_close(ext);
-                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
-                continue;
-            }
-            ++opened;
-            sqlite3_stmt* tables = nullptr;
-            rc = sqlite3_prepare_v2(ext, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name", -1, &tables, nullptr);
-            if (rc != SQLITE_OK) {
-                parseStatus = "sqlite_master_query_failed";
-                recordStatus = sqlite3_errmsg(ext);
-                sqlite3_close(ext);
-                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
-                continue;
-            }
-            int tableCount = 0;
-            while (sqlite3_step(tables) == SQLITE_ROW && tableCount < 250) {
-                const unsigned char* nameTxt = sqlite3_column_text(tables, 0);
-                if (!nameTxt) continue;
-                std::string table = reinterpret_cast<const char*>(nameTxt);
-                std::string cols = sqliteColumnList(ext, table);
-                long long rowCount = sqliteScalarCount(ext, table);
-                const IosAppDbTableParseDecision parseDecision = IosAppDbParser::buildTableParseDecision(inv.cat, table, cols);
-                const std::string recCat = parseDecision.recordCategory;
-                ins.bind(1, sourceId);
-                ins.bind(2, inv.id);
-                ins.bind(3, inv.norm);
-                ins.bind(4, inv.name);
-                ins.bind(5, inv.cat);
-                ins.bind(6, inv.app);
-                ins.bind(7, table);
-                ins.bind(8, rowCount);
-                ins.bind(9, cols);
-                ins.bind(10, recCat);
-                ins.bind(11, rowCount >= 0 ? "table_counted" : "table_count_failed");
-                ins.bind(12, IosAppDbParser::isTargetRecordCategory(recCat) ? "schema/table-counted and parser-module row extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
-                ins.bind(13, nowUtc());
-                ins.stepDone(); ins.reset();
-                if (rowCount > 0 && IosAppDbParser::isTargetRecordCategory(recCat)) {
-                    parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
-                }
-                ++tableRows; ++tableCount;
-            }
-            sqlite3_finalize(tables);
-            sqlite3_close(ext);
-            parseStatus = "sqlite_opened_record_inventory_counts";
-            recordStatus = "tables_counted=" + std::to_string(tableCount);
-            upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
-        }
-        db.commit();
-        log.info("iOS app database record inventory: extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
-        appendRunStatus(caseDir, "ios_app_db_record_inventory", "extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
-    } catch (const std::exception& ex) {
-        db.rollbackNoThrow();
-        log.warn(std::string("Unable to parse iOS app database record inventory: ") + ex.what());
-        appendRunStatus(caseDir, "ios_app_db_record_inventory_warning", ex.what());
-    }
+    IosAppDbParser::parseRecordInventories(db, caseDir, sourceId, log, appendRunStatus);
 }
 
 std::string containerFormatForPath(const fs::path& p) {
@@ -6482,14 +6220,12 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
         addApfsRow("resolve_libaff4_dll", "MISSING_LIBAFF4_DLL", 0, -1, {}, "BLOCKED", "Cannot perform virtual GPT/APFS reads without libaff4.dll.", {}, "Reader tools were not found.");
     } else {
         addRow("resolve_libaff4_dll", "FOUND", libaff4Dll, 0, 0, -1, {}, "Resolved libaff4.dll for dynamic-load probe.");
-        const fs::path dllDir = libaff4Dll.parent_path();
-        SetDllDirectoryW(dllDir.wstring().c_str());
-        HMODULE h = LoadLibraryW(libaff4Dll.wstring().c_str());
+        HMODULE h = LoadLibraryExW(libaff4Dll.wstring().c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
         if (!h) {
-            addRow("LoadLibraryW", "LOAD_FAILED", libaff4Dll, 0, 0, -1, {}, lastWindowsErrorString());
-            addApfsRow("LoadLibraryW", "LOAD_FAILED", 0, -1, {}, "BLOCKED", "Cannot perform virtual GPT/APFS reads because libaff4.dll did not load.", {}, lastWindowsErrorString());
+            addRow("LoadLibraryExW", "LOAD_FAILED", libaff4Dll, 0, 0, -1, {}, lastWindowsErrorString());
+            addApfsRow("LoadLibraryExW", "LOAD_FAILED", 0, -1, {}, "BLOCKED", "Cannot perform virtual GPT/APFS reads because libaff4.dll did not load.", {}, lastWindowsErrorString());
         } else {
-            addRow("LoadLibraryW", "LOADED", libaff4Dll, 0, 0, -1, {}, "libaff4.dll loaded with its directory temporarily added to the DLL search path.");
+            addRow("LoadLibraryExW", "LOADED", libaff4Dll, 0, 0, -1, {}, "libaff4.dll loaded with per-module secure DLL search flags.");
             using Aff4InitFn = void (__cdecl *)();
             using Aff4OpenFn = int (__cdecl *)(const char*);
             using Aff4ObjectSizeFn = std::int64_t (__cdecl *)(int);
@@ -9956,7 +9692,6 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
             }
             FreeLibrary(h);
         }
-        SetDllDirectoryW(nullptr);
     }
 #else
     addRow("dynamic_load_probe", "NOT_SUPPORTED_ON_THIS_PLATFORM", {}, 0, 0, -1, {}, "The current executable was not built for Windows; V0_8_23 dynamic-load probe targets Windows libaff4.dll.");

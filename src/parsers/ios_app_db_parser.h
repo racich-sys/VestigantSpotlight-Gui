@@ -2,9 +2,11 @@
 
 #include "db/case_db.h"
 #include "db/sqlite_compat.h"
+#include "core/logger.h"
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace vestigant::spotlight {
@@ -17,6 +19,9 @@ struct IosAppDbInventory {
     std::string app;
     std::filesystem::path extracted;
 };
+
+
+using IosAppDbStatusWriter = std::function<void(const std::filesystem::path&, const std::string&, const std::string&)>;
 
 struct IosAppDbTableParseDecision {
     std::string recordCategory;
@@ -73,6 +78,11 @@ public:
                                   const std::string& table,
                                   const IosAppDbTableParseDecision& parseDecision,
                                   SqlStatement& parsedIns);
+    static void parseRecordInventories(CaseDatabase& db,
+                                       const std::filesystem::path& caseDir,
+                                       const std::string& sourceId,
+                                       Logger& log,
+                                       const IosAppDbStatusWriter& statusWriter = {});
 };
 
 } // namespace vestigant::spotlight

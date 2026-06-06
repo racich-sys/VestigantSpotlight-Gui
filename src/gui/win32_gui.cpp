@@ -35,8 +35,10 @@
 #include <set>
 #include <atomic>
 #include <map>
+#include <mutex>
 #include <initializer_list>
 #include <chrono>
+#include <utility>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -87,6 +89,8 @@ std::atomic_bool gExportFilteredActive{false};
 std::atomic_bool gExportCheckedActive{false};
 std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
+std::mutex gExportThreadsMutex;
+std::vector<std::thread> gExportThreads;
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
 bool gIosReviewMode = false;
@@ -331,7 +335,7 @@ int guiSqliteBusyRetryHandler(void*, int count) {
 void configureGuiSqliteConnection(sqlite3* db) {
     if (!db) return;
     sqlite3_busy_handler(db, guiSqliteBusyRetryHandler, nullptr);
-    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536; PRAGMA case_sensitive_like=OFF;", nullptr, nullptr, nullptr);
 }
 
 class ReadOnlyDb {
@@ -1496,6 +1500,36 @@ void scheduleCaseInfoAutosave(HWND hwnd) {
     SetTimer(hwnd, ID_AUTOSAVE_TIMER, 1500, nullptr);
 }
 
+
+void registerExportThread(std::thread worker) {
+    std::lock_guard<std::mutex> lock(gExportThreadsMutex);
+    gExportThreads.emplace_back(std::move(worker));
+}
+
+void joinExportThreadsNoThrow() {
+    std::vector<std::thread> threads;
+    try {
+        std::lock_guard<std::mutex> lock(gExportThreadsMutex);
+        threads.swap(gExportThreads);
+    } catch (...) {
+        return;
+    }
+    for (auto& t : threads) {
+        try {
+            if (t.joinable()) t.join();
+        } catch (...) {}
+    }
+}
+
+bool postExportResult(HWND owner, UINT msgId, bool ok, std::wstring message) {
+    auto* msg = new std::wstring(std::move(message));
+    if (!gShuttingDown.load() && owner && IsWindow(owner) && PostMessageW(owner, msgId, ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) {
+        return true;
+    }
+    delete msg;
+    return false;
+}
+
 void setReviewLoadingState(bool loading) {
     gReviewLoadInProgress = loading;
     if (gRefresh) EnableWindow(gRefresh, loading ? FALSE : TRUE);
@@ -1524,6 +1558,11 @@ void populateReviewListFromResult(const ReviewPageResult& result) {
     gCurrentRowArtifactIds = result.artifactIds;
     gCurrentPage = result.page;
     gCurrentHasNext = result.hasNext;
+
+    const bool redrawSuspended = (gList != nullptr);
+    if (redrawSuspended) {
+        SendMessageW(gList, WM_SETREDRAW, FALSE, 0);
+    }
 
     const wchar_t* fixedCols[] = {L"\u2713", L"Tags"};
     for (int c = 0; c < 2; ++c) {
@@ -1563,6 +1602,11 @@ void populateReviewListFromResult(const ReviewPageResult& result) {
             std::wstring cell = widen(cells[static_cast<size_t>(c)]);
             ListView_SetItemText(gList, row, c + 2, const_cast<LPWSTR>(cell.c_str()));
         }
+    }
+
+    if (redrawSuspended) {
+        SendMessageW(gList, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(gList, nullptr, TRUE);
     }
 }
 
@@ -1733,11 +1777,10 @@ void exportCurrentPage(HWND owner) {
 
     setReviewSummary(L"Export Current Page in progress... GUI remains active.");
     if (gExportPage) EnableWindow(gExportPage, FALSE);
-    std::thread([owner, request]() {
+    registerExportThread(std::thread([owner, request]() {
         const GuiExportResult result = GuiExportWorker::exportCurrentPage(request);
-        auto* msg = new std::wstring(result.message);
-        if (!PostMessageW(owner, WM_EXPORT_PAGE_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
-    }).detach();
+        postExportResult(owner, WM_EXPORT_PAGE_RESULT, result.ok, result.message);
+    }));
 }
 
 
@@ -1774,11 +1817,10 @@ void exportFilteredView(HWND owner) {
 
     setReviewSummary(L"Export Filtered in progress... GUI remains active.");
     if (gExportFiltered) EnableWindow(gExportFiltered, FALSE);
-    std::thread([owner, request]() {
+    registerExportThread(std::thread([owner, request]() {
         const GuiExportResult result = GuiExportWorker::exportFilteredView(request);
-        auto* msg = new std::wstring(result.message);
-        if (!PostMessageW(owner, WM_EXPORT_FILTERED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
-    }).detach();
+        postExportResult(owner, WM_EXPORT_FILTERED_RESULT, result.ok, result.message);
+    }));
 }
 
 
@@ -1799,11 +1841,10 @@ void exportCheckedArtifacts(HWND owner) {
     setReviewSummary(L"Export Checked in progress... GUI remains active.");
     if (gExportChecked) EnableWindow(gExportChecked, FALSE);
 
-    std::thread([owner, dbPath, idsToExport, out]() {
+    registerExportThread(std::thread([owner, dbPath, idsToExport, out]() {
         const GuiExportResult result = GuiExportWorker::exportCheckedArtifacts(dbPath, idsToExport, out);
-        auto* msg = new std::wstring(result.message);
-        if (!PostMessageW(owner, WM_EXPORT_CHECKED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
-    }).detach();
+        postExportResult(owner, WM_EXPORT_CHECKED_RESULT, result.ok, result.message);
+    }));
 }
 
 void exportTaggedArtifacts(HWND owner) {
@@ -1822,11 +1863,10 @@ void exportTaggedArtifacts(HWND owner) {
     setTagSummary(L"Export Tagged in progress... GUI remains active.");
     if (gTaggedList) EnableWindow(gTaggedList, FALSE);
 
-    std::thread([owner, dbPath, tagId, out]() {
+    registerExportThread(std::thread([owner, dbPath, tagId, out]() {
         const GuiExportResult result = GuiExportWorker::exportTaggedArtifacts(dbPath, tagId, out);
-        auto* msg = new std::wstring(result.message);
-        if (!PostMessageW(owner, WM_EXPORT_TAGGED_RESULT, result.ok ? 1 : 0, reinterpret_cast<LPARAM>(msg))) delete msg;
-    }).detach();
+        postExportResult(owner, WM_EXPORT_TAGGED_RESULT, result.ok, result.message);
+    }));
 }
 
 
@@ -3129,7 +3169,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

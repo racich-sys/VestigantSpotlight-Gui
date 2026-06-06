@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <sstream>
@@ -10,6 +11,9 @@
 #include <vector>
 
 namespace vestigant::spotlight {
+
+std::string nowUtc();
+std::string pathString(const std::filesystem::path& p);
 namespace {
 
 std::string toLower(std::string s) {
@@ -275,6 +279,34 @@ bool sqliteColumnExistsLocal(sqlite3* ext, const std::string& tableName, const s
     }
     sqlite3_finalize(st);
     return found;
+}
+
+long long sqliteScalarCountLocal(sqlite3* ext, const std::string& tableName) {
+    std::string sql = "SELECT COUNT(*) FROM " + sqlIdentLocal(tableName);
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return -1;
+    long long count = -1;
+    if (sqlite3_step(st) == SQLITE_ROW) count = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    return count;
+}
+
+std::string sqliteColumnListLocal(sqlite3* ext, const std::string& tableName) {
+    std::string sql = "PRAGMA table_info(" + sqlIdentLocal(tableName) + ")";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return "";
+    std::string out;
+    int shown = 0;
+    while (sqlite3_step(st) == SQLITE_ROW && shown < 40) {
+        const unsigned char* txt = sqlite3_column_text(st, 1);
+        if (txt) {
+            if (!out.empty()) out += ",";
+            out += reinterpret_cast<const char*>(txt);
+            ++shown;
+        }
+    }
+    sqlite3_finalize(st);
+    return out;
 }
 
 std::string sqliteOptionalColumnExpr(sqlite3* ext, const std::string& tableName, const std::string& alias, const std::string& columnName, const std::string& outAlias) {
@@ -919,6 +951,129 @@ std::size_t IosAppDbParser::parseTable(const std::string& sourceId,
                                        const IosAppDbTableParseDecision& parseDecision,
                                        SqlStatement& parsedIns) {
     return iosAppDbParseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
+}
+
+
+void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
+                                            const std::filesystem::path& caseDir,
+                                            const std::string& sourceId,
+                                            Logger& log,
+                                            const IosAppDbStatusWriter& statusWriter) {
+    auto writeStatus = [&](const std::string& stage, const std::string& message) {
+        if (statusWriter) statusWriter(caseDir, stage, message);
+    };
+
+    std::vector<IosAppDbInventory> invs;
+    try {
+        auto q = db.prepare("SELECT ios_db_id,normalized_path,database_name,database_category,app_hint,extracted_path FROM ios_app_database_inventory WHERE source_id=? AND COALESCE(extracted_path,'')<>'' ORDER BY ios_db_id");
+        q.bind(1, sourceId);
+        while (q.stepRow()) {
+            IosAppDbInventory inv;
+            inv.id = q.colInt64(0);
+            inv.norm = q.colText(1);
+            inv.name = q.colText(2);
+            inv.cat = q.colText(3);
+            inv.app = q.colText(4);
+            inv.extracted = std::filesystem::path(q.colText(5));
+            invs.push_back(inv);
+        }
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to enumerate extracted iOS app databases for record inventory: ") + ex.what());
+        writeStatus("ios_app_db_record_inventory_warning", ex.what());
+        return;
+    }
+
+    std::size_t tableRows = 0;
+    std::size_t opened = 0;
+    std::size_t parsedRows = 0;
+    try {
+        db.begin();
+        {
+            auto del = db.prepare("DELETE FROM ios_app_database_record_inventory WHERE source_id=?");
+            del.bind(1, sourceId);
+            del.stepDone();
+        }
+        {
+            auto del = db.prepare("DELETE FROM ios_app_parsed_records WHERE source_id=?");
+            del.bind(1, sourceId);
+            del.stepDone();
+        }
+        auto ins = db.prepare("INSERT INTO ios_app_database_record_inventory(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,row_count,sample_columns,record_category,parse_status,notes,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        auto parsedIns = db.prepare("INSERT INTO ios_app_parsed_records(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,contact_or_participant,url,title,file_path,item_identifier,text_snippet,parse_status,provenance,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        auto upd = db.prepare("UPDATE ios_app_database_inventory SET parse_status=?, record_inventory_status=? WHERE ios_db_id=?");
+
+        for (const auto& inv : invs) {
+            std::string parseStatus = "not_opened";
+            std::string recordStatus = "no_tables_counted";
+            if (!std::filesystem::is_regular_file(inv.extracted)) {
+                parseStatus = "extracted_path_missing";
+                recordStatus = "database_file_not_found_after_extract";
+                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
+                continue;
+            }
+            sqlite3* ext = nullptr;
+            int rc = sqlite3_open_v2(pathString(inv.extracted).c_str(), &ext, SQLITE_OPEN_READONLY, nullptr);
+            if (rc != SQLITE_OK || !ext) {
+                parseStatus = "sqlite_open_failed";
+                recordStatus = ext ? sqlite3_errmsg(ext) : "sqlite handle not created";
+                if (ext) sqlite3_close(ext);
+                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
+                continue;
+            }
+            ++opened;
+            sqlite3_stmt* tables = nullptr;
+            rc = sqlite3_prepare_v2(ext, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name", -1, &tables, nullptr);
+            if (rc != SQLITE_OK) {
+                parseStatus = "sqlite_master_query_failed";
+                recordStatus = sqlite3_errmsg(ext);
+                sqlite3_close(ext);
+                upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
+                continue;
+            }
+            int tableCount = 0;
+            while (sqlite3_step(tables) == SQLITE_ROW && tableCount < 250) {
+                const unsigned char* nameTxt = sqlite3_column_text(tables, 0);
+                if (!nameTxt) continue;
+                const std::string table = reinterpret_cast<const char*>(nameTxt);
+                const std::string cols = sqliteColumnListLocal(ext, table);
+                const long long rowCount = sqliteScalarCountLocal(ext, table);
+                const IosAppDbTableParseDecision parseDecision = IosAppDbParser::buildTableParseDecision(inv.cat, table, cols);
+                const std::string recCat = parseDecision.recordCategory;
+                ins.bind(1, sourceId);
+                ins.bind(2, inv.id);
+                ins.bind(3, inv.norm);
+                ins.bind(4, inv.name);
+                ins.bind(5, inv.cat);
+                ins.bind(6, inv.app);
+                ins.bind(7, table);
+                ins.bind(8, rowCount);
+                ins.bind(9, cols);
+                ins.bind(10, recCat);
+                ins.bind(11, rowCount >= 0 ? "table_counted" : "table_count_failed");
+                ins.bind(12, IosAppDbParser::isTargetRecordCategory(recCat) ? "schema/table-counted and parser-module row extraction attempted" : "schema/table-count inventory only; table category not selected for row extraction");
+                ins.bind(13, nowUtc());
+                ins.stepDone();
+                ins.reset();
+                if (rowCount > 0 && IosAppDbParser::isTargetRecordCategory(recCat)) {
+                    parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
+                }
+                ++tableRows;
+                ++tableCount;
+            }
+            sqlite3_finalize(tables);
+            sqlite3_close(ext);
+            parseStatus = "sqlite_opened_record_inventory_counts";
+            recordStatus = "tables_counted=" + std::to_string(tableCount);
+            upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
+        }
+        db.commit();
+        log.info("iOS app database record inventory: extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
+        writeStatus("ios_app_db_record_inventory", "extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
+    } catch (const std::exception& ex) {
+        db.rollbackNoThrow();
+        log.warn(std::string("Unable to parse iOS app database record inventory: ") + ex.what());
+        writeStatus("ios_app_db_record_inventory_warning", ex.what());
+    }
 }
 
 } // namespace vestigant::spotlight
