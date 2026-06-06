@@ -1,3 +1,13 @@
+# V1.0.25
+
+- Thin Upload security/performance hardening after V1.0.24.1 build success.
+- Removed raw AFF4/iOS extraction tool logs and generated extraction helper scripts from Thin Upload copy lists.
+- Replaced hardcoded export CSV bundle lists with dynamic copying of regular top-level `exports/*.csv` files plus the existing `exports/upload_samples` directory.
+- Optimized `countCsvDataRows()` with binary chunk newline counting.
+- Reworked staged iOS app-database path normalization using `std::filesystem::path::lexically_normal()` plus per-component sanitization.
+- Added direct Windows `CreateProcessW` helpers with redirected stdout/stderr handles for selected hidden AFF4 stream inventory and ZIP PowerShell staging calls.
+- No APFS traversal, APFS copy-out, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.
+
 # V1.0.24.1
 
 - Fixed the V1.0.24 Windows/MSVC `C2668` ambiguous `buildWhere` compile failure in `src/gui/win32_gui.cpp`.

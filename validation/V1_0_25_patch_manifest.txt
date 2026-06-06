@@ -1,0 +1,46 @@
+V1.0.25 patch file manifest
+
+Scope:
+- Thin Upload security/performance hardening.
+- iOS staging row-count and path-normalization hardening.
+- Selected Windows hidden process execution hardening.
+
+Files included in patch ZIP:
+- CMakeLists.txt
+- CONSOLIDATED_VERSION_HISTORY.md
+- RELEASE_NOTES.md
+- V1_0_24_1_DELETED_FILES_MANIFEST.md
+- V1_0_25_DELETED_FILES_MANIFEST.md
+- VERSION
+- VERSION.txt
+- VERSION_HISTORY.md
+- docs/BUILD_NOTES.md
+- docs/CONSOLIDATED_VERSION_HISTORY.md
+- docs/PROJECT_ROADMAP_AND_CONTINUATION.md
+- docs/V1_0_24_1_GUI_VIEW_HELPERS_BUILD_HOTFIX.md
+- docs/V1_0_25_GUI_VIEW_HELPERS_BUILD_HOTFIX.md
+- docs/V1_0_25_THIN_UPLOAD_SECURITY_AND_IOS_PERFORMANCE.md
+- docs/VALIDATION_HISTORY.md
+- docs/VALIDATION_STATUS.md
+- scripts/Build-V1_0_24_1.ps1
+- scripts/Build-V1_0_25.ps1
+- scripts/Create-GitHubProjectIssues.ps1
+- scripts/Initialize-GitHubRepo.ps1
+- scripts/Launch-V1_0_24_1-GUI.ps1
+- scripts/Launch-V1_0_25-GUI.ps1
+- scripts/New-ReleaseBranch.ps1
+- scripts/Run-V1_0_24_1-macOS-AFF4-Probe-AndZip.ps1
+- scripts/Run-V1_0_24_1-macOS-AFF4-Probe-AndZip.txt
+- scripts/Run-V1_0_25-macOS-AFF4-Probe-AndZip.ps1
+- scripts/Run-V1_0_25-macOS-AFF4-Probe-AndZip.txt
+- scripts/Sync-Version-To-GitRepo.ps1
+- src/app/app_runner.cpp
+- src/core/app_info.cpp
+- validation/V1_0_24_1_local_validation.log
+- validation/V1_0_24_1_patch_manifest.txt
+- validation/V1_0_24_1_validation_notes.md
+- validation/V1_0_25_local_validation.log
+- validation/V1_0_25_patch_manifest.txt
+- validation/V1_0_25_validation_notes.md
+
+Deleted/renamed historical versioned wrapper files are documented in V1_0_25_DELETED_FILES_MANIFEST.md.

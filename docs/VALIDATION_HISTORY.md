@@ -36,7 +36,7 @@ Not verified here:
 - Live AFF4/APFS V1.0.18 run
 
 
-## V1.0.24.1
+## V1.0.25
 
 - Added shared GUI view/export helper module (`src/gui/gui_view_helpers.h/.cpp`) to remove duplicated SQL/view helper logic between the Win32 GUI and `GuiExportWorker`.
 - No APFS traversal, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.

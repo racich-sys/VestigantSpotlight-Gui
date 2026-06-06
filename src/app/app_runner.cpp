@@ -88,7 +88,7 @@ std::wstring utf8ToWideCommand(const std::string& s) {
 }
 
 int runShellCommandNoWindow(const std::string& command) {
-    const std::wstring cmdLine = L"cmd.exe /C " + utf8ToWideCommand(command);
+    const std::wstring cmdLine = utf8ToWideCommand(command);
     std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
     mutableCmd.push_back(L'\0');
 
@@ -195,6 +195,118 @@ std::string platformPathString(const fs::path& p) {
 #endif
     return s;
 }
+
+#ifdef _WIN32
+std::wstring windowsQuoteArg(std::wstring arg) {
+    if (arg.empty()) return L"\"\"";
+    bool needsQuotes = false;
+    for (wchar_t ch : arg) {
+        if (ch == L' ' || ch == L'\t' || ch == L'\n' || ch == L'\v' || ch == L'\"') {
+            needsQuotes = true;
+            break;
+        }
+    }
+    if (!needsQuotes) return arg;
+    std::wstring out = L"\"";
+    std::size_t backslashes = 0;
+    for (wchar_t ch : arg) {
+        if (ch == L'\\') {
+            ++backslashes;
+        } else if (ch == L'\"') {
+            out.append(backslashes * 2U + 1U, L'\\');
+            out.push_back(ch);
+            backslashes = 0;
+        } else {
+            out.append(backslashes, L'\\');
+            backslashes = 0;
+            out.push_back(ch);
+        }
+    }
+    out.append(backslashes * 2U, L'\\');
+    out.push_back(L'\"');
+    return out;
+}
+
+std::wstring wideProcessPath(const fs::path& p) {
+    return utf8ToWideCommand(platformPathString(p));
+}
+
+int runProcessNoWindowRedirected(const std::wstring& commandLine, const fs::path& combinedOutputLog) {
+    fs::create_directories(combinedOutputLog.parent_path());
+    const std::wstring logPath = wideProcessPath(combinedOutputLog);
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    HANDLE logHandle = CreateFileW(logPath.c_str(),
+                                   GENERIC_WRITE,
+                                   FILE_SHARE_READ,
+                                   &sa,
+                                   CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   nullptr);
+    if (logHandle == INVALID_HANDLE_VALUE) {
+        return static_cast<int>(GetLastError() ? GetLastError() : 1);
+    }
+    SetHandleInformation(logHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+
+    std::vector<wchar_t> mutableCmd(commandLine.begin(), commandLine.end());
+    mutableCmd.push_back(L'\0');
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.wShowWindow = SW_HIDE;
+    si.hStdOutput = logHandle;
+    si.hStdError = logHandle;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr,
+                             mutableCmd.data(),
+                             nullptr,
+                             nullptr,
+                             TRUE,
+                             CREATE_NO_WINDOW,
+                             nullptr,
+                             nullptr,
+                             &si,
+                             &pi);
+    if (!ok) {
+        const DWORD err = GetLastError();
+        CloseHandle(logHandle);
+        return static_cast<int>(err ? err : 1);
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    CloseHandle(logHandle);
+    return static_cast<int>(exitCode);
+}
+
+int runExecutableNoWindowRedirected(const fs::path& exe, const std::vector<std::string>& args, const fs::path& combinedOutputLog) {
+    std::wstring cmd = windowsQuoteArg(wideProcessPath(exe));
+    for (const auto& arg : args) {
+        cmd += L" ";
+        cmd += windowsQuoteArg(utf8ToWideCommand(arg));
+    }
+    return runProcessNoWindowRedirected(cmd, combinedOutputLog);
+}
+
+int runPowerShellFileNoWindowRedirected(const fs::path& scriptPath, const fs::path& combinedOutputLog) {
+    std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File ";
+    cmd += windowsQuoteArg(wideProcessPath(scriptPath));
+    return runProcessNoWindowRedirected(cmd, combinedOutputLog);
+}
+
+int runPowerShellCommandNoWindowRedirected(const std::string& powerShellCommand, const fs::path& combinedOutputLog) {
+    std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ";
+    cmd += windowsQuoteArg(utf8ToWideCommand(powerShellCommand));
+    return runProcessNoWindowRedirected(cmd, combinedOutputLog);
+}
+#endif
 
 void appendRunProgress(const fs::path& caseDir, int percent, const std::string& stage, const std::string& message = {}) {
     try {
@@ -410,7 +522,7 @@ void refreshUploadRunDiagnostics(const fs::path& caseDir) {
     const fs::path uploadDir = caseDir / "Upload";
     if (!fs::exists(uploadDir) || !fs::is_directory(uploadDir)) return;
     const std::vector<fs::path> diagnostics = {
-        "run_status.txt", "last_stage.txt", "run_progress.tsv", "last_progress.tsv", "VestigantSpotlight.log", "ios_focused_zip_extract.log", "ios_focused_zip_extract_7z.log", "ios_focused_zip_extract.ps1"
+        "run_status.txt", "last_stage.txt", "run_progress.tsv", "last_progress.tsv", "VestigantSpotlight.log"
     };
     for (const auto& name : diagnostics) {
         std::error_code ec;
@@ -504,7 +616,6 @@ void writeUploadReviewIndex(const fs::path& file) {
         row("AFF4_APFS_OMAP_TOC_PROBE.md", "Human-readable OMAP B-tree TOC reconnaissance and branch/leaf decoder planning.");
         row("AFF4_APFS_OMAP_PROBE.md", "Human-readable APFS OMAP interpretation and next traversal steps.");
         row("aff4_stream_inventory.csv", "Machine-readable AFF4 stream-list lines and heuristic APFS/disk/Spotlight candidate classification.");
-        row("aff4_stream_inventory_raw.txt", "Raw aff4imager stream-list command output for manual review and troubleshooting.");
         row("active_file_comparison_readiness.csv", "Whether Spotlight-to-image active-file comparison can run for this source and what reader layer is missing.");
         row("Export-SpotlightTargetedData.ps1", "PowerShell helper for usage, timeline, path, field, artifact, WhereFroms, and count exports.");
         row("Create-UploadZip.ps1", "Verified ZIP helper for creating an upload archive from the Upload folder.");
@@ -552,7 +663,7 @@ void writeUploadReviewIndex(const fs::path& file) {
         row("exports/upload_samples/recent_activity_focus.csv", "Recent artifacts by usage/update signals.");
         row("exports/upload_samples/volume_root_focus.csv", "Volume root and mounted-volume indicators.");
         out << "</table>";
-        out << "<h2>Local-only files intentionally not in Upload</h2><p>The following are normally present in the local case folder but omitted from Upload: <code>VestigantSpotlight.case.sqlite</code>, <code>spotlight_case.db</code>, full <code>artifact_summary.csv</code>, full <code>investigator_timeline.csv</code>, full <code>native_key_values_part_*.csv</code>, and other large full-case CSVs.</p>";
+        out << "<h2>Local-only files intentionally not in Upload</h2><p>The following are normally present in the local case folder but omitted from Upload: <code>VestigantSpotlight.case.sqlite</code>, <code>spotlight_case.db</code>, full <code>artifact_summary.csv</code>, full <code>investigator_timeline.csv</code>, full <code>native_key_values_part_*.csv</code>, raw AFF4/iOS tool output logs, helper scripts that may contain absolute evidence paths, and other large full-case CSVs.</p>";
         out << "<p>Active file comparison is now modeled through image_file_inventory and vw_spotlight_active_file_comparison. It remains readiness-only until an AFF4/APFS filesystem reader populates image_file_inventory.</p>";
         out << "</body></html>\n";
     } catch (...) {}
@@ -627,36 +738,31 @@ void createUploadBundle(const fs::path& caseDir) {
         const std::vector<fs::path> rootFiles = {
             "CASE_REVIEW_SUMMARY.txt", "investigator_dashboard.html", "INVESTIGATOR_UI_GUIDE.md", "IOS_CORESPOTLIGHT_PLAN.md", "UPLOAD_README.txt", "TARGETED_EXPORT_README.txt", "Export-SpotlightTargetedData.ps1", "Create-UploadZip.ps1",
             "case_info.json", "case_summary.json", "case_summary.csv",
-            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_stream_inventory_raw.txt", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv",
+            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv",
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
         for (const auto& name : rootFiles) copyFileIfExists(caseDir / name, uploadDir / name.filename(), manifest);
         const std::vector<fs::path> logFiles = {
-            "run_status.txt", "last_stage.txt", "run_progress.tsv", "last_progress.tsv", "VestigantSpotlight.log", "ios_focused_zip_extract.log", "ios_focused_zip_extract_7z.log", "ios_focused_zip_extract.ps1"
+            "run_status.txt", "last_stage.txt", "run_progress.tsv", "last_progress.tsv", "VestigantSpotlight.log"
         };
         for (const auto& name : logFiles) copyFileIfExists(caseDir / "logs" / name, uploadDir / name.filename(), manifest);
         copyFileIfExists(caseDir / "logs" / "FATAL_CRASH.txt", uploadDir / "logs" / "FATAL_CRASH.txt", manifest, "NO_FATAL_CRASH_LOG");
-        const std::vector<fs::path> requiredExportFiles = {
-            "EXPORT_INDEX.csv", "date_field_inventory.csv", "usage_evidence.csv", "object_usage_summary.csv",
-            "image_inventory_sources.csv", "active_file_comparison_readiness.csv", "spotlight_active_file_comparison.csv", "image_file_inventory.csv",
-            "ios_store_parse_summary.csv", "ios_protection_class_summary.csv", "ios_artifact_hint_summary.csv", "ios_record_investigation_hints.csv",
-            "ios_string_probe_category_summary.csv", "ios_string_probe_values.csv", "ios_record_string_probe_summary.csv",
-            "ios_timeline_index_updates.csv", "ios_domain_url_summary.csv", "ios_redacted_investigation_summary.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "ios_spotlight_referenced_paths.csv", "ios_spotlight_human_text_values.csv", "ios_spotlight_human_text_rollup.csv", "ios_spotlight_missing_from_ffs_candidates.csv", "ios_spotlight_missing_from_ffs_high_value_candidates.csv", "ios_spotlight_missing_from_ffs_high_value_summary.csv", "ios_spotlight_residency_summary.csv", "ios_database_residency_candidates.csv", "ios_spotlight_object_identity.csv", "ios_spotlight_to_ffs_object_links.csv", "ios_spotlight_to_app_db_record_links.csv", "ios_app_database_record_inventory.csv", "ios_app_database_record_summary.csv", "ios_app_parsed_records.csv", "ios_app_parsed_record_summary.csv", "ios_apple_messages_parsed_records.csv", "ios_apple_messages_parsed_summary.csv", "ios_apple_messages_database_status.csv", "ios_app_live_activity_timeline.csv", "ios_communications_review_records.csv", "ios_communications_review_summary.csv", "ios_spotlight_communication_candidates.csv", "ios_spotlight_decode_coverage_summary.csv", "ios_spotlight_field_coverage_summary.csv", "ios_spotlight_text_category_summary.csv", "ios_spotlight_object_inode_summary.csv", "ios_spotlight_record_review.csv", "ios_spotlight_date_provenance.csv", "ios_spotlight_investigative_items_with_dates.csv", "ios_spotlight_decode_gap_records.csv",  "ios_contact_identity_records.csv", "ios_contact_identity_summary.csv", "ios_web_history_review_records.csv", "ios_web_history_review_summary.csv", "ios_calendar_review_records.csv", "ios_calendar_review_summary.csv", "ios_investigation_keyword_surface.csv", "ios_whatsapp_database_status.csv", "ios_whatsapp_parsed_records.csv", "ios_whatsapp_parsed_summary.csv", "ios_keychain_material_inventory.csv", "ios_keychain_support_reference_inventory.csv"
-        };
-        for (const auto& name : requiredExportFiles) {
-            copyFileIfExists(caseDir / "exports" / name, uploadDir / "exports" / name.filename(), manifest);
-        }
-        const std::vector<fs::path> optionalExportFiles = {
-            "parser_coverage_summary.csv", "metadata_hydration_summary.csv",
-            "native_decode_attempts.csv", "native_decode_errors.csv", "native_partial_decode_errors.csv",
-            "native_field_hit_summary.csv", "native_value_type_coverage.csv",
-            "native_property_dictionary.csv", "high_value_field_candidates.csv",
-            "field_inventory.csv", "timeline_rejected_date_candidates.csv", "usage_linked_artifacts.csv",
-            "source_probe_inventory.csv", "source_probe_signatures.csv", "source_partition_probe.csv"
-        };
-        for (const auto& name : optionalExportFiles) {
-            copyFileIfExists(caseDir / "exports" / name, uploadDir / "exports" / name.filename(), manifest, "OPTIONAL_NOT_GENERATED");
+        const fs::path exportsDir = caseDir / "exports";
+        std::error_code exportEc;
+        if (fs::exists(exportsDir, exportEc) && fs::is_directory(exportsDir, exportEc)) {
+            for (const auto& entry : fs::directory_iterator(exportsDir, exportEc)) {
+                if (exportEc) {
+                    manifest << "ERROR," << pathString(exportsDir) << "," << pathString(uploadDir / "exports") << ",directory iterator failed\n";
+                    break;
+                }
+                std::error_code fileEc;
+                if (entry.is_regular_file(fileEc) && entry.path().extension() == ".csv") {
+                    copyFileIfExists(entry.path(), uploadDir / "exports" / entry.path().filename(), manifest);
+                }
+            }
+        } else {
+            manifest << "MISSING_DIR," << pathString(exportsDir) << "," << pathString(uploadDir / "exports") << "\n";
         }
         copyDirectoryIfExists(caseDir / "exports" / "upload_samples", uploadDir / "exports" / "upload_samples", manifest);
         writeUploadReviewIndex(uploadDir / "review_index.html");
@@ -1269,7 +1375,11 @@ Aff4StreamInventoryResult runAff4StreamInventory(const RunOptions& opt,
         result.status = "AFF4IMAGER_INVOKED_LIST_STREAMS";
         const std::string cmd = shellRedirectCommand(result.toolPath, {"-l", pathString(originalInput)}, result.rawOutputPath);
         log.info("Running AFF4 stream inventory command: " + cmd);
+#if defined(_WIN32)
+        result.commandExitCode = runExecutableNoWindowRedirected(result.toolPath, {"-l", pathString(originalInput)}, result.rawOutputPath);
+#else
         result.commandExitCode = runShellCommandNoWindow(cmd);
+#endif
         log.info("AFF4 stream inventory command completed: exit_code=" + std::to_string(result.commandExitCode));
         if (result.commandExitCode != 0) result.status = "AFF4IMAGER_LIST_STREAMS_NONZERO_EXIT";
     }
@@ -3040,19 +3150,25 @@ fs::path stageZipEvidenceSourceFromCache(const fs::path& cacheDir,
 std::size_t countCsvDataRows(const fs::path& csvPath) {
     std::ifstream in(csvPath, std::ios::binary);
     if (!in) return 0;
-    std::string line;
-    std::size_t rows = 0;
-    bool headerSeen = false;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (trim(line).empty()) continue;
-        if (!headerSeen) {
-            headerSeen = true;
-            continue;
-        }
-        ++rows;
+
+    std::array<char, 1024 * 1024> buffer{};
+    std::size_t newlineCount = 0;
+    bool sawAnyBytes = false;
+    char lastByte = '\0';
+
+    while (in) {
+        in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const std::streamsize n = in.gcount();
+        if (n <= 0) break;
+        sawAnyBytes = true;
+        lastByte = buffer[static_cast<std::size_t>(n) - 1U];
+        newlineCount += static_cast<std::size_t>(std::count(buffer.data(), buffer.data() + n, '\n'));
     }
-    return rows;
+
+    if (!sawAnyBytes) return 0;
+    std::size_t physicalLines = newlineCount;
+    if (lastByte != '\n') ++physicalLines;
+    return physicalLines > 0 ? physicalLines - 1U : 0U;
 }
 
 bool endsWithCpp(const std::string& value, const std::string& suffix) {
@@ -3149,24 +3265,17 @@ fs::path extractedIosAppDbPathForZipEntryCpp(const fs::path& caseDir, const std:
     std::string rel = fullName;
     std::replace(rel.begin(), rel.end(), '\\', '/');
     while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
-    for (char& ch : rel) {
-        if (ch == ':' || ch == '<' || ch == '>' || ch == '"' || ch == '|' || ch == '?' || ch == '*') ch = '_';
-    }
-    while (rel.rfind("../", 0) == 0) rel.erase(0, 3);
-    const std::string marker = "/../";
-    for (;;) {
-        const auto pos = rel.find(marker);
-        if (pos == std::string::npos) break;
-        rel.replace(pos, marker.size(), "/_/", 3);
-    }
+
+    const fs::path normalized = fs::path(rel).lexically_normal();
     fs::path out = caseDir / "EvidenceStaging" / "ios_app_databases";
-    std::size_t start = 0;
-    while (start <= rel.size()) {
-        const auto slash = rel.find('/', start);
-        const std::string part = rel.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
-        if (!part.empty() && part != "." && part != "..") out /= part;
-        if (slash == std::string::npos) break;
-        start = slash + 1;
+
+    for (const auto& part : normalized) {
+        std::string safePart = part.string();
+        if (safePart.empty() || safePart == "." || safePart == ".." || safePart == "/" || safePart == "\\") continue;
+        for (char& ch : safePart) {
+            if (ch == ':' || ch == '<' || ch == '>' || ch == '"' || ch == '|' || ch == '?' || ch == '*' || ch == '\r' || ch == '\n' || ch == '\t') ch = '_';
+        }
+        if (!safePart.empty()) out /= safePart;
     }
     return out;
 }
@@ -3371,7 +3480,11 @@ fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir
         log.info(std::string(profile == SourceProfileKind::IOS ? "iOS ZIP source detected" : "Auto ZIP source: probing for iOS CoreSpotlight entries") +
                  ". Extracting CoreSpotlight/BundleInfo entries to controlled staging folder before discovery: " + pathString(stageRoot));
         log.info("iOS focused ZIP extraction inventory will be written: " + pathString(inventoryPath));
+#if defined(_WIN32)
+        const int rc = runPowerShellFileNoWindowRedirected(scriptPath, logPath);
+#else
         const int rc = runShellCommandNoWindow(cmd);
+#endif
         IosZipInventoryParseResult cppInventoryParse;
         try {
             cppInventoryParse = parseIosSevenZipRawInventoryToCsv(caseDir, zipPath, log);
@@ -3416,8 +3529,13 @@ fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir
         const fs::path logPath = caseDir / "logs" / "zip_extract_powershell.log";
         fs::create_directories(logPath.parent_path());
         std::string cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath " + psSingleQuote(platformPathString(zipPath)) + " -DestinationPath " + psSingleQuote(platformPathString(stageRoot)) + " -Force\" > " + commandQuote(logPath) + " 2>&1";
+        const std::string psCommand = "Expand-Archive -LiteralPath " + psSingleQuote(platformPathString(zipPath)) + " -DestinationPath " + psSingleQuote(platformPathString(stageRoot)) + " -Force";
         log.info("ZIP source detected. Extracting to controlled staging folder before Store-V2 discovery: " + pathString(stageRoot));
+#if defined(_WIN32)
+        const int rc = runPowerShellCommandNoWindowRedirected(psCommand, logPath);
+#else
         const int rc = runShellCommandNoWindow(cmd);
+#endif
         if (rc != 0) throw std::runtime_error("ZIP extraction failed. See log: " + pathString(logPath));
     }
 #else

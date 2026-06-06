@@ -1,10 +1,10 @@
-# V1.0.24.1
+# V1.0.25
 
 - Fixed the V1.0.24 Windows/MSVC `C2668` ambiguous `buildWhere` compile failure in `src/gui/win32_gui.cpp`.
 - Removed the stale local `buildWhere` wrapper left behind after creating `src/gui/gui_view_helpers.h/.cpp`.
 - Explicitly routed review-page SQL `WHERE` assembly through the shared `vestigant::spotlight::buildWhere(...)` helper using captured filter state.
 - No APFS/AFF4 traversal, Store-V2 parsing, iOS parsing, schema, GUI views, or diagnostic writer behavior was intentionally changed.
-- Updated V1.0.24.1 build/launch/AFF4 wrapper scripts.
+- Updated V1.0.25 build/launch/AFF4 wrapper scripts.
 
 # V1.0.18
 
