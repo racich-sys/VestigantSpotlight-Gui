@@ -37,6 +37,7 @@
 #include <cctype>
 #include <ctime>
 #include <cstdio>
+#include <atomic>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -5150,7 +5151,16 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
         addApfsRow("resolve_libaff4_dll", "MISSING_LIBAFF4_DLL", 0, -1, {}, "BLOCKED", "Cannot perform virtual GPT/APFS reads without libaff4.dll.", {}, "Reader tools were not found.");
     } else {
         addRow("resolve_libaff4_dll", "FOUND", libaff4Dll, 0, 0, -1, {}, "Resolved libaff4.dll for dynamic-load probe.");
-        HMODULE h = LoadLibraryExW(libaff4Dll.wstring().c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        const fs::path dllDir = libaff4Dll.parent_path();
+        DLL_DIRECTORY_COOKIE aff4DllDirCookie = nullptr;
+        if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS)) {
+            addRow("SetDefaultDllDirectories", "WARNING", dllDir, 0, 0, -1, {}, lastWindowsErrorString());
+        }
+        if (!dllDir.empty()) {
+            aff4DllDirCookie = AddDllDirectory(dllDir.wstring().c_str());
+            if (!aff4DllDirCookie) addRow("AddDllDirectory", "WARNING", dllDir, 0, 0, -1, {}, lastWindowsErrorString());
+        }
+        HMODULE h = LoadLibraryExW(libaff4Dll.wstring().c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS);
         if (!h) {
             addRow("LoadLibraryExW", "LOAD_FAILED", libaff4Dll, 0, 0, -1, {}, lastWindowsErrorString());
             addApfsRow("LoadLibraryExW", "LOAD_FAILED", 0, -1, {}, "BLOCKED", "Cannot perform virtual GPT/APFS reads because libaff4.dll did not load.", {}, lastWindowsErrorString());
@@ -8622,6 +8632,7 @@ void writeAff4CppLiteDynamicLoadProbe(const fs::path& caseDir,
             }
             FreeLibrary(h);
         }
+        if (aff4DllDirCookie) RemoveDllDirectory(aff4DllDirCookie);
     }
 #else
     addRow("dynamic_load_probe", "NOT_SUPPORTED_ON_THIS_PLATFORM", {}, 0, 0, -1, {}, "The current executable was not built for Windows; V0_8_23 dynamic-load probe targets Windows libaff4.dll.");
@@ -11242,7 +11253,7 @@ bool validateRunOptions(const RunOptions& opt, std::string& error) {
 }
 
 
-RunResult runApplication(const RunOptions& opt) {
+RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelToken) {
     installStructuredExceptionTranslator();
     const fs::path caseDir = !opt.caseDir.empty() ? opt.caseDir : opt.output;
     fs::create_directories(caseDir);
@@ -11261,6 +11272,17 @@ RunResult runApplication(const RunOptions& opt) {
         log.warn("Investigator/full exports requested without full native metadata values. Usage, WhereFroms, path and tag-support views may be incomplete.");
     }
     RunResult result;
+    auto returnCancelled = [&](const std::string& stage) -> RunResult {
+        appendRunStatus(caseDir, "cancelled", stage);
+        log.warn("Ingest cancelled by investigator request at stage: " + stage);
+        result.exitCode = 4;
+        result.messages = log.messages();
+        return result;
+    };
+    auto cancelRequested = [&]() -> bool {
+        return cancelToken && cancelToken->load();
+    };
+    if (cancelRequested()) return returnCancelled("startup");
     const auto topModeLower = toLower(opt.mode.empty() ? "run" : opt.mode);
     const bool diagnosticsMode = (topModeLower == "diagnostics" || topModeLower == "diagnostic");
     const bool sourceProbeMode = (topModeLower == "source-probe" || topModeLower == "source_probe" || topModeLower == "probe-source" || topModeLower == "source-intake");
@@ -11282,6 +11304,7 @@ RunResult runApplication(const RunOptions& opt) {
         const bool rawImageInputSource = isRawImageSourcePath(opt.input);
         auto profile = parseProfileKind(opt.profile);
         const bool sourceProbeFullScan = opt.fullScan && !zipInputSource;
+        if (cancelRequested()) return returnCancelled("before_source_probe_signature_scan");
         appendRunStatus(caseDir, "source_probe_signature_scan",
                         zipInputSource
                             ? "bounded ZIP signature probe; ZIP entries will be enumerated during staging/focused extraction"
@@ -11290,11 +11313,14 @@ RunResult runApplication(const RunOptions& opt) {
             log.info("Full-scan parsing remains enabled, but pre-stage source signature probing is bounded for ZIP containers to avoid scanning very large iOS FFS ZIPs before focused CoreSpotlight extraction.");
         }
         SourceProbeFindings sourceProbe = probeEvidenceSourceSignatures(opt.input, sourceProbeFullScan, log);
+        if (cancelRequested()) return returnCancelled("after_source_probe_signature_scan");
         appendRunStatus(caseDir, "source_probe_signature_complete",
                         "bytes_scanned=" + std::to_string(sourceProbe.bytesScanned) + " hits=" + std::to_string(sourceProbe.hits.size()));
         PartitionProbeFindings partitionProbe = rawImageInputSource ? probeRawImagePartitions(opt.input, sourceProbe, log) : PartitionProbeFindings{};
+        if (cancelRequested()) return returnCancelled("after_partition_probe");
         fs::path stagedContainerWorkingRoot;
 
+        if (cancelRequested()) return returnCancelled("before_source_staging");
         if (zipInputSource) {
             appendRunStatus(caseDir, "stage_zip_source", profile == SourceProfileKind::IOS ? "extract iOS CoreSpotlight entries from ZIP to normalized staging folder" : "auto-detect ZIP Spotlight/CoreSpotlight entries and stage normalized working files");
             bool iosFocusedUsed = false;
@@ -11309,6 +11335,7 @@ RunResult runApplication(const RunOptions& opt) {
                 log.info("Auto ZIP profile promoted to iOS/CoreSpotlight because focused ZIP entry inventory found store.db/.store.db entries or a prior iOS cache was reused.");
                 appendRunStatus(caseDir, "zip_profile_auto_promoted_ios", "focused CoreSpotlight store.db/.store.db entries found or cached iOS staging reused");
             }
+            if (cancelRequested()) return returnCancelled("after_zip_staging");
             discoverySource.inputPath = stagedContainerWorkingRoot;
             discoverySource.profile = profileKindToString(profile);
             discoverySource.sourceKind = "zip_staged_spotlight_source";
@@ -11526,6 +11553,7 @@ RunResult runApplication(const RunOptions& opt) {
             log.warn("Evidence preservation was skipped by user option. This is not recommended for case processing.");
         }
 
+        if (cancelRequested()) return returnCancelled("before_native_parse_selection");
         const auto parserCandidates = parseStores;
         parseStores = selectDatabasesForParsing(parserCandidates, profile, opt.fullScan, log);
         writeStoreSelectionCsv(caseDir, parserCandidates, parseStores, log);
@@ -11559,8 +11587,21 @@ RunResult runApplication(const RunOptions& opt) {
         if (opt.experimentalFullNativeValues) log.warn("Experimental full native metadata value parsing is enabled. This may be unstable on some store.db files.");
         else if (opt.decodeCoreNativeValues || diagnosticsMode) log.info("Core native metadata field decoding is enabled for high-value Spotlight fields and diagnostic probes.");
         else log.warn("Native parser is running in stable header-only mode. Use --decode-core-native-values to test safe native string/path probe decoding.");
+        if (cancelRequested()) return returnCancelled("before_native_parse_call");
         appendRunStatus(caseDir, "native_parse_call", decodeMode == NativeDecodeMode::FullValues ? "FullValues" : (decodeMode == NativeDecodeMode::CoreFields ? "CoreFields" : "HeaderOnly"));
-        auto parseCounts = parser.parseStores(parseStores, parseSource, db, log);
+        appendRunStatus(caseDir, "native_parse_bulk_pragmas_apply", "regenerable Store-V2 parse inserts use temporary bulk SQLite settings");
+        db.exec("PRAGMA synchronous = OFF; PRAGMA journal_mode = MEMORY; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -65536;");
+        NativeStoreDbParseCounts parseCounts;
+        try {
+            parseCounts = parser.parseStores(parseStores, parseSource, db, log);
+        } catch (...) {
+            try { db.exec("PRAGMA synchronous = NORMAL; PRAGMA journal_mode = WAL;"); } catch (...) {}
+            appendRunStatus(caseDir, "native_parse_bulk_pragmas_restore_after_error", "restored WAL/NORMAL settings after parser exception");
+            throw;
+        }
+        db.exec("PRAGMA synchronous = NORMAL; PRAGMA journal_mode = WAL;");
+        appendRunStatus(caseDir, "native_parse_bulk_pragmas_restore", "restored WAL/NORMAL settings after native parser");
+        if (cancelRequested()) return returnCancelled("after_native_parse_call");
         result.nativeDecodeMode = (decodeMode == NativeDecodeMode::FullValues ? "FullValues" : (decodeMode == NativeDecodeMode::CoreFields ? "CoreFields" : "HeaderOnly"));
         result.rawRecordCount = parseCounts.rawRecords;
         result.rawKeyValueCount = parseCounts.rawKeyValues;
@@ -11581,6 +11622,7 @@ RunResult runApplication(const RunOptions& opt) {
             result.messages.push_back("referenced_ios_ffs_lookup_hits=" + std::to_string(referencedHits));
         }
 
+        if (cancelRequested()) return returnCancelled("before_enrichment");
         appendRunStatus(caseDir, "enrichment_start");
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;

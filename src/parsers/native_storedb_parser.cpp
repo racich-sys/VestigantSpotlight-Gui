@@ -1276,6 +1276,48 @@ std::uint64_t readBplistBigEndianInt(const std::string& bytes, std::size_t off, 
     return v;
 }
 
+std::string summarizeBplistTrailerAt(const std::string& value, std::size_t bplistOff) {
+    constexpr std::size_t MaxBplistBytes = 1024ull * 1024ull;
+    constexpr std::uint64_t MaxBplistObjects = 50000ull;
+    if (bplistOff == std::string::npos) return "bplist_trailer=not_found";
+    if (bplistOff > value.size() || value.size() - bplistOff < 40) return "bplist_trailer=too_short";
+    const std::size_t bplistSize = value.size() - bplistOff;
+    if (bplistSize > MaxBplistBytes) return "bplist_trailer=too_large";
+    if (std::memcmp(value.data() + static_cast<std::ptrdiff_t>(bplistOff), "bplist00", 8) != 0) return "bplist_trailer=bad_magic";
+
+    const std::size_t trailer = value.size() - 32;
+    const auto offsetIntSize = static_cast<unsigned char>(value[trailer + 6]);
+    const auto objectRefSize = static_cast<unsigned char>(value[trailer + 7]);
+    bool ok = false;
+    const std::uint64_t numObjects = readBplistBigEndianInt(value, trailer + 8, 8, &ok);
+    if (!ok) return "bplist_trailer=invalid_num_objects";
+    const std::uint64_t topObject = readBplistBigEndianInt(value, trailer + 16, 8, &ok);
+    if (!ok) return "bplist_trailer=invalid_top_object";
+    const std::uint64_t offsetTableOffsetRel = readBplistBigEndianInt(value, trailer + 24, 8, &ok);
+    if (!ok) return "bplist_trailer=invalid_offset_table";
+    if (offsetIntSize == 0 || offsetIntSize > 8 || objectRefSize == 0 || objectRefSize > 8) return "bplist_trailer=invalid_widths";
+    if (numObjects == 0 || numObjects > MaxBplistObjects || topObject >= numObjects) return "bplist_trailer=invalid_object_counts";
+    if (offsetTableOffsetRel >= bplistSize) return "bplist_trailer=invalid_offset_table_bounds";
+    if (numObjects > (std::numeric_limits<std::size_t>::max)() / offsetIntSize) return "bplist_trailer=offset_table_overflow";
+    const std::size_t offsetTable = bplistOff + static_cast<std::size_t>(offsetTableOffsetRel);
+    const std::size_t offsetTableBytes = static_cast<std::size_t>(numObjects) * offsetIntSize;
+    if (offsetTable < bplistOff || offsetTable > value.size() || offsetTableBytes > value.size() - offsetTable) return "bplist_trailer=offset_table_out_of_range";
+
+    std::ostringstream os;
+    os << "bplist_trailer=valid"
+       << ";objects=" << numObjects
+       << ";top_object=" << topObject
+       << ";offset_int_size=" << static_cast<unsigned int>(offsetIntSize)
+       << ";object_ref_size=" << static_cast<unsigned int>(objectRefSize)
+       << ";offset_table_rel=" << offsetTableOffsetRel;
+    return os.str();
+}
+
+std::string summarizeBplistTrailer(const std::string& value) {
+    const std::size_t bplistOff = value.find("bplist00");
+    return summarizeBplistTrailerAt(value, bplistOff);
+}
+
 bool addBplistToken(std::vector<std::string>& tokens, std::unordered_set<std::string>& seen, std::string token, std::size_t maxTokenBytes, std::size_t maxTokens) {
     token = cleanDecodedString(trimAscii(std::move(token)));
     if (token.size() > maxTokenBytes) token = token.substr(0, maxTokenBytes) + "...[truncated]";
@@ -1428,7 +1470,9 @@ std::string buildIosBplistNsKeyedArchiverContext(const std::map<std::string, std
         std::ostringstream os;
         os << kv.first << "[format=" << (containsBinaryPlistMarker(kv.second) ? "bplist00" : "unknown")
            << ";nskeyed=" << (containsNsKeyedArchiverMarker(kv.second) ? "1" : "0")
-           << ";raw_bytes=" << kv.second.size() << ";tokens=" << tokenText << "]";
+           << ";raw_bytes=" << kv.second.size()
+           << ";" << summarizeBplistTrailer(kv.second)
+           << ";tokens=" << tokenText << "]";
         pieces.push_back(os.str());
     }
     if (fieldsSeen == 0) return {};

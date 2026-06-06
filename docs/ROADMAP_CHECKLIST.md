@@ -19,9 +19,13 @@
 - [x] V1.0.30: macOS AFF4/APFS thin ZIP generated and reviewed.
 - [x] V1.1.0.1: Windows/MSVC build passed and reported `Vestigant Spotlight v1.1.0.1`.
 - [x] V1.1.0.1: macOS AFF4/APFS thin ZIP generated and reviewed.
-- [ ] V1.1.1: Windows/MSVC build pending.
-- [ ] V1.1.1: macOS AFF4/APFS thin ZIP pending.
+- [x] V1.1.1: Windows/MSVC build passed and reported `Vestigant Spotlight v1.1.1`.
+- [x] V1.1.1: macOS AFF4/APFS thin ZIP generated and reviewed.
 - [x] V1.1.1: Local Linux CMake build/self-test passed before packaging.
+
+- [ ] V1.1.2: Windows/MSVC build pending.
+- [ ] V1.1.2: macOS AFF4/APFS thin ZIP pending.
+- [x] V1.1.2: Local source syntax validation completed before packaging.
 
 ## Thin upload / redaction
 
@@ -105,3 +109,12 @@
 - [x] V1.0.30: Updated all three continuity files.
 - [x] V1.1.1: Updated all three continuity files and documented the broader `repeat` shorthand.
 - [ ] Update these three files in every future package.
+
+## V1.1.2 hardening updates
+
+- [x] V1.1.2: Added `docs/WORKFLOW_LEDGER.md` for repeat-cycle state tracking.
+- [x] V1.1.2: Added GUI Cancel Ingest token and safe cancellation checkpoints in `runApplication`.
+- [x] V1.1.2: Freed `gLogoBitmap` on GUI shutdown.
+- [x] V1.1.2: Hardened dependent DLL search for AFF4 dynamic-load probing.
+- [x] V1.1.2: Applied temporary bulk SQLite PRAGMAs around native Store-V2 parsing and restored safe settings after completion/error.
+- [x] V1.1.2: Added bounded bplist trailer validation metadata to existing bplist/NSKeyedArchiver context output.

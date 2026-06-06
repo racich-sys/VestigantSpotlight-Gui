@@ -1,4 +1,4 @@
-# V1.1.0.1 Validation Notes
+# V1.1.1 Validation Notes
 
 ## Inputs reviewed
 
@@ -18,7 +18,7 @@
 
 - C++20 syntax checks passed for changed and dependent files.
 - Linux CMake configure/build completed.
-- CLI version check reported `Vestigant Spotlight v1.1.0.1`.
+- CLI version check reported `Vestigant Spotlight v1.1.1`.
 - Local self-test passed.
 
 ## Not validated here
@@ -26,7 +26,7 @@
 - Windows/MSVC build.
 - Windows GUI runtime.
 - Windows guarded AFF4 dynamic-load runtime.
-- V1.1.0.1 macOS AFF4/APFS thin run.
+- V1.1.1 macOS AFF4/APFS thin run.
 - Current iOS run.
 
 ## Risk notes

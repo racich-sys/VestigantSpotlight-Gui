@@ -1,3 +1,12 @@
+## V1.1.2
+
+- Added repeat-cycle workflow ledger.
+- Added GUI ingest cancellation token/control and runApplication safe cancellation checkpoints.
+- Hardened AFF4 dependent DLL search.
+- Freed GUI logo bitmap during shutdown.
+- Added native parser bulk SQLite PRAGMAs with restoration.
+- Added bounded bplist trailer validation metadata to bplist/NSKeyedArchiver context output.
+
 # Vestigant Spotlight v1.0.30 Release Notes
 
 ## V1.0.30

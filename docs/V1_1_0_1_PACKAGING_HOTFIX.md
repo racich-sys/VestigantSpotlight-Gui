@@ -1,15 +1,15 @@
-# V1.1.0.1 Packaging Hotfix
+# V1.1.1 Packaging Hotfix
 
 ## Scope
 
-V1.1.0.1 restores the root build scripts that were accidentally omitted from the V1.1.0 full source ZIP.
+V1.1.1 restores the root build scripts that were accidentally omitted from the V1.1.0 full source ZIP.
 
 ## Fixed
 
 - Restored `build_windows_msvc.bat`.
 - Restored `build_windows_msvc_nocmake.bat`.
 - Restored `build_linux_test.sh`.
-- Regenerated V1.1.0.1 versioned PowerShell wrappers.
+- Regenerated V1.1.1 versioned PowerShell wrappers.
 
 ## Not changed
 

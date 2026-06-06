@@ -1,9 +1,0 @@
-Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V1_1_1.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_1_1" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_1_1.zip -DestinationPath T:\ -Force
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_1\scripts\Build-V1_1_1.ps1
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_1\scripts\Run-V1_1_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
-
-# If the V1.0.26 run already completed and only thin packaging failed, use this faster packaging-only command:
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_1\scripts\Package-V1_1_1-macOS-AFF4-ThinFromExistingCase.ps1

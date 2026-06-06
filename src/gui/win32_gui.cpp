@@ -53,7 +53,7 @@ using namespace vestigant::spotlight;
 namespace {
 HINSTANCE gInst{};
 HWND gTab{};
-HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
+HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
 HWND gVerbose{}, gExportProfile{};
 HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
@@ -95,6 +95,7 @@ std::vector<std::thread> gExportThreads;
 std::mutex gIngestThreadMutex;
 std::thread gIngestThread;
 std::atomic_bool gIngestActive{false};
+std::atomic_bool gCancelIngestRequested{false};
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
 bool gIosReviewMode = false;
@@ -132,7 +133,7 @@ void cancelAndJoinReviewThreadNoThrow() {
     }
 }
 
-constexpr int ID_RUN = 1001, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006;
+constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006;
 constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
@@ -1550,6 +1551,7 @@ bool startIngestThreadNoThrow(HWND owner) {
         std::lock_guard<std::mutex> lock(gIngestThreadMutex);
         if (gIngestActive.load()) return false;
         if (gIngestThread.joinable()) gIngestThread.join();
+        gCancelIngestRequested.store(false);
         gIngestActive.store(true);
         gIngestThread = std::thread([owner]() {
             try {
@@ -2508,7 +2510,7 @@ void worker() {
         if (opt.experimentalFullNativeValues) postLog(L"Full native metadata parsing is enabled for the selected workflow.");
         else postLog(L"Stable native header/core parsing is enabled. Full native metadata parsing is available through the checkbox above.");
         postStatus(L"Ingest running: parser/enrichment/export workflow active. See log and status line for stages.");
-        auto rr = runApplication(opt);
+        auto rr = runApplication(opt, &gCancelIngestRequested);
         for (const auto& m : rr.messages) postLog(widen(m));
         std::ostringstream os;
         os << "Complete: store_groups=" << rr.storeCount << " database_candidates=" << rr.databaseCandidateCount << " selected_databases=" << rr.selectedParserDatabaseCount << " artifacts=" << rr.artifactCount << " usage=" << rr.usageCount << " orphan/deleted candidates=" << rr.orphanCandidateCount;
@@ -2592,7 +2594,9 @@ void createProcessControls(HWND hwnd) {
     for (const wchar_t* s : {L"Auto", L"Standard macOS", L"iOS/CoreSpotlight"}) SendMessageW(gProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gProfile, CB_SETCURSEL, 0, 0);
     labelP(hwnd, L"Mode", 300, y0 + 464, 56, 22); gMode = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 356, y0 + 460, 270, 140, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Process Raw Spotlight Evidence", L"Diagnostics / Bounded Native Parse", L"Discover Stores Only"}) SendMessageW(gMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gMode, CB_SETCURSEL, 0, 0);
-    gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 740, y0 + 456, 240, 36);
+    gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 740, y0 + 456, 150, 36);
+    gCancelIngestButton = buttonP(hwnd, L"Cancel Ingest", ID_CANCEL_INGEST, 900, y0 + 456, 82, 36);
+    EnableWindow(gCancelIngestButton, FALSE);
     addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 420, y0 + 500, 540, 24, hwnd, nullptr, gInst, nullptr));
     gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 106, y0 + 530, 120, 24, hwnd, nullptr, gInst, nullptr));
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
@@ -3112,10 +3116,19 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             postProgress(0);
+            gCancelIngestRequested.store(false);
+            if (gCancelIngestButton) EnableWindow(gCancelIngestButton, TRUE);
             postStatus(L"Queued: ingest worker starting.");
             if (!startIngestThreadNoThrow(hwnd)) {
                 postStatus(L"ERROR: ingest worker could not be started.");
             }
+            return 0;
+        }
+        case ID_CANCEL_INGEST: {
+            gCancelIngestRequested.store(true);
+            if (gCancelIngestButton) EnableWindow(gCancelIngestButton, FALSE);
+            postStatus(L"Cancellation requested. Waiting for the current extraction loop to reach a safe stop point...");
+            postLog(L"Cancellation requested by investigator. The worker will stop at the next implemented safe checkpoint.");
             return 0;
         }
         case ID_BROWSE_CASE: { auto p = browseSqlite(hwnd); if (!p.empty()) { setText(gCaseDbPath, p); size_t pos = p.find_last_of(L"\\/"); if (pos != std::wstring::npos) setText(gOut, p.substr(0, pos)); } return 0; }
@@ -3197,7 +3210,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_APPEND_LOG: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { appendLog(*s); delete s; } return 0; }
     case WM_CLEAR_PROCESS_LOG: { clearProcessLog(); return 0; }
-    case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } return 0; }
+    case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } if (!gIngestActive.load() && gCancelIngestButton) EnableWindow(gCancelIngestButton, FALSE); return 0; }
     case WM_SET_INGEST_PROGRESS: { int pct = static_cast<int>(wp); if (pct < 0) pct = 0; if (pct > 100) pct = 100; if (gIngestProgress) SendMessageW(gIngestProgress, PBM_SETPOS, static_cast<WPARAM>(pct), 0); return 0; }
     case WM_REVIEW_PAGE_RESULT: { completeReviewPageLoad(reinterpret_cast<ReviewPageResult*>(lp)); return 0; }
     case WM_EXPORT_PAGE_RESULT: {
@@ -3235,7 +3248,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

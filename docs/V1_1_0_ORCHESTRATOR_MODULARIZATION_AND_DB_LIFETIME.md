@@ -1,8 +1,8 @@
-# V1.1.0.1 Orchestrator Modularization and Database Lifetime
+# V1.1.1 Orchestrator Modularization and Database Lifetime
 
 ## Purpose
 
-V1.1.0.1 is a broader `repeat`-cycle release. It targets the remaining production-readiness concerns that can be moved safely without changing live APFS extraction semantics or emitting new unvalidated forensic interpretations.
+V1.1.1 is a broader `repeat`-cycle release. It targets the remaining production-readiness concerns that can be moved safely without changing live APFS extraction semantics or emitting new unvalidated forensic interpretations.
 
 ## Implemented
 
@@ -26,7 +26,7 @@ V1.1.0.1 is a broader `repeat`-cycle release. It targets the remaining productio
 
 - C++20 syntax checks were run for changed and dependent source files.
 - Linux CMake configure/build completed.
-- CLI version check reported `Vestigant Spotlight v1.1.0.1`.
+- CLI version check reported `Vestigant Spotlight v1.1.1`.
 - Local self-test passed.
 
 Windows/MSVC and live macOS/iOS runtime validation remain required.
