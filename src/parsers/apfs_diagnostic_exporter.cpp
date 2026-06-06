@@ -1940,5 +1940,72 @@ void writeAff4ApfsCheckpointMapOutputs(const fs::path& caseDir,
     }
 }
 
+void writeAff4ApfsV1DiagnosticRerunPlan(const fs::path& caseDir,
+                                         const EvidenceSource& source,
+                                         const RunOptions& opt,
+                                         const fs::path& originalInput,
+                                         Logger& log) {
+    if (!isAff4SourcePath(originalInput)) return;
+    const fs::path mdPath = caseDir / "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md";
+    const fs::path csvPath = caseDir / "aff4_apfs_v1_diagnostic_checklist.csv";
+    const fs::path jsonPath = caseDir / "aff4_apfs_v1_diagnostic_plan_summary.json";
+    struct Row { const char* stage; const char* expected; const char* purpose; const char* rule; };
+    const Row rows[] = {
+        {"aff4_zip_single_file_probe", "aff4_zip_central_directory.csv; aff4_zip_probe_summary.json", "Confirm the exact selected AFF4 file is readable as the AFF4 container and no parent-folder AFF4 discovery was used.", "If this fails, fix AFF4 container access before APFS logic."},
+        {"aff4_dynamic_load_probe", "aff4_cpp_lite_dynamic_load_probe.csv; aff4_virtual_apfs_probe.csv", "Confirm the guarded AFF4 reader can perform bounded random reads from the selected image stream.", "If virtual reads fail or use the wrong object, do not interpret APFS output."},
+        {"apfs_container_checkpoint", "aff4_apfs_container_superblock.csv; aff4_apfs_checkpoint_map.csv", "Confirm APFS NXSB, latest valid checkpoint, and checkpoint-mapped ephemeral objects.", "APFS decisions must use a valid checkpoint-backed container view, not only block-zero assumptions."},
+        {"apfs_omap_volume_resolution", "aff4_apfs_omap_leaf_lookup_results.csv; aff4_apfs_resolved_volume_superblocks.csv", "Resolve container and volume object maps to the APFS volume superblocks.", "If OMAP lookups are partial, report the missing OID/XID and keep extraction gated."},
+        {"apfs_root_tree_namespace", "aff4_apfs_root_tree_*; aff4_apfs_spotlight_target_scan.csv", "Walk enough filesystem tree records to locate .Spotlight-V100 / Store-V2 targets and parent/child file IDs.", "Prefer path/object provenance over broad raw scanning; preserve volume, object ID, parent ID, and record source."},
+        {"apfs_inode_xattr_extents", "aff4_apfs_spotlight_inode_probe.csv; aff4_apfs_spotlight_xattr_probe.csv; aff4_apfs_spotlight_file_extent_probe.csv", "Correlate target directory records to inode, private data-stream ID, xattrs, resource forks, decmpfs metadata, and file extents.", "Do not treat a target as copyable until inode size, extent chain, xattr/resource-fork state, and physical reads are classified."},
+        {"apfs_copy_out", "aff4_apfs_spotlight_file_copy_out.csv; aff4_apfs_spotlight_file_copy_out_summary.json", "Assemble only files whose reconstruction status is explicit and reviewable.", "Every output row must state copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped."},
+        {"staged_storev2_parse", "aff4_apfs_extracted_storev2_stage_*.csv; aff4_apfs_staged_storev2_*", "Normalize copied Store-V2 components into staged groups and parse them through the native Store-V2 parser.", "Report parser counts separately from APFS copy counts so filesystem extraction failures are not confused with Spotlight parsing failures."},
+        {"external_compare", "aff4_apfs_external_spotlight_compare_summary.json; aff4_apfs_external_spotlight_file_compare.csv", "Compare Vestigant extraction with the known-good external Spotlight reference when available.", "Use relative path/hash status counts to select the next fix category; do not rely on visual folder inspection alone."}
+    };
+    try {
+        std::ofstream out(csvPath, std::ios::binary);
+        out << "stage,expected_outputs,purpose,interpretation_rule\n";
+        for (const auto& r : rows) {
+            out << csvEscape(r.stage) << ',' << csvEscape(r.expected) << ',' << csvEscape(r.purpose) << ',' << csvEscape(r.rule) << "\n";
+        }
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_checklist.csv: ") + ex.what());
+    }
+    try {
+        std::ofstream out(jsonPath, std::ios::binary);
+        out << "{\n";
+        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        out << "  \"app_version\": \"" << appVersion() << "\",\n";
+        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
+        out << "  \"probe_policy\": \"STRICT_SINGLE_AFF4_DIAGNOSTIC_RERUN\",\n";
+        out << "  \"container_hash_policy\": \"" << (opt.forceContainerHash ? "FORCED_BY_OPERATOR" : (opt.skipContainerHash ? "SKIPPED_BY_OPERATOR" : "DEFERRED_FOR_DEVELOPMENT_SOURCE_PROBE")) << "\",\n";
+        out << "  \"diagnostic_stage_count\": " << (sizeof(rows) / sizeof(rows[0])) << ",\n";
+        out << "  \"notes\": \"V1.0.0 prioritizes a fresh, reproducible AFF4/APFS diagnostic run before changing APFS reconstruction gates.\"\n";
+        out << "}\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_plan_summary.json: ") + ex.what());
+    }
+    try {
+        std::ofstream out(mdPath, std::ios::binary);
+        out << "# AFF4/APFS V1.0.0 Diagnostic Rerun Plan\n\n";
+        out << "Version: " << appVersion() << "\n\n";
+        out << "## Purpose\n\n";
+        out << "This V1.0.0 run is intended to recreate current AFF4/APFS evidence from the exact selected AFF4 image before any broader APFS reconstruction changes are made. The older V0.8.x external-compare bundle is useful historical evidence, but it should not be treated as the current source of truth for V1 decisions.\n\n";
+        out << "## Scope and safety policy\n\n";
+        out << "- Input is one explicit AFF4 file: `" << pathString(originalInput) << "`.\n";
+        out << "- Strict single-AFF4 mode should be used for the rerun.\n";
+        out << "- Full-container hashing is deferred by default for development speed unless `--force-container-hash` is supplied.\n";
+        out << "- No broad parent-folder AFF4 search, full raw export, or unverifiable decompression stub should be used.\n";
+        out << "- APFS copy-out must classify each target as copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped.\n\n";
+        out << "## Diagnostic checklist\n\n";
+        out << "See `aff4_apfs_v1_diagnostic_checklist.csv` for the required outputs and interpretation rules.\n\n";
+        out << "## Decision rule after upload\n\n";
+        out << "After the fresh thin upload is reviewed, choose the next implementation target from the evidence: AFF4 container access, APFS checkpoint/OMAP traversal, root-tree namespace walking, inode/xattr/extent correlation, sparse/gap handling, resource-fork/decmpfs reconstruction, staged Store-V2 parsing, or investigator-facing macOS views.\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md: ") + ex.what());
+    }
+    log.info("AFF4/APFS V1 diagnostic rerun plan written: " + pathString(mdPath));
+}
+
 
 } // namespace vestigant::spotlight

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/logger.h"
+#include "parsers/apfs_diagnostic_models.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -78,6 +79,11 @@ bool apfsIsSpotlightStoreV2ComponentName(const std::string& name);
 std::string apfsStoreV2ComponentKind(const std::string& name);
 std::string apfsSanitizePathComponent(std::string name);
 
+ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& data,
+                                              std::uint64_t virtualOffset,
+                                              long long bytesRead);
+std::uint64_t apfsReadNextLeafOidFromBtreeInfoFooter(const std::vector<unsigned char>& node);
+
 ApfsExtractionStatus classifyApfsExtractionStatus(const std::string& copyStatus);
 bool apfsCopyStatusRepresentsCompleteFile(const std::string& copyStatus);
 bool apfsCopyStatusRepresentsPartialCandidate(const std::string& copyStatus);
@@ -116,6 +122,7 @@ public:
     std::vector<ApfsDirectoryEntry> enumerateDirectory(std::uint64_t directoryInodeId);
     std::optional<std::uint64_t> resolvePathToInode(const std::string& absolutePath);
     bool extractFileToDisk(std::uint64_t fileInodeId, const std::filesystem::path& destinationPath);
+    std::string resolveAbsolutePath(std::uint64_t childInodeId);
 
     const ApfsDirectoryIteratorBenchmarks& benchmarks() const noexcept { return benchmarks_; }
 

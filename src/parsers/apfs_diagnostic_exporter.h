@@ -21,6 +21,12 @@ bool shouldWriteAff4ApfsStructuralDiagnostics(bool verbose,
 std::string aff4ApfsStructuralDiagnosticsSuppressedStatus();
 std::string aff4ApfsStructuralDiagnosticsSuppressedGuidance();
 
+void writeAff4ApfsV1DiagnosticRerunPlan(const std::filesystem::path& caseDir,
+                                        const EvidenceSource& source,
+                                        const RunOptions& opt,
+                                        const std::filesystem::path& originalInput,
+                                        Logger& log);
+
 // APFS/AFF4 diagnostic and staging report writers. These functions format
 // derived probe rows into CSV/JSON/Markdown outputs; they do not perform APFS
 // traversal, AFF4 reads, Store-V2 parsing, or evidence copy-out.

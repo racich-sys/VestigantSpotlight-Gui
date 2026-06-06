@@ -8,7 +8,7 @@
 
 namespace vestigant::spotlight {
 
-// Narrow intake helpers split out of app_runner.cpp in V1.0.31.
+// Narrow intake helpers split out of app_runner.cpp in V1.1.0.1.
 // These helpers are intentionally behavior-preserving: orchestration remains in
 // app_runner.cpp until the full staging/import boundary can be moved and tested.
 bool endsWithCpp(const std::string& value, const std::string& suffix);

@@ -17,8 +17,9 @@
 - [x] V1.0.29: macOS AFF4/APFS thin ZIP generated and reviewed.
 - [x] V1.0.30: Windows/MSVC build passed and reported `Vestigant Spotlight v1.0.30`.
 - [x] V1.0.30: macOS AFF4/APFS thin ZIP generated and reviewed.
-- [ ] V1.0.31: Windows/MSVC build pending.
-- [ ] V1.0.31: macOS AFF4/APFS thin ZIP pending.
+- [ ] V1.1.0.1: Windows/MSVC build pending.
+- [ ] V1.1.0.1: macOS AFF4/APFS thin ZIP pending.
+- [x] V1.1.0.1: Local Linux CMake build/self-test passed before packaging.
 
 ## Thin upload / redaction
 
@@ -39,7 +40,7 @@
 - [x] V1.0.24 / V1.0.24.1: Added shared GUI view/export helper module and fixed MSVC ambiguity.
 - [x] V1.0.27: Added bounded SQLite busy retry handling for GUI review/export read connections.
 - [x] V1.0.29: Suspended ListView redraw during bulk review-page population.
-- [x] V1.0.31: Added `case_sensitive_like=OFF` to GUI read/export connections while preserving current search semantics.
+- [x] V1.1.0.1: Added `case_sensitive_like=OFF` to GUI read/export connections while preserving current search semantics.
 - [x] V1.0.30: Registered GUI export worker threads and joined them on `WM_DESTROY` instead of detaching export threads.
 - [ ] Confirm Export Page, Export Filtered, Export Checked, and Export Tagged in live Windows GUI.
 - [ ] Keep iOS and macOS views separated by `ViewPlatform`, not string-prefix checks.
@@ -53,11 +54,15 @@
 - [x] V1.0.28.1: Added build hotfix for `asciiLower` declaration ordering after writer relocation.
 - [x] V1.0.28.2: Fixed APFS diagnostic exporter duplicate linker symbol (`isLikelyStoreV2GroupDirectoryName`).
 - [x] V1.0.29: Switched AFF4 dynamic probe loading to per-module `LoadLibraryExW` secure search flags.
-- [ ] Move remaining APFS exact signature/rerun report writers out of `app_runner.cpp` after V1.0.31 validates.
+- [x] V1.1.0.1: Moved AFF4 stream inventory classification/reporting into `apfs_aff4_reader.cpp` with callback-injected tool/process execution.
+- [x] V1.1.0.1: Moved APFS NX superblock parsing into `apfs_volume_reader.cpp`.
+- [x] V1.1.0.1: Moved `writeAff4ApfsV1DiagnosticRerunPlan()` into `apfs_diagnostic_exporter.cpp`.
+- [ ] Move remaining APFS exact signature scan writer out of `app_runner.cpp` after V1.1.0.1 validates.
 - [ ] Do not replace live APFS traversal with lower-bound iterator until comparator parity/improvement is proven.
 - [ ] Preserve sparse gap, zero physical block, unresolved read failure, partial reconstruction, and hash provenance.
 - [ ] Add APFS lower-bound iterator comparator outputs before changing live extraction.
-- [ ] Add APFS absolute path reconstruction only after validated catalog parent/name lookup exists.
+- [x] V1.1.0.1: Added non-live APFS path/leaf helper API scaffolding for future comparator work.
+- [ ] Add APFS absolute path reconstruction to live/staged outputs only after validated catalog parent/name lookup comparator exists.
 
 ## iOS investigative mode
 
@@ -72,14 +77,16 @@
 
 - [x] V1.0.25: Faster CSV row counting via binary chunk newline count.
 - [x] V1.0.25: Safer iOS app database staging path normalization.
-- [x] V1.0.31: Added `src/ingest/evidence_intake.*` and moved intake helper functions out of `app_runner.cpp`.
+- [x] V1.1.0.1: Added `src/ingest/evidence_intake.*` and moved intake helper functions out of `app_runner.cpp`.
 - [x] V1.0.26: Hidden process timeout added.
 - [x] V1.0.26: Large-offset AFF4/ZIP byte reads hardened on Windows with `_fseeki64`.
 - [x] V1.0.27: Added Win32 Job Object wrapping for hidden external process trees.
 - [x] V1.0.29: Closed redirected subprocess log handle in the parent immediately after child creation.
-- [x] V1.0.31: Added temporary SQLite PRAGMAs around regenerable iOS CSV fallback import and restore WAL/NORMAL after import.
-- [ ] Validate V1.0.31 iOS CSV import runtime counts on a current iOS thin/test run.
-- [ ] Evaluate database open/close lifetime cleanup only after current runs are stable.
+- [x] V1.1.0.1: Added temporary SQLite PRAGMAs around regenerable iOS CSV fallback import and restore WAL/NORMAL after import.
+- [x] V1.1.0.1: Moved decmpfs/resource-fork reconstruction helpers into the codec module for focused future testing.
+- [ ] Validate V1.1.0.1 iOS CSV import runtime counts on a current iOS thin/test run.
+- [x] V1.1.0.1: Opened `CaseDatabase` once in `runApplication()` and reused the handle through AFF4/raw and general workflow.
+- [ ] Validate V1.1.0.1 database-lifetime cleanup on Windows/MSVC and a current iOS run.
 
 ## Documentation / continuity
 
@@ -90,5 +97,5 @@
 - [x] V1.0.28.2: Updated all three continuity files and added build-hotfix note.
 - [x] V1.0.29: Updated all three continuity files.
 - [x] V1.0.30: Updated all three continuity files.
-- [x] V1.0.31: Updated all three continuity files and documented the `repeat` shorthand.
+- [x] V1.1.0.1: Updated all three continuity files and documented the broader `repeat` shorthand.
 - [ ] Update these three files in every future package.

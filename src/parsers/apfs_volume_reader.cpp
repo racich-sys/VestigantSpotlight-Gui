@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <set>
 
@@ -18,7 +20,134 @@ bool startsWith(const std::string& s, const char* prefix) {
     return s.rfind(p, 0) == 0;
 }
 
+std::uint16_t readLe16Local(const std::vector<unsigned char>& data, std::size_t off) {
+    if (off + 2U > data.size()) return 0;
+    return static_cast<std::uint16_t>(data[off]) | (static_cast<std::uint16_t>(data[off + 1U]) << 8U);
+}
+
+std::uint32_t readLe32Local(const std::vector<unsigned char>& data, std::size_t off) {
+    if (off + 4U > data.size()) return 0;
+    return static_cast<std::uint32_t>(data[off]) |
+           (static_cast<std::uint32_t>(data[off + 1U]) << 8U) |
+           (static_cast<std::uint32_t>(data[off + 2U]) << 16U) |
+           (static_cast<std::uint32_t>(data[off + 3U]) << 24U);
+}
+
+std::uint64_t readLe64Local(const std::vector<unsigned char>& data, std::size_t off) {
+    if (off + 8U > data.size()) return 0;
+    std::uint64_t v = 0;
+    for (int i = 7; i >= 0; --i) v = (v << 8U) | static_cast<std::uint64_t>(data[off + static_cast<std::size_t>(i)]);
+    return v;
+}
+
+std::string bytesToUuidStringLocal(const std::vector<unsigned char>& data, std::size_t off) {
+    if (off + 16U > data.size()) return "";
+    std::ostringstream os;
+    os << std::hex << std::setfill('0');
+    for (std::size_t i = 0; i < 16U; ++i) {
+        if (i == 4U || i == 6U || i == 8U || i == 10U) os << '-';
+        os << std::setw(2) << static_cast<unsigned int>(data[off + i]);
+    }
+    return os.str();
+}
+
+std::string apfsObjectTypeLabelLocal(std::uint32_t rawType) {
+    const std::uint32_t base = rawType & 0x0000ffffU;
+    switch (base) {
+        case 0x0001U: return "OBJECT_TYPE_NX_SUPERBLOCK";
+        case 0x0002U: return "OBJECT_TYPE_BTREE";
+        case 0x0003U: return "OBJECT_TYPE_BTREE_NODE";
+        case 0x000bU: return "OBJECT_TYPE_SPACEMAN";
+        case 0x000cU: return "OBJECT_TYPE_SPACEMAN_CAB";
+        case 0x000dU: return "OBJECT_TYPE_SPACEMAN_CIB";
+        case 0x000eU: return "OBJECT_TYPE_OMAP";
+        case 0x000fU: return "OBJECT_TYPE_CHECKPOINT_MAP";
+        case 0x0010U: return "OBJECT_TYPE_FS";
+        case 0x0011U: return "OBJECT_TYPE_FSTREE";
+        case 0x0012U: return "OBJECT_TYPE_BLOCKREFTREE";
+        case 0x0013U: return "OBJECT_TYPE_SNAPMETATREE";
+        default: return "OBJECT_TYPE_" + std::to_string(base);
+    }
+}
+
 } // namespace
+
+ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& data,
+                                              std::uint64_t virtualOffset,
+                                              long long bytesRead) {
+    ApfsNxSuperblockSummary nx;
+    nx.attempted = true;
+    nx.virtualOffset = virtualOffset;
+    nx.bytesRead = bytesRead;
+    if (data.size() < 4096 || data.size() < 184) {
+        nx.validationStatus = "BUFFER_TOO_SMALL";
+        nx.notes = "Need at least the first APFS container block to parse nx_superblock_t.";
+        return nx;
+    }
+    if (std::memcmp(data.data() + 32, "NXSB", 4) != 0) {
+        nx.validationStatus = "NXSB_NOT_FOUND";
+        nx.notes = "Magic NXSB was not present at object offset +32.";
+        return nx;
+    }
+    nx.found = true;
+    nx.oid = readLe64Local(data, 8);
+    nx.xid = readLe64Local(data, 16);
+    nx.objectTypeRaw = readLe32Local(data, 24);
+    nx.objectSubtype = readLe32Local(data, 28);
+    nx.objectTypeLabel = apfsObjectTypeLabelLocal(nx.objectTypeRaw);
+    nx.blockSize = readLe32Local(data, 36);
+    nx.blockCount = readLe64Local(data, 40);
+    nx.features = readLe64Local(data, 48);
+    nx.readonlyCompatibleFeatures = readLe64Local(data, 56);
+    nx.incompatibleFeatures = readLe64Local(data, 64);
+    nx.containerUuid = bytesToUuidStringLocal(data, 72);
+    nx.nextOid = readLe64Local(data, 88);
+    nx.nextXid = readLe64Local(data, 96);
+    nx.xpDescBlocks = readLe32Local(data, 104);
+    nx.xpDataBlocks = readLe32Local(data, 108);
+    nx.xpDescBase = readLe64Local(data, 112);
+    nx.xpDataBase = readLe64Local(data, 120);
+    nx.xpDescNext = readLe32Local(data, 128);
+    nx.xpDataNext = readLe32Local(data, 132);
+    nx.xpDescIndex = readLe32Local(data, 136);
+    nx.xpDescLen = readLe32Local(data, 140);
+    nx.xpDataIndex = readLe32Local(data, 144);
+    nx.xpDataLen = readLe32Local(data, 148);
+    nx.spacemanOid = readLe64Local(data, 152);
+    nx.omapOid = readLe64Local(data, 160);
+    nx.reaperOid = readLe64Local(data, 168);
+    nx.testType = readLe32Local(data, 176);
+    nx.maxFileSystems = readLe32Local(data, 180);
+    const std::uint32_t fsCountToRead = std::min<std::uint32_t>(nx.maxFileSystems, 100U);
+    for (std::uint32_t i = 0; i < fsCountToRead; ++i) {
+        const std::size_t off = 184U + static_cast<std::size_t>(i) * 8U;
+        if (off + 8 > data.size()) break;
+        const std::uint64_t oid = readLe64Local(data, off);
+        if (oid != 0) nx.fsOids.push_back(oid);
+    }
+    if (nx.blockSize < 4096 || nx.blockSize > 65536 || (nx.blockSize & (nx.blockSize - 1U)) != 0U) {
+        nx.validationStatus = "NXSB_FOUND_BLOCK_SIZE_SUSPICIOUS";
+        nx.notes = "NXSB magic was present, but nx_block_size is outside the APFS expected power-of-two range.";
+    } else if (nx.blockCount == 0) {
+        nx.validationStatus = "NXSB_FOUND_BLOCK_COUNT_ZERO";
+        nx.notes = "NXSB magic was present, but nx_block_count is zero.";
+    } else {
+        nx.containerSizeBytes = static_cast<std::uint64_t>(nx.blockSize) * nx.blockCount;
+        nx.validationStatus = "NXSB_PARSED";
+        nx.notes = "APFS container superblock parsed from the libaff4 virtual object at offset 0.";
+    }
+    return nx;
+}
+
+
+std::uint64_t apfsReadNextLeafOidFromBtreeInfoFooter(const std::vector<unsigned char>& node) {
+    if (node.size() < 96U) return 0;
+    const std::uint16_t btnFlags = readLe16Local(node, 32U);
+    if ((btnFlags & 0x0001U) == 0U) return 0;
+    const std::size_t footerStart = node.size() - 40U;
+    if (footerStart + 40U > node.size()) return 0;
+    return readLe64Local(node, footerStart + 32U);
+}
 
 std::uint64_t makeApfsSearchKey(std::uint64_t objectId, std::uint64_t type) {
     return ((type & 0x0fULL) << kApfsObjectTypeShift) | (objectId & kApfsObjectIdMask);
@@ -249,6 +378,54 @@ std::vector<ApfsDirectoryEntry> ApfsVolumeReader::enumerateDirectory(std::uint64
     }
     benchmarks_.directoryEntriesReturned = static_cast<std::uint64_t>(children.size());
     return children;
+}
+
+
+std::string ApfsVolumeReader::resolveAbsolutePath(std::uint64_t childInodeId) {
+    if (!leafLocator_ || !nodeReader_ || !kvDecoder_) return {};
+    if (childInodeId == 0 || childInodeId == kApfsRootDirectoryInode) return "/";
+    std::vector<std::string> pathComponents;
+    std::set<std::uint64_t> visited;
+    std::uint64_t currentInode = childInodeId;
+    for (std::size_t depth = 0; depth < 256U && currentInode != 0 && currentInode != kApfsRootDirectoryInode; ++depth) {
+        if (!visited.insert(currentInode).second) break;
+        const std::uint64_t searchKey = makeApfsSearchKey(currentInode, kApfsTypeInode);
+        const std::uint64_t leafOid = leafLocator_(searchKey);
+        if (!leafOid) break;
+        const NodeBytes leaf = nodeReader_(leafOid);
+        if (leaf.empty()) break;
+        std::uint64_t parentId = 0;
+        bool foundInode = false;
+        for (std::uint32_t i = 0; i < 4096U; ++i) {
+            ApfsVolumeBtreeKvLocation kv;
+            std::string detail;
+            if (!kvDecoder_(leaf, i, kv, detail)) break;
+            if (kv.recordType == kApfsTypeInode && kv.objectId == currentInode && kv.valueOffset + 8U <= leaf.size()) {
+                parentId = readLe64Local(leaf, kv.valueOffset);
+                foundInode = true;
+                break;
+            }
+        }
+        if (!foundInode || parentId == 0 || parentId == currentInode) break;
+        std::string name;
+        const auto siblings = enumerateDirectory(parentId);
+        for (const auto& entry : siblings) {
+            if (entry.childFileId == currentInode) {
+                name = entry.name;
+                break;
+            }
+        }
+        if (name.empty()) break;
+        pathComponents.push_back(apfsSanitizePathComponent(name));
+        currentInode = parentId;
+    }
+    if (pathComponents.empty()) return {};
+    std::string out;
+    for (auto it = pathComponents.rbegin(); it != pathComponents.rend(); ++it) {
+        out += "/";
+        out += *it;
+    }
+    return out.empty() ? std::string("/") : out;
 }
 
 std::optional<std::uint64_t> ApfsVolumeReader::resolvePathToInode(const std::string& absolutePath) {

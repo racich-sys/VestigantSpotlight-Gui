@@ -1,15 +1,19 @@
 # Version History
 
-## V1.0.31
+## V1.1.0.1
 
-- Reviewed V1.0.30 Windows/MSVC build log and macOS AFF4/APFS thin ZIP before changes.
-- Added `src/ingest/evidence_intake.h/.cpp` as a behavior-preserving intake helper module boundary.
-- Moved CSV row counting, iOS ZIP path normalization, app database staging path sanitization, and iOS app database hint/category helpers out of `app_runner.cpp`.
-- Added temporary SQLite PRAGMAs around regenerable iOS CSV fallback import, with WAL/NORMAL restore after import or rollback.
-- Added `PRAGMA case_sensitive_like=OFF` to GUI review/export read connections while preserving current broad search semantics.
-- Documented the user `repeat` shorthand and updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
-- Local Linux CMake build and self-test passed.
-- No APFS traversal, AFF4 read, Store-V2 parser, SQLite schema, or forensic interpretation behavior was intentionally changed.
+- Reviewed V1.0.31 Windows/MSVC build log and macOS AFF4/APFS thin ZIP before changes.
+- Opened `CaseDatabase` once in `runApplication()` and reused that handle through AFF4/raw and general workflow.
+- Moved APFS decmpfs/resource-fork reconstruction and bounded zlib/deflate helpers into `src/codec/lzfse_codec.cpp/.h`.
+- Moved APFS NX superblock parsing into `src/parsers/apfs_volume_reader.cpp/.h`.
+- Moved AFF4 stream inventory classification/reporting into `src/parsers/apfs_aff4_reader.cpp/.h` with callback-injected tool lookup and process execution.
+- Moved `writeAff4ApfsV1DiagnosticRerunPlan()` into `src/parsers/apfs_diagnostic_exporter.cpp/.h`.
+- Added non-live APFS path/next-leaf helper API scaffolding in `ApfsVolumeReader` for future comparator work; live extraction was not changed.
+- Preserved V1.0.31 evidence-intake helper module, iOS CSV fallback PRAGMAs, and GUI LIKE PRAGMA behavior.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker to reflect the broader `repeat` workflow.
+- Local syntax checks, Linux CMake build, CLI version check, and self-test passed.
+- Windows/MSVC build and AFF4/APFS thin validation remain required.
+- No APFS live traversal replacement, AFF4 read semantic change, Store-V2 parser change, SQLite schema change, or new forensic interpretation output was intentionally added.
 
 ## V1.0.30
 

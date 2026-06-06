@@ -1009,24 +1009,6 @@ struct ReaderToolStatus {
     std::string notes;
 };
 
-struct Aff4StreamInventoryEntry {
-    int lineIndex = 0;
-    std::string rawLine;
-    std::string candidateType;
-    int candidateScore = 0;
-    std::string apfsRelevance;
-    std::string recommendedAction;
-    std::string notes;
-};
-
-struct Aff4StreamInventoryResult {
-    std::string status;
-    fs::path toolPath;
-    fs::path rawOutputPath;
-    int commandExitCode = -1;
-    std::size_t rawLineCount = 0;
-    std::vector<Aff4StreamInventoryEntry> entries;
-};
 
 std::string getenvString(const char* name) {
     if (!name) return {};
@@ -1405,190 +1387,6 @@ void writeReaderToolReadinessArtifacts(const fs::path& caseDir,
     }
 }
 
-std::string shellRedirectCommand(const fs::path& exe, const std::vector<std::string>& args, const fs::path& outputFile) {
-    std::string cmd = commandQuote(exe);
-    for (const auto& a : args) cmd += " " + commandQuote(a);
-    cmd += " > " + commandQuote(outputFile) + " 2>&1";
-    return cmd;
-}
-
-std::string trimLine(std::string s) {
-    while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t')) s.pop_back();
-    std::size_t start = 0;
-    while (start < s.size() && (s[start] == ' ' || s[start] == '\t')) ++start;
-    if (start > 0) s.erase(0, start);
-    return s;
-}
-
-Aff4StreamInventoryEntry classifyAff4StreamLine(int index, const std::string& line) {
-    Aff4StreamInventoryEntry e;
-    e.lineIndex = index;
-    e.rawLine = line;
-    const std::string l = toLower(line);
-    e.candidateType = "UNCLASSIFIED_STREAM_LINE";
-    e.apfsRelevance = "UNKNOWN_UNTIL_STREAM_EXPORTED_OR_READ";
-    e.recommendedAction = "Review line manually; no automatic extraction selected.";
-    if (l.find("physicalmemory") != std::string::npos || l.find("/memory") != std::string::npos || l.find("kallsyms") != std::string::npos || l.find("/proc/") != std::string::npos) {
-        e.candidateType = "LIKELY_MEMORY_OR_OS_RUNTIME_STREAM";
-        e.candidateScore -= 40;
-        e.apfsRelevance = "LOW";
-        e.recommendedAction = "Do not prioritize for APFS/Spotlight extraction unless no disk/image streams are present.";
-    }
-    if (l.find("aff4:image") != std::string::npos || l.find("imagestream") != std::string::npos || l.find("image stream") != std::string::npos) {
-        e.candidateType = "AFF4_IMAGE_STREAM_CANDIDATE";
-        e.candidateScore += 50;
-    }
-    if (l.find("physicaldrive") != std::string::npos || l.find("physical drive") != std::string::npos || l.find("/dev/disk") != std::string::npos || l.find("/dev/rdisk") != std::string::npos || l.find("disk0") != std::string::npos || l.find("disk1") != std::string::npos) {
-        e.candidateType = "PHYSICAL_DISK_STREAM_CANDIDATE";
-        e.candidateScore += 70;
-        e.apfsRelevance = "HIGH_IF_MAC_OR_IOS_IMAGE";
-        e.recommendedAction = "Prioritize this stream for controlled export or stream-backed APFS probing.";
-    }
-    if (l.find("apfs") != std::string::npos || l.find("nxsb") != std::string::npos) {
-        e.candidateScore += 40;
-        e.apfsRelevance = "HIGH_APFS_NAME_HINT";
-        e.recommendedAction = "Use this stream as an APFS candidate if the stream can be exported or read safely.";
-    }
-    if (l.find("spotlight") != std::string::npos || l.find("corespotlight") != std::string::npos || l.find("index.db") != std::string::npos || l.find("store-v2") != std::string::npos || l.find("store.db") != std::string::npos) {
-        e.candidateScore += 60;
-        e.apfsRelevance = "HIGH_SPOTLIGHT_NAME_HINT";
-        e.recommendedAction = "Preserve as a Spotlight/CoreSpotlight candidate; later extraction should stage this path with provenance.";
-    }
-    if (l.find("map") != std::string::npos && e.candidateScore < 40) {
-        e.candidateType = "AFF4_MAP_OR_SPARSE_STREAM_CANDIDATE";
-        e.candidateScore += 25;
-        e.recommendedAction = "Review as a possible sparse disk/image map; confirm with AFF4 metadata before export.";
-    }
-    if (e.candidateScore >= 80 && e.candidateType == "UNCLASSIFIED_STREAM_LINE") e.candidateType = "HIGH_VALUE_STREAM_CANDIDATE";
-    else if (e.candidateScore >= 40 && e.candidateType == "UNCLASSIFIED_STREAM_LINE") e.candidateType = "POSSIBLE_IMAGE_STREAM_CANDIDATE";
-    if (e.candidateScore < 0) e.notes = "Negative score indicates a probable non-disk stream for Spotlight/APFS purposes.";
-    else if (e.candidateScore == 0) e.notes = "Raw stream-list line retained for provenance; classification requires manual review.";
-    else e.notes = "Heuristic classification only; do not treat as validated APFS until exported/read and probed.";
-    return e;
-}
-
-Aff4StreamInventoryResult runAff4StreamInventory(const RunOptions& opt,
-                                                 const EvidenceSource& source,
-                                                 const fs::path& originalInput,
-                                                 const fs::path& caseDir,
-                                                 Logger& log) {
-    Aff4StreamInventoryResult result;
-    result.status = "NOT_AFF4_SOURCE";
-    if (!isAff4SourcePath(originalInput)) return result;
-    const std::vector<std::string> names = {
-#ifdef _WIN32
-        "aff4imager.exe", "aff4imager"
-#else
-        "aff4imager"
-#endif
-    };
-    result.toolPath = findToolCandidate(opt, "VESTIGANT_AFF4IMAGER", names);
-    result.rawOutputPath = caseDir / "aff4_stream_inventory_raw.txt";
-    const fs::path csvPath = caseDir / "aff4_stream_inventory.csv";
-    const fs::path planPath = caseDir / "AFF4_STREAM_SELECTION_PLAN.md";
-    if (!opt.enableAff4StreamInventory) {
-        result.status = opt.strictSingleAff4 ? "SKIPPED_STRICT_SINGLE_AFF4" : "SKIPPED_BY_DEFAULT";
-        std::ofstream raw(result.rawOutputPath, std::ios::binary);
-        raw << "External aff4imager stream listing skipped. It is opt-in only because external AFF4 tools may inspect related AFF4 files outside the selected evidence file. Use --enable-aff4-stream-inventory only for deliberate stream-list testing.\n";
-    } else if (result.toolPath.empty()) {
-        result.status = "AFF4IMAGER_MISSING_NOT_INVOKED";
-        std::ofstream raw(result.rawOutputPath, std::ios::binary);
-        raw << "aff4imager was not found. Configure --reader-tools, VESTIGANT_READER_TOOLS, VESTIGANT_AFF4IMAGER, or PATH.\n";
-    } else {
-        result.status = "AFF4IMAGER_INVOKED_LIST_STREAMS";
-        const std::string cmd = shellRedirectCommand(result.toolPath, {"-l", pathString(originalInput)}, result.rawOutputPath);
-        log.info("Running AFF4 stream inventory command: " + cmd);
-#if defined(_WIN32)
-        result.commandExitCode = runExecutableNoWindowRedirected(result.toolPath, {"-l", pathString(originalInput)}, result.rawOutputPath);
-#else
-        result.commandExitCode = runShellCommandNoWindow(cmd);
-#endif
-        log.info("AFF4 stream inventory command completed: exit_code=" + std::to_string(result.commandExitCode));
-        if (result.commandExitCode != 0) result.status = "AFF4IMAGER_LIST_STREAMS_NONZERO_EXIT";
-    }
-    try {
-        std::ifstream in(result.rawOutputPath, std::ios::binary);
-        std::string line;
-        int idx = 0;
-        while (std::getline(in, line)) {
-            line = trimLine(line);
-            if (line.empty()) continue;
-            ++idx;
-            ++result.rawLineCount;
-            if (line.size() > 4000) line = line.substr(0, 4000) + "...";
-            result.entries.push_back(classifyAff4StreamLine(idx, line));
-        }
-    } catch (...) {}
-    {
-        std::ofstream out(csvPath, std::ios::binary);
-        out << "source_id,input_path,input_type,tool_path,status,command_exit_code,line_index,candidate_score,candidate_type,apfs_relevance,recommended_action,notes,raw_line\n";
-        if (result.entries.empty()) {
-            out << csvEscape(source.sourceId) << ','
-                << csvEscape(pathString(originalInput)) << ','
-                << csvEscape(inputSourceType(originalInput)) << ','
-                << csvEscape(pathString(result.toolPath)) << ','
-                << csvEscape(result.status) << ','
-                << result.commandExitCode << ",0,0,NO_STREAM_LINES_RECORDED,UNKNOWN,Review raw output and tool readiness.,No AFF4 stream lines were parsed," << csvEscape("") << "\n";
-        } else {
-            for (const auto& e : result.entries) {
-                out << csvEscape(source.sourceId) << ','
-                    << csvEscape(pathString(originalInput)) << ','
-                    << csvEscape(inputSourceType(originalInput)) << ','
-                    << csvEscape(pathString(result.toolPath)) << ','
-                    << csvEscape(result.status) << ','
-                    << result.commandExitCode << ','
-                    << e.lineIndex << ','
-                    << e.candidateScore << ','
-                    << csvEscape(e.candidateType) << ','
-                    << csvEscape(e.apfsRelevance) << ','
-                    << csvEscape(e.recommendedAction) << ','
-                    << csvEscape(e.notes) << ','
-                    << csvEscape(e.rawLine) << "\n";
-            }
-        }
-    }
-    std::vector<Aff4StreamInventoryEntry> candidates = result.entries;
-    std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-        if (a.candidateScore != b.candidateScore) return a.candidateScore > b.candidateScore;
-        return a.lineIndex < b.lineIndex;
-    });
-    {
-        std::ofstream out(planPath, std::ios::binary);
-        out << "# AFF4 Stream Selection Plan\n\n";
-        out << "Version: " << appVersion() << "\n\n";
-        out << "## Source\n\n";
-        out << "- Source ID: `" << source.sourceId << "`\n";
-        out << "- Input path: `" << pathString(originalInput) << "`\n";
-        out << "- Tool path: `" << pathString(result.toolPath) << "`\n";
-        out << "- Inventory status: `" << result.status << "`\n";
-        out << "- Command exit code: `" << result.commandExitCode << "`\n";
-        out << "- Raw stream-list lines parsed: `" << result.rawLineCount << "`\n\n";
-        out << "## Top stream candidates\n\n";
-        if (candidates.empty()) {
-            out << "No stream candidates were parsed. If `aff4imager` is missing, provide it through `--reader-tools`, `VESTIGANT_READER_TOOLS`, `VESTIGANT_AFF4IMAGER`, or PATH. If it ran but returned no lines, review `aff4_stream_inventory_raw.txt`.\n\n";
-        } else {
-            out << "| Rank | Score | Type | APFS relevance | Raw line |\n";
-            out << "|---:|---:|---|---|---|\n";
-            int rank = 0;
-            for (const auto& e : candidates) {
-                if (++rank > 10) break;
-                std::string raw = e.rawLine;
-                std::replace(raw.begin(), raw.end(), '|', '/');
-                if (raw.size() > 220) raw = raw.substr(0, 220) + "...";
-                out << "| " << rank << " | " << e.candidateScore << " | " << e.candidateType << " | " << e.apfsRelevance << " | `" << raw << "` |\n";
-            }
-            out << "\n";
-        }
-        out << "## Next action\n\n";
-        out << "1. Confirm which listed AFF4 stream represents the physical disk/APFS container.\n";
-        out << "2. Export or expose only that selected stream to the APFS reader layer.\n";
-        out << "3. Probe the exported/stream-backed image for APFS/HFS signatures and partition/container metadata.\n";
-        out << "4. Populate image-file inventory from read-only APFS enumeration, then join that inventory to Spotlight artifacts for active-file comparison.\n\n";
-        out << "This build records stream candidates only. It does not extract AFF4 streams or parse APFS/HFS filesystems.\n";
-    }
-    log.info("AFF4 stream inventory artifacts written: " + pathString(csvPath));
-    return result;
-}
 
 
 bool hasProbeHit(const SourceProbeFindings& f, const std::string& name);
@@ -4557,37 +4355,6 @@ std::uint64_t decmpfsUncompressedSizeFromPreviewHex(const std::string& hex) {
     return v;
 }
 
-std::uint32_t readBe32Bytes(const std::vector<unsigned char>& data, std::size_t off) {
-    if (off + 4U > data.size()) throw std::runtime_error("readBe32 beyond buffer");
-    return (static_cast<std::uint32_t>(data[off]) << 24U) |
-           (static_cast<std::uint32_t>(data[off + 1U]) << 16U) |
-           (static_cast<std::uint32_t>(data[off + 2U]) << 8U) |
-           static_cast<std::uint32_t>(data[off + 3U]);
-}
-
-std::uint32_t readLe32Bytes(const std::vector<unsigned char>& data, std::size_t off) {
-    if (off + 4U > data.size()) throw std::runtime_error("readLe32 beyond buffer");
-    return static_cast<std::uint32_t>(data[off]) |
-           (static_cast<std::uint32_t>(data[off + 1U]) << 8U) |
-           (static_cast<std::uint32_t>(data[off + 2U]) << 16U) |
-           (static_cast<std::uint32_t>(data[off + 3U]) << 24U);
-}
-
-std::string decmpfsCompressionTypeLabel(int t) {
-    switch (t) {
-        case 3: return "ZLIB_ATTR";
-        case 4: return "ZLIB_RSRC";
-        case 7: return "LZVN_ATTR";
-        case 8: return "LZVN_RSRC";
-        case 9: return "PLAIN_ATTR";
-        case 10: return "PLAIN_RSRC";
-        case 11: return "LZFSE_ATTR";
-        case 12: return "LZFSE_RSRC";
-        case 13: return "LZBITMAP_ATTR";
-        case 14: return "LZBITMAP_RSRC";
-        default: return t == 0 ? "UNKNOWN" : (std::string("DECOMPFS_TYPE_") + std::to_string(t));
-    }
-}
 
 
 bool tryParseNumericTxtStem(const std::string& name, std::uint64_t& outValue) {
@@ -4630,376 +4397,6 @@ bool isLikelyStoreV2GroupDirectoryName(const std::string& name) {
     return true;
 }
 
-class ApfsDeflateBitReader {
-public:
-    ApfsDeflateBitReader(const std::uint8_t* data, std::size_t size) : data_(data), size_(size) {}
-    std::uint32_t readBits(int n) {
-        std::uint32_t v = 0;
-        for (int i = 0; i < n; ++i) {
-            if (bytePos_ >= size_) throw std::runtime_error("deflate bitstream exhausted");
-            v |= static_cast<std::uint32_t>((data_[bytePos_] >> bitPos_) & 1U) << i;
-            if (++bitPos_ == 8) { bitPos_ = 0; ++bytePos_; }
-        }
-        return v;
-    }
-    void alignByte() { if (bitPos_) { bitPos_ = 0; ++bytePos_; } }
-    std::uint8_t readByteAligned() {
-        alignByte();
-        if (bytePos_ >= size_) throw std::runtime_error("deflate byte exhausted");
-        return data_[bytePos_++];
-    }
-private:
-    const std::uint8_t* data_ = nullptr;
-    std::size_t size_ = 0;
-    std::size_t bytePos_ = 0;
-    int bitPos_ = 0;
-};
-
-std::uint32_t apfsReverseBits(std::uint32_t code, int len) {
-    std::uint32_t r = 0;
-    for (int i = 0; i < len; ++i) { r = (r << 1U) | (code & 1U); code >>= 1U; }
-    return r;
-}
-
-class ApfsHuffmanTree {
-public:
-    void build(const std::vector<int>& lengths) {
-        table_.clear();
-        maxLen_ = 0;
-        std::array<int, 16> blCount{};
-        for (int l : lengths) {
-            if (l < 0 || l > 15) throw std::runtime_error("invalid huffman length");
-            if (l) { blCount[static_cast<std::size_t>(l)]++; maxLen_ = std::max(maxLen_, l); }
-        }
-        std::array<int, 16> nextCode{};
-        int code = 0;
-        for (int bits = 1; bits <= 15; ++bits) { code = (code + blCount[static_cast<std::size_t>(bits - 1)]) << 1; nextCode[static_cast<std::size_t>(bits)] = code; }
-        for (std::size_t symbol = 0; symbol < lengths.size(); ++symbol) {
-            const int len = lengths[symbol];
-            if (!len) continue;
-            const std::uint32_t canonical = static_cast<std::uint32_t>(nextCode[static_cast<std::size_t>(len)]++);
-            const std::uint32_t rev = apfsReverseBits(canonical, len);
-            table_[(static_cast<std::uint32_t>(len) << 16U) | rev] = static_cast<int>(symbol);
-        }
-    }
-    int decode(ApfsDeflateBitReader& br) const {
-        std::uint32_t code = 0;
-        for (int len = 1; len <= maxLen_; ++len) {
-            code |= br.readBits(1) << (len - 1);
-            auto it = table_.find((static_cast<std::uint32_t>(len) << 16U) | code);
-            if (it != table_.end()) return it->second;
-        }
-        throw std::runtime_error("invalid huffman code");
-    }
-private:
-    std::map<std::uint32_t, int> table_;
-    int maxLen_ = 0;
-};
-
-std::vector<unsigned char> apfsInflateZlibBounded(const std::vector<unsigned char>& z, std::size_t maxOutputBytes) {
-    if (z.size() < 6) throw std::runtime_error("zlib stream too small");
-    const std::uint8_t cmf = z[0], flg = z[1];
-    if ((cmf & 0x0FU) != 8U) throw std::runtime_error("zlib stream is not deflate");
-    if ((((static_cast<int>(cmf) << 8) + flg) % 31) != 0) throw std::runtime_error("zlib header check failed");
-    if (flg & 0x20U) throw std::runtime_error("zlib preset dictionary not supported");
-    ApfsDeflateBitReader br(z.data() + 2, z.size() - 6);
-    std::vector<unsigned char> out;
-    auto pushOut = [&](std::uint8_t v) {
-        if (out.size() >= maxOutputBytes) throw std::runtime_error("deflate output exceeded safety cap");
-        out.push_back(v);
-    };
-    bool final = false;
-    static const int lengthBase[] = {3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
-    static const int lengthExtra[] = {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
-    static const int distBase[] = {1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577};
-    static const int distExtra[] = {0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
-    auto decodeCompressed = [&](const ApfsHuffmanTree& litLen, const ApfsHuffmanTree& dist) {
-        for (;;) {
-            int sym = litLen.decode(br);
-            if (sym < 256) { pushOut(static_cast<std::uint8_t>(sym)); continue; }
-            if (sym == 256) break;
-            if (sym < 257 || sym > 285) throw std::runtime_error("invalid length symbol");
-            int li = sym - 257;
-            int length = lengthBase[li] + static_cast<int>(br.readBits(lengthExtra[li]));
-            int dsym = dist.decode(br);
-            if (dsym < 0 || dsym > 29) throw std::runtime_error("invalid distance symbol");
-            int distance = distBase[dsym] + static_cast<int>(br.readBits(distExtra[dsym]));
-            if (distance <= 0 || static_cast<std::size_t>(distance) > out.size()) throw std::runtime_error("invalid back-reference distance");
-            const std::size_t start = out.size() - static_cast<std::size_t>(distance);
-            for (int i = 0; i < length; ++i) pushOut(out[start + (static_cast<std::size_t>(i) % static_cast<std::size_t>(distance))]);
-        }
-    };
-    while (!final) {
-        final = br.readBits(1) != 0;
-        const int btype = static_cast<int>(br.readBits(2));
-        if (btype == 0) {
-            br.alignByte();
-            int len = br.readByteAligned() | (br.readByteAligned() << 8);
-            int nlen = br.readByteAligned() | (br.readByteAligned() << 8);
-            if (((len ^ 0xFFFF) & 0xFFFF) != nlen) throw std::runtime_error("stored block length check failed");
-            for (int i = 0; i < len; ++i) pushOut(br.readByteAligned());
-        } else if (btype == 1) {
-            std::vector<int> ll(288, 0), dd(32, 5);
-            for (int i = 0; i <= 143; ++i) ll[static_cast<std::size_t>(i)] = 8;
-            for (int i = 144; i <= 255; ++i) ll[static_cast<std::size_t>(i)] = 9;
-            for (int i = 256; i <= 279; ++i) ll[static_cast<std::size_t>(i)] = 7;
-            for (int i = 280; i <= 287; ++i) ll[static_cast<std::size_t>(i)] = 8;
-            ApfsHuffmanTree litLen, dist; litLen.build(ll); dist.build(dd);
-            decodeCompressed(litLen, dist);
-        } else if (btype == 2) {
-            const int hlit = static_cast<int>(br.readBits(5)) + 257;
-            const int hdist = static_cast<int>(br.readBits(5)) + 1;
-            const int hclen = static_cast<int>(br.readBits(4)) + 4;
-            static const int order[] = {16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
-            std::vector<int> cl(19, 0);
-            for (int i = 0; i < hclen; ++i) cl[static_cast<std::size_t>(order[i])] = static_cast<int>(br.readBits(3));
-            ApfsHuffmanTree clTree; clTree.build(cl);
-            std::vector<int> lengths;
-            lengths.reserve(static_cast<std::size_t>(hlit + hdist));
-            while (static_cast<int>(lengths.size()) < hlit + hdist) {
-                int sym = clTree.decode(br);
-                if (sym <= 15) lengths.push_back(sym);
-                else if (sym == 16) {
-                    if (lengths.empty()) throw std::runtime_error("repeat with no previous length");
-                    int repeat = static_cast<int>(br.readBits(2)) + 3;
-                    int prev = lengths.back();
-                    for (int i = 0; i < repeat; ++i) lengths.push_back(prev);
-                } else if (sym == 17) {
-                    int repeat = static_cast<int>(br.readBits(3)) + 3;
-                    for (int i = 0; i < repeat; ++i) lengths.push_back(0);
-                } else if (sym == 18) {
-                    int repeat = static_cast<int>(br.readBits(7)) + 11;
-                    for (int i = 0; i < repeat; ++i) lengths.push_back(0);
-                } else throw std::runtime_error("invalid code length symbol");
-            }
-            std::vector<int> ll(lengths.begin(), lengths.begin() + hlit);
-            std::vector<int> dd(lengths.begin() + hlit, lengths.begin() + hlit + hdist);
-            if (dd.size() == 1 && dd[0] == 0) dd[0] = 1;
-            ApfsHuffmanTree litLen, dist; litLen.build(ll); dist.build(dd);
-            decodeCompressed(litLen, dist);
-        } else {
-            throw std::runtime_error("reserved deflate block type");
-        }
-    }
-    return out;
-}
-
-struct ApfsDecmpfsReconstructionResult {
-    bool ok = false;
-    std::string status;
-    std::string notes;
-    std::uint32_t descriptorOffset = 0;
-    std::uint32_t footerOffset = 0;
-    std::uint32_t blockCount = 0;
-    std::vector<unsigned char> data;
-};
-
-ApfsDecmpfsReconstructionResult reconstructDecmpfsResourceForkDissectStyle(const std::vector<unsigned char>& resourceFork,
-                                                                                 std::uint64_t expectedUncompressedSize,
-                                                                                 int compressionType) {
-    ApfsDecmpfsReconstructionResult rr;
-    if (expectedUncompressedSize == 0 || expectedUncompressedSize > 512ULL * 1024ULL * 1024ULL) {
-        rr.status = "DECOMPFS_EXPECTED_SIZE_UNSAFE";
-        rr.notes = "Expected uncompressed size was zero or above the bounded reconstruction cap.";
-        return rr;
-    }
-    const bool dissectHeaderTableModel = (compressionType == 4 || compressionType == 10);
-    const bool offsetArrayModel = (compressionType == 8 || compressionType == 12 || compressionType == 14);
-    if (!(dissectHeaderTableModel || offsetArrayModel)) {
-        rr.status = "DECOMPFS_RESOURCE_FORK_ALGORITHM_UNSUPPORTED";
-        rr.notes = "Resource-fork algorithm " + decmpfsCompressionTypeLabel(compressionType) + " is identified but not reconstructed in this build.";
-        return rr;
-    }
-    if (resourceFork.size() < 8U) {
-        rr.status = "DECOMPFS_RESOURCE_FORK_TOO_SMALL";
-        rr.notes = "Resource fork stream is too small for the decmpfs resource-fork header and block table.";
-        return rr;
-    }
-    try {
-        if (offsetArrayModel) {
-            // go-apfs/dissect.apfs-compatible model for LZVN/LZFSE/LZBITMAP resource-fork streams:
-            // the stream starts with a little-endian array of chunk offsets.  The first offset
-            // also gives the length of the offset table.  Without an LZVN/LZFSE/LZBITMAP codec,
-            // this build safely reconstructs only chunks explicitly marked uncompressed (0x06)
-            // and leaves compressed chunks as explicit unsupported diagnostics.
-            const std::uint32_t firstOffset = readLe32Bytes(resourceFork, 0);
-            if (firstOffset < 4U || firstOffset > resourceFork.size() || (firstOffset % 4U) != 0U) {
-                rr.status = "DECOMPFS_OFFSET_ARRAY_UNSAFE";
-                rr.notes = "Resource-fork offset array first offset was outside the copied stream or not 4-byte aligned.";
-                return rr;
-            }
-            rr.blockCount = firstOffset / 4U;
-            const std::uint32_t expectedBlocks = static_cast<std::uint32_t>((expectedUncompressedSize + 65535ULL) / 65536ULL);
-            if (rr.blockCount == 0 || rr.blockCount > expectedBlocks + 64U || rr.blockCount > 131072U) {
-                rr.status = "DECOMPFS_OFFSET_BLOCK_COUNT_UNSAFE";
-                rr.notes = "Resource-fork offset-array block count is zero or implausibly large for decoded size.";
-                return rr;
-            }
-            std::vector<std::uint32_t> offsets;
-            offsets.reserve(rr.blockCount);
-            for (std::uint32_t i = 0; i < rr.blockCount; ++i) offsets.push_back(readLe32Bytes(resourceFork, static_cast<std::size_t>(i) * 4U));
-            std::vector<unsigned char> out;
-            out.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(expectedUncompressedSize, 64ULL * 1024ULL * 1024ULL)));
-            std::size_t uncompressedMarkerChunks = 0;
-            for (std::size_t i = 0; i < offsets.size(); ++i) {
-                const std::uint32_t off = offsets[i];
-                const std::uint32_t next = (i + 1 < offsets.size()) ? offsets[i + 1] : static_cast<std::uint32_t>(resourceFork.size());
-                if (off >= next || next > resourceFork.size()) {
-                    rr.status = "DECOMPFS_OFFSET_ARRAY_CHUNK_UNSAFE";
-                    rr.notes = "Resource-fork offset-array chunk did not fit within the copied stream. entry=" + std::to_string(i);
-                    return rr;
-                }
-                std::vector<unsigned char> chunk(resourceFork.begin() + static_cast<std::ptrdiff_t>(off), resourceFork.begin() + static_cast<std::ptrdiff_t>(next));
-                if (chunk.empty()) continue;
-                if (chunk[0] == 0x06U) {
-                    if (out.size() + (chunk.size() - 1U) > expectedUncompressedSize + 65536ULL) {
-                        rr.status = "DECOMPFS_OUTPUT_EXCEEDED_EXPECTED_SIZE";
-                        rr.notes = "Uncompressed-marker chunks exceeded decoded size.";
-                        return rr;
-                    }
-                    out.insert(out.end(), chunk.begin() + 1, chunk.end());
-                    ++uncompressedMarkerChunks;
-                    continue;
-                }
-                if (compressionType == 8 || compressionType == 12) {
-                    const std::uint64_t remaining64 = (out.size() < expectedUncompressedSize) ? (expectedUncompressedSize - static_cast<std::uint64_t>(out.size())) : 0ULL;
-                    const std::size_t perChunkExpected = static_cast<std::size_t>(std::min<std::uint64_t>(65536ULL, remaining64));
-                    const auto decoded = decodeAppleLzfseOrLzvnChunk(chunk, perChunkExpected == 0 ? 65536U : perChunkExpected);
-                    if (!decoded.ok) {
-                        rr.status = decoded.codecAvailable ? "DECOMPFS_LZFSE_LZVN_DECODE_FAILED" : "DECOMPFS_LZFSE_LZVN_CODEC_NOT_COMPILED";
-                        rr.notes = "Resource-fork algorithm " + decmpfsCompressionTypeLabel(compressionType) + "; entry=" + std::to_string(i) + "; apple_codec_status=" + decoded.status + "; " + decoded.notes;
-                        return rr;
-                    }
-                    if (out.size() + decoded.data.size() > expectedUncompressedSize + 65536ULL) {
-                        rr.status = "DECOMPFS_OUTPUT_EXCEEDED_EXPECTED_SIZE";
-                        rr.notes = "Decoded LZFSE/LZVN chunks exceeded decoded size. entry=" + std::to_string(i);
-                        return rr;
-                    }
-                    out.insert(out.end(), decoded.data.begin(), decoded.data.end());
-                    continue;
-                }
-                rr.status = "DECOMPFS_RESOURCE_FORK_CODEC_UNSUPPORTED";
-                rr.notes = "Resource-fork algorithm " + decmpfsCompressionTypeLabel(compressionType) + " requires a codec for compressed chunks; uncompressed marker chunks before failure=" + std::to_string(uncompressedMarkerChunks) + "; entry=" + std::to_string(i) + "; first_byte=" + std::to_string(static_cast<unsigned int>(chunk[0]));
-                return rr;
-            }
-            if (out.size() > expectedUncompressedSize) out.resize(static_cast<std::size_t>(expectedUncompressedSize));
-            rr.data.swap(out);
-            rr.ok = (rr.data.size() == expectedUncompressedSize);
-            rr.status = rr.ok ? (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + (appleLzfseCodecAvailable() ? "_RECONSTRUCTED" : "_UNCOMPRESSED_MARKER_RECONSTRUCTED"))
-                              : (std::string("DECOMPFS_") + decmpfsCompressionTypeLabel(compressionType) + (appleLzfseCodecAvailable() ? "_PARTIAL_RECONSTRUCTION" : "_PARTIAL_UNCOMPRESSED_MARKER_RECONSTRUCTION"));
-            std::ostringstream ns;
-            ns << "algorithm=" << decmpfsCompressionTypeLabel(compressionType)
-               << "; block_count=" << rr.blockCount
-               << "; expected_uncompressed_size=" << expectedUncompressedSize
-               << "; reconstructed_size=" << rr.data.size()
-               << "; uncompressed_marker_chunks=" << uncompressedMarkerChunks
-               << "; apple_lzfse_codec=" << appleLzfseCodecBuildStatus()
-               << "; offset_model=go-apfs/dissect.apfs:offset_array_chunk_stream";
-            rr.notes = ns.str();
-            return rr;
-        }
-
-        // dissect.apfs model for zlib/plain resource-fork decmpfs:
-        // big-endian: data_offset, mgmt_offset, data_size, mgmt_size
-        // at data_offset: little-endian unknown/header and entry_count
-        // entries are little-endian offset,length pairs, where chunk_abs = data_offset + 4 + offset.
-        rr.descriptorOffset = readBe32Bytes(resourceFork, 0);
-        rr.footerOffset = readBe32Bytes(resourceFork, 4);
-        const std::uint32_t dataSize = readBe32Bytes(resourceFork, 8);
-        const std::uint32_t mgmtSize = readBe32Bytes(resourceFork, 12);
-        if (rr.descriptorOffset < 16U || static_cast<std::uint64_t>(rr.descriptorOffset) + 8ULL > resourceFork.size()) {
-            rr.status = "DECOMPFS_RESOURCE_DATA_OFFSET_UNSAFE";
-            rr.notes = "Resource-fork data offset is outside the copied stream.";
-            return rr;
-        }
-        const std::uint32_t tableHeader0 = readLe32Bytes(resourceFork, rr.descriptorOffset);
-        rr.blockCount = readLe32Bytes(resourceFork, static_cast<std::size_t>(rr.descriptorOffset) + 4U);
-        const std::uint32_t expectedBlocks = static_cast<std::uint32_t>((expectedUncompressedSize + 65535ULL) / 65536ULL);
-        if (rr.blockCount == 0 || rr.blockCount > expectedBlocks + 64U || rr.blockCount > 131072U) {
-            rr.status = "DECOMPFS_BLOCK_COUNT_UNSAFE";
-            rr.notes = "Resource-fork block count is zero or implausibly large for the decoded file size.";
-            return rr;
-        }
-        const std::size_t tableStart = static_cast<std::size_t>(rr.descriptorOffset) + 8U;
-        const std::size_t tableEnd = tableStart + static_cast<std::size_t>(rr.blockCount) * 8U;
-        if (tableEnd > resourceFork.size()) {
-            rr.status = "DECOMPFS_DESCRIPTOR_TABLE_TRUNCATED";
-            rr.notes = "Resource-fork block table extends beyond the copied stream.";
-            return rr;
-        }
-        std::vector<unsigned char> out;
-        out.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(expectedUncompressedSize, 64ULL * 1024ULL * 1024ULL)));
-        std::size_t zlibChunks = 0, rawMarkerChunks = 0, plainChunks = 0;
-        for (std::uint32_t i = 0; i < rr.blockCount; ++i) {
-            const std::size_t tupleOff = tableStart + static_cast<std::size_t>(i) * 8U;
-            const std::uint32_t entryOffset = readLe32Bytes(resourceFork, tupleOff);
-            const std::uint32_t entryLength = readLe32Bytes(resourceFork, tupleOff + 4U);
-            if (entryLength == 0) continue;
-            const std::uint64_t chunkAbs64 = static_cast<std::uint64_t>(rr.descriptorOffset) + 4ULL + static_cast<std::uint64_t>(entryOffset);
-            if (chunkAbs64 > resourceFork.size() || chunkAbs64 + static_cast<std::uint64_t>(entryLength) > resourceFork.size()) {
-                rr.status = "DECOMPFS_BLOCK_OFFSET_UNSAFE";
-                rr.notes = "Resource-fork chunk offset/length did not fit within the copied stream. entry=" + std::to_string(i) + "; offset=" + std::to_string(entryOffset) + "; length=" + std::to_string(entryLength);
-                return rr;
-            }
-            const std::size_t chunkAbs = static_cast<std::size_t>(chunkAbs64);
-            std::vector<unsigned char> chunk(resourceFork.begin() + static_cast<std::ptrdiff_t>(chunkAbs), resourceFork.begin() + static_cast<std::ptrdiff_t>(chunkAbs + entryLength));
-            std::vector<unsigned char> decoded;
-            if (compressionType == 4) {
-                if (!chunk.empty() && chunk[0] == 0x78U && chunk.size() >= 2U) {
-                    decoded = apfsInflateZlibBounded(chunk, static_cast<std::size_t>(expectedUncompressedSize));
-                    ++zlibChunks;
-                } else if (!chunk.empty() && ((chunk[0] & 0x0FU) == 0x0FU)) {
-                    decoded.assign(chunk.begin() + 1, chunk.end());
-                    ++rawMarkerChunks;
-                } else {
-                    rr.status = "DECOMPFS_ZLIB_CHUNK_HEADER_UNSUPPORTED";
-                    rr.notes = "ZLIB_RSRC chunk did not start with a zlib header or APFS raw marker. entry=" + std::to_string(i) + "; first_byte=" + (chunk.empty() ? std::string("empty") : std::to_string(static_cast<unsigned int>(chunk[0])));
-                    return rr;
-                }
-            } else if (compressionType == 10) {
-                if (chunk.empty()) continue;
-                decoded.assign(chunk.begin() + 1, chunk.end());
-                ++plainChunks;
-            }
-            if (out.size() + decoded.size() > expectedUncompressedSize + 65536ULL) {
-                rr.status = "DECOMPFS_OUTPUT_EXCEEDED_EXPECTED_SIZE";
-                rr.notes = "Decoded resource-fork chunks exceeded the decoded decmpfs logical size.";
-                return rr;
-            }
-            out.insert(out.end(), decoded.begin(), decoded.end());
-        }
-        if (out.size() > expectedUncompressedSize) out.resize(static_cast<std::size_t>(expectedUncompressedSize));
-        rr.data.swap(out);
-        rr.ok = (rr.data.size() == expectedUncompressedSize);
-        rr.status = rr.ok ? (compressionType == 4 ? "DECOMPFS_ZLIB_RSRC_RECONSTRUCTED" : "DECOMPFS_PLAIN_RSRC_RECONSTRUCTED")
-                          : (compressionType == 4 ? "DECOMPFS_ZLIB_RSRC_PARTIAL_RECONSTRUCTION" : "DECOMPFS_PLAIN_RSRC_PARTIAL_RECONSTRUCTION");
-        std::ostringstream ns;
-        ns << "algorithm=" << decmpfsCompressionTypeLabel(compressionType)
-           << "; data_offset=" << rr.descriptorOffset
-           << "; mgmt_offset=" << rr.footerOffset
-           << "; data_size=" << dataSize
-           << "; mgmt_size=" << mgmtSize
-           << "; table_header0=" << tableHeader0
-           << "; block_count=" << rr.blockCount
-           << "; expected_uncompressed_size=" << expectedUncompressedSize
-           << "; reconstructed_size=" << rr.data.size()
-           << "; zlib_chunks=" << zlibChunks
-           << "; raw_marker_chunks=" << rawMarkerChunks
-           << "; plain_chunks=" << plainChunks
-           << "; offset_model=dissect.apfs:data_offset_plus_4_plus_entry_offset";
-        rr.notes = ns.str();
-    } catch (const std::exception& ex) {
-        rr.ok = false;
-        rr.status = "DECOMPFS_RESOURCE_FORK_RECONSTRUCTION_FAILED";
-        rr.notes = ex.what();
-    }
-    return rr;
-}
-
-ApfsDecmpfsReconstructionResult reconstructType4DecmpfsResourceForkZlib(const std::vector<unsigned char>& resourceFork,
-                                                                        std::uint64_t expectedUncompressedSize) {
-    return reconstructDecmpfsResourceForkDissectStyle(resourceFork, expectedUncompressedSize, 4);
-}
 
 
 std::string safePrintableUtf8Fragment(const std::vector<unsigned char>& data, std::size_t off, std::size_t len) {
@@ -5090,72 +4487,6 @@ bool containsU64(const std::vector<std::uint64_t>& values, std::uint64_t v) {
     return std::find(values.begin(), values.end(), v) != values.end();
 }
 
-ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& data,
-                                              std::uint64_t virtualOffset,
-                                              long long bytesRead) {
-    ApfsNxSuperblockSummary nx;
-    nx.attempted = true;
-    nx.virtualOffset = virtualOffset;
-    nx.bytesRead = bytesRead;
-    if (data.size() < 4096 || data.size() < 184) {
-        nx.validationStatus = "BUFFER_TOO_SMALL";
-        nx.notes = "Need at least the first APFS container block to parse nx_superblock_t.";
-        return nx;
-    }
-    if (std::memcmp(data.data() + 32, "NXSB", 4) != 0) {
-        nx.validationStatus = "NXSB_NOT_FOUND";
-        nx.notes = "Magic NXSB was not present at object offset +32.";
-        return nx;
-    }
-    nx.found = true;
-    nx.oid = readLe64(data, 8);
-    nx.xid = readLe64(data, 16);
-    nx.objectTypeRaw = readLe32(data, 24);
-    nx.objectSubtype = readLe32(data, 28);
-    nx.objectTypeLabel = apfsObjectTypeLabel(nx.objectTypeRaw);
-    nx.blockSize = readLe32(data, 36);
-    nx.blockCount = readLe64(data, 40);
-    nx.features = readLe64(data, 48);
-    nx.readonlyCompatibleFeatures = readLe64(data, 56);
-    nx.incompatibleFeatures = readLe64(data, 64);
-    nx.containerUuid = bytesToUuidString(data, 72);
-    nx.nextOid = readLe64(data, 88);
-    nx.nextXid = readLe64(data, 96);
-    nx.xpDescBlocks = readLe32(data, 104);
-    nx.xpDataBlocks = readLe32(data, 108);
-    nx.xpDescBase = readLe64(data, 112);
-    nx.xpDataBase = readLe64(data, 120);
-    nx.xpDescNext = readLe32(data, 128);
-    nx.xpDataNext = readLe32(data, 132);
-    nx.xpDescIndex = readLe32(data, 136);
-    nx.xpDescLen = readLe32(data, 140);
-    nx.xpDataIndex = readLe32(data, 144);
-    nx.xpDataLen = readLe32(data, 148);
-    nx.spacemanOid = readLe64(data, 152);
-    nx.omapOid = readLe64(data, 160);
-    nx.reaperOid = readLe64(data, 168);
-    nx.testType = readLe32(data, 176);
-    nx.maxFileSystems = readLe32(data, 180);
-    const std::uint32_t fsCountToRead = std::min<std::uint32_t>(nx.maxFileSystems, 100U);
-    for (std::uint32_t i = 0; i < fsCountToRead; ++i) {
-        const std::size_t off = 184U + static_cast<std::size_t>(i) * 8U;
-        if (off + 8 > data.size()) break;
-        const std::uint64_t oid = readLe64(data, off);
-        if (oid != 0) nx.fsOids.push_back(oid);
-    }
-    if (nx.blockSize < 4096 || nx.blockSize > 65536 || (nx.blockSize & (nx.blockSize - 1U)) != 0U) {
-        nx.validationStatus = "NXSB_FOUND_BLOCK_SIZE_SUSPICIOUS";
-        nx.notes = "NXSB magic was present, but nx_block_size is outside the APFS expected power-of-two range.";
-    } else if (nx.blockCount == 0) {
-        nx.validationStatus = "NXSB_FOUND_BLOCK_COUNT_ZERO";
-        nx.notes = "NXSB magic was present, but nx_block_count is zero.";
-    } else {
-        nx.containerSizeBytes = static_cast<std::uint64_t>(nx.blockSize) * nx.blockCount;
-        nx.validationStatus = "NXSB_PARSED";
-        nx.notes = "APFS container superblock parsed from the libaff4 virtual object at offset 0.";
-    }
-    return nx;
-}
 
 void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
                                          const EvidenceSource& source,
@@ -12311,72 +11642,6 @@ bool validateRunOptions(const RunOptions& opt, std::string& error) {
     return true;
 }
 
-void writeAff4ApfsV1DiagnosticRerunPlan(const fs::path& caseDir,
-                                         const EvidenceSource& source,
-                                         const RunOptions& opt,
-                                         const fs::path& originalInput,
-                                         Logger& log) {
-    if (!isAff4SourcePath(originalInput)) return;
-    const fs::path mdPath = caseDir / "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md";
-    const fs::path csvPath = caseDir / "aff4_apfs_v1_diagnostic_checklist.csv";
-    const fs::path jsonPath = caseDir / "aff4_apfs_v1_diagnostic_plan_summary.json";
-    struct Row { const char* stage; const char* expected; const char* purpose; const char* rule; };
-    const Row rows[] = {
-        {"aff4_zip_single_file_probe", "aff4_zip_central_directory.csv; aff4_zip_probe_summary.json", "Confirm the exact selected AFF4 file is readable as the AFF4 container and no parent-folder AFF4 discovery was used.", "If this fails, fix AFF4 container access before APFS logic."},
-        {"aff4_dynamic_load_probe", "aff4_cpp_lite_dynamic_load_probe.csv; aff4_virtual_apfs_probe.csv", "Confirm the guarded AFF4 reader can perform bounded random reads from the selected image stream.", "If virtual reads fail or use the wrong object, do not interpret APFS output."},
-        {"apfs_container_checkpoint", "aff4_apfs_container_superblock.csv; aff4_apfs_checkpoint_map.csv", "Confirm APFS NXSB, latest valid checkpoint, and checkpoint-mapped ephemeral objects.", "APFS decisions must use a valid checkpoint-backed container view, not only block-zero assumptions."},
-        {"apfs_omap_volume_resolution", "aff4_apfs_omap_leaf_lookup_results.csv; aff4_apfs_resolved_volume_superblocks.csv", "Resolve container and volume object maps to the APFS volume superblocks.", "If OMAP lookups are partial, report the missing OID/XID and keep extraction gated."},
-        {"apfs_root_tree_namespace", "aff4_apfs_root_tree_*; aff4_apfs_spotlight_target_scan.csv", "Walk enough filesystem tree records to locate .Spotlight-V100 / Store-V2 targets and parent/child file IDs.", "Prefer path/object provenance over broad raw scanning; preserve volume, object ID, parent ID, and record source."},
-        {"apfs_inode_xattr_extents", "aff4_apfs_spotlight_inode_probe.csv; aff4_apfs_spotlight_xattr_probe.csv; aff4_apfs_spotlight_file_extent_probe.csv", "Correlate target directory records to inode, private data-stream ID, xattrs, resource forks, decmpfs metadata, and file extents.", "Do not treat a target as copyable until inode size, extent chain, xattr/resource-fork state, and physical reads are classified."},
-        {"apfs_copy_out", "aff4_apfs_spotlight_file_copy_out.csv; aff4_apfs_spotlight_file_copy_out_summary.json", "Assemble only files whose reconstruction status is explicit and reviewable.", "Every output row must state copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped."},
-        {"staged_storev2_parse", "aff4_apfs_extracted_storev2_stage_*.csv; aff4_apfs_staged_storev2_*", "Normalize copied Store-V2 components into staged groups and parse them through the native Store-V2 parser.", "Report parser counts separately from APFS copy counts so filesystem extraction failures are not confused with Spotlight parsing failures."},
-        {"external_compare", "aff4_apfs_external_spotlight_compare_summary.json; aff4_apfs_external_spotlight_file_compare.csv", "Compare Vestigant extraction with the known-good external Spotlight reference when available.", "Use relative path/hash status counts to select the next fix category; do not rely on visual folder inspection alone."}
-    };
-    try {
-        std::ofstream out(csvPath, std::ios::binary);
-        out << "stage,expected_outputs,purpose,interpretation_rule\n";
-        for (const auto& r : rows) {
-            out << csvEscape(r.stage) << ',' << csvEscape(r.expected) << ',' << csvEscape(r.purpose) << ',' << csvEscape(r.rule) << "\n";
-        }
-    } catch (const std::exception& ex) {
-        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_checklist.csv: ") + ex.what());
-    }
-    try {
-        std::ofstream out(jsonPath, std::ios::binary);
-        out << "{\n";
-        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
-        out << "  \"app_version\": \"" << appVersion() << "\",\n";
-        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
-        out << "  \"input_path\": \"" << jsonEscape(pathString(originalInput)) << "\",\n";
-        out << "  \"probe_policy\": \"STRICT_SINGLE_AFF4_DIAGNOSTIC_RERUN\",\n";
-        out << "  \"container_hash_policy\": \"" << (opt.forceContainerHash ? "FORCED_BY_OPERATOR" : (opt.skipContainerHash ? "SKIPPED_BY_OPERATOR" : "DEFERRED_FOR_DEVELOPMENT_SOURCE_PROBE")) << "\",\n";
-        out << "  \"diagnostic_stage_count\": " << (sizeof(rows) / sizeof(rows[0])) << ",\n";
-        out << "  \"notes\": \"V1.0.0 prioritizes a fresh, reproducible AFF4/APFS diagnostic run before changing APFS reconstruction gates.\"\n";
-        out << "}\n";
-    } catch (const std::exception& ex) {
-        log.warn(std::string("Unable to write aff4_apfs_v1_diagnostic_plan_summary.json: ") + ex.what());
-    }
-    try {
-        std::ofstream out(mdPath, std::ios::binary);
-        out << "# AFF4/APFS V1.0.0 Diagnostic Rerun Plan\n\n";
-        out << "Version: " << appVersion() << "\n\n";
-        out << "## Purpose\n\n";
-        out << "This V1.0.0 run is intended to recreate current AFF4/APFS evidence from the exact selected AFF4 image before any broader APFS reconstruction changes are made. The older V0.8.x external-compare bundle is useful historical evidence, but it should not be treated as the current source of truth for V1 decisions.\n\n";
-        out << "## Scope and safety policy\n\n";
-        out << "- Input is one explicit AFF4 file: `" << pathString(originalInput) << "`.\n";
-        out << "- Strict single-AFF4 mode should be used for the rerun.\n";
-        out << "- Full-container hashing is deferred by default for development speed unless `--force-container-hash` is supplied.\n";
-        out << "- No broad parent-folder AFF4 search, full raw export, or unverifiable decompression stub should be used.\n";
-        out << "- APFS copy-out must classify each target as copied, partial, sparse gap, zero physical block, unresolved read failure, compressed/resource-fork pending, or skipped.\n\n";
-        out << "## Diagnostic checklist\n\n";
-        out << "See `aff4_apfs_v1_diagnostic_checklist.csv` for the required outputs and interpretation rules.\n\n";
-        out << "## Decision rule after upload\n\n";
-        out << "After the fresh thin upload is reviewed, choose the next implementation target from the evidence: AFF4 container access, APFS checkpoint/OMAP traversal, root-tree namespace walking, inode/xattr/extent correlation, sparse/gap handling, resource-fork/decmpfs reconstruction, staged Store-V2 parsing, or investigator-facing macOS views.\n";
-    } catch (const std::exception& ex) {
-        log.warn(std::string("Unable to write AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md: ") + ex.what());
-    }
-    log.info("AFF4/APFS V1 diagnostic rerun plan written: " + pathString(mdPath));
-}
 
 RunResult runApplication(const RunOptions& opt) {
     installStructuredExceptionTranslator();
@@ -12479,13 +11744,14 @@ RunResult runApplication(const RunOptions& opt) {
         writeSourceProbeJson(caseDir, source, opt.input, sourceProbe, partitionProbe, log);
         writeSourcePartitionProbeCsv(caseDir, partitionProbe, log);
 
+        CaseDatabase db;
+        appendRunStatus(caseDir, "open_sqlite", "single case database handle opened for this run");
+        db.open(caseDir / "VestigantSpotlight.case.sqlite");
+        db.initializeSchema();
+        db.insertCaseInfo(opt);
+        db.insertEvidenceSource(source);
+
         if (aff4InputSource || rawImageInputSource) {
-            CaseDatabase db;
-            appendRunStatus(caseDir, "open_sqlite");
-            db.open(caseDir / "VestigantSpotlight.case.sqlite");
-            db.initializeSchema();
-            db.insertCaseInfo(opt);
-            db.insertEvidenceSource(source);
             const bool deferLargeImageHash = (opt.skipContainerHash || (sourceProbeMode && (aff4InputSource || rawImageInputSource) && !opt.forceContainerHash));
             if (deferLargeImageHash && !opt.skipContainerHash && !opt.forceContainerHash) {
                 log.warn("Full original-container SHA256 deferred by default for AFF4/raw source-probe development speed. Use --force-container-hash when a full evidentiary hash is needed.");
@@ -12521,7 +11787,22 @@ RunResult runApplication(const RunOptions& opt) {
                 result.usageCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.usageEvidence));
                 result.nativeDecodeMode = "AFF4_APFS_STAGED_STOREV2_CORE_FIELDS";
                 appendRunStatus(caseDir, "aff4_stream_inventory_start", opt.enableAff4StreamInventory ? "list AFF4 streams when aff4imager is available" : "skipped by default to avoid external reader discovery outside selected AFF4");
-                const auto aff4Inventory = runAff4StreamInventory(opt, source, opt.input, caseDir, log);
+                const auto aff4Inventory = runAff4StreamInventory(
+                    opt, source, opt.input, caseDir, log,
+                    [&](const std::string& envVar, const std::vector<std::string>& names) {
+                        return findToolCandidate(opt, envVar, names);
+                    },
+                    [&](const fs::path& exe, const std::vector<std::string>& args, const fs::path& outputPath) {
+#if defined(_WIN32)
+                        return runExecutableNoWindowRedirected(exe, args, outputPath);
+#else
+                        (void)exe; (void)args; (void)outputPath;
+                        return -1;
+#endif
+                    },
+                    [&](const std::string& command) {
+                        return runShellCommandNoWindow(command);
+                    });
                 appendRunStatus(caseDir, "aff4_stream_inventory_complete", aff4Inventory.status + " lines=" + std::to_string(aff4Inventory.rawLineCount));
             }
             persistSourceProbeInventory(db, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
@@ -12557,12 +11838,6 @@ RunResult runApplication(const RunOptions& opt) {
         writeSourceIntakeArtifacts(caseDir, source, opt.input, discoverySource.inputPath, stores, "DISCOVERY_COMPLETE", "Proceed to parser selection and native parsing for supported folder/ZIP sources.", sourceProbe, partitionProbe, log);
         writeImageInventoryReadinessCsv(caseDir, source, opt.input, sourceProbe, partitionProbe, "Folder/ZIP Spotlight parsing can proceed; active image comparison requires image_file_inventory from AFF4/APFS enumeration.", log);
 
-        CaseDatabase db;
-        appendRunStatus(caseDir, "open_sqlite");
-        db.open(caseDir / "VestigantSpotlight.case.sqlite");
-        db.initializeSchema();
-        db.insertCaseInfo(opt);
-        db.insertEvidenceSource(source);
         persistSourceProbeInventory(db, source, opt.input, discoverySource.inputPath, stores, "DISCOVERY_COMPLETE", "Proceed to parser selection and native parsing for supported folder/ZIP sources.", sourceProbe, partitionProbe, log);
         persistImageInventoryReadiness(db, source, opt.input, sourceProbe, partitionProbe, "Folder/ZIP Spotlight parsing can proceed; active image comparison requires image_file_inventory from AFF4/APFS enumeration.", log);
         if (zipInputSource) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "parsers/apfs_volume_reader.h"
+#include "app/models.h"
 
 #include <cstdint>
 #include <functional>
@@ -10,6 +11,43 @@
 #include <vector>
 
 namespace vestigant::spotlight {
+
+
+struct Aff4StreamInventoryEntry {
+    int lineIndex = 0;
+    std::string rawLine;
+    std::string candidateType;
+    int candidateScore = 0;
+    std::string apfsRelevance;
+    std::string recommendedAction;
+    std::string notes;
+};
+
+struct Aff4StreamInventoryResult {
+    std::string status;
+    std::filesystem::path toolPath;
+    std::filesystem::path rawOutputPath;
+    int commandExitCode = -1;
+    std::size_t rawLineCount = 0;
+    std::vector<Aff4StreamInventoryEntry> entries;
+};
+
+using Aff4ToolResolver = std::function<std::filesystem::path(const std::string& envVar,
+                                                             const std::vector<std::string>& names)>;
+using Aff4ExecutableRunner = std::function<int(const std::filesystem::path& exe,
+                                               const std::vector<std::string>& args,
+                                               const std::filesystem::path& outputFile)>;
+using Aff4ShellCommandRunner = std::function<int(const std::string& command)>;
+
+Aff4StreamInventoryEntry classifyAff4StreamLine(int index, const std::string& line);
+Aff4StreamInventoryResult runAff4StreamInventory(const RunOptions& opt,
+                                                 const EvidenceSource& source,
+                                                 const std::filesystem::path& originalInput,
+                                                 const std::filesystem::path& caseDir,
+                                                 Logger& log,
+                                                 Aff4ToolResolver toolResolver,
+                                                 Aff4ExecutableRunner executableRunner,
+                                                 Aff4ShellCommandRunner shellRunner);
 
 struct ApfsBtreeKvLocation {
     std::uint32_t entryIndex = 0;

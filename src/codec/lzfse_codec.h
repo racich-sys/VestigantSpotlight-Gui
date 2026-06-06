@@ -26,4 +26,22 @@ LzfseDecodeResult decodeAppleLzfseOrLzvnChunk(const std::vector<unsigned char>& 
 bool appleLzfseCodecAvailable();
 std::string appleLzfseCodecBuildStatus();
 
+struct ApfsDecmpfsReconstructionResult {
+    bool ok = false;
+    std::string status;
+    std::string notes;
+    std::uint32_t descriptorOffset = 0;
+    std::uint32_t footerOffset = 0;
+    std::uint32_t blockCount = 0;
+    std::vector<unsigned char> data;
+};
+
+std::string decmpfsCompressionTypeLabel(int compressionType);
+std::vector<unsigned char> apfsInflateZlibBounded(const std::vector<unsigned char>& z, std::size_t maxOutputBytes);
+ApfsDecmpfsReconstructionResult reconstructDecmpfsResourceForkDissectStyle(const std::vector<unsigned char>& resourceFork,
+                                                                           std::uint64_t expectedUncompressedSize,
+                                                                           int compressionType);
+ApfsDecmpfsReconstructionResult reconstructType4DecmpfsResourceForkZlib(const std::vector<unsigned char>& resourceFork,
+                                                                        std::uint64_t expectedUncompressedSize);
+
 } // namespace vestigant::spotlight
