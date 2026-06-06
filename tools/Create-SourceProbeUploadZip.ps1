@@ -10,6 +10,53 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$ThinUploadDeniedLeafNames = @{
+    "aff4_stream_inventory_raw.txt" = $true
+    "ios_focused_zip_extract.log" = $true
+    "ios_focused_zip_extract_7z.log" = $true
+    "ios_focused_zip_extract.ps1" = $true
+    "ios_ffs_file_inventory.csv" = $true
+    "image_file_inventory.csv" = $true
+}
+
+function Test-ThinUploadDeniedRelativeName {
+    param([Parameter(Mandatory=$true)][string]$RelativeName)
+    $leaf = Split-Path -Leaf $RelativeName
+    if ([string]::IsNullOrWhiteSpace($leaf)) { return $false }
+    return $ThinUploadDeniedLeafNames.ContainsKey($leaf.ToLowerInvariant())
+}
+
+function Get-RelativePathForThinInventory {
+    param(
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][string]$FullName
+    )
+
+    # Avoid the old escaped backslash char-literal form because Windows PowerShell
+    # string and throws: Cannot convert value "\\" to type "System.Char".
+    # Use Uri.MakeRelativeUri so this helper works on Windows PowerShell 5.1
+    # without relying on newer .NET Path.GetRelativePath APIs.
+    try {
+        $rootFull = [System.IO.Path]::GetFullPath($Root)
+        $fileFull = [System.IO.Path]::GetFullPath($FullName)
+        $dirSep = [System.IO.Path]::DirectorySeparatorChar
+        $altSep = [System.IO.Path]::AltDirectorySeparatorChar
+        if (!$rootFull.EndsWith([string]$dirSep) -and !$rootFull.EndsWith([string]$altSep)) {
+            $rootFull = $rootFull + [string]$dirSep
+        }
+        $rootUri = New-Object System.Uri($rootFull)
+        $fileUri = New-Object System.Uri($fileFull)
+        if ($rootUri.IsBaseOf($fileUri)) {
+            $rel = [System.Uri]::UnescapeDataString($rootUri.MakeRelativeUri($fileUri).ToString())
+            return $rel.Replace('/', $dirSep)
+        }
+    } catch {
+        # Fall through to leaf-only fallback.
+    }
+    return (Split-Path -Leaf $FullName)
+}
+
+
 function Copy-FirstExistingCaseFile {
     param(
         [Parameter(Mandatory=$true)][string]$RelativeName,
@@ -17,6 +64,7 @@ function Copy-FirstExistingCaseFile {
     )
 
     if ([string]::IsNullOrWhiteSpace($OutputName)) { $OutputName = $RelativeName }
+    if (Test-ThinUploadDeniedRelativeName -RelativeName $RelativeName) { return $false }
 
     $candidates = @(
         (Join-Path $CaseRoot $RelativeName),
@@ -94,7 +142,6 @@ $Wanted = @(
     "source_inventory.csv",
     "source_probe_inventory.csv",
     "evidence_source_readiness.csv",
-    "image_file_inventory.csv",
     "image_inventory_readiness.csv",
     "active_file_comparison_readiness.csv",
     "reader_tool_readiness.csv",
@@ -105,7 +152,6 @@ $Wanted = @(
         "aff4_apfs_spotlight_xattr_probe_summary.json",
         "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_PROBE.md", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_LEAF_KV_DECODE.md",
     "aff4_stream_inventory.csv",
-    "aff4_stream_inventory_raw.txt",
     "aff4_zip_probe_summary.json",
     "aff4_zip_central_directory.csv",
     "aff4_direct_map_reader_probe.csv",
@@ -193,7 +239,8 @@ if (Test-Path -LiteralPath $CandidateDir) {
 
 if (![string]::IsNullOrWhiteSpace($AdditionalOutputRoot) -and (Test-Path -LiteralPath $AdditionalOutputRoot)) {
     Get-ChildItem -LiteralPath $AdditionalOutputRoot -Recurse -File -ErrorAction SilentlyContinue |
-        Select-Object FullName, Length, LastWriteTime |
+        Where-Object { -not (Test-ThinUploadDeniedRelativeName -RelativeName $_.Name) } |
+        ForEach-Object { [pscustomobject]@{ RelativePath = (Get-RelativePathForThinInventory -Root $AdditionalOutputRoot -FullName $_.FullName); Length = $_.Length; LastWriteTime = $_.LastWriteTime } } |
         Format-Table -AutoSize |
         Out-String |
         Set-Content -LiteralPath (Join-Path $UploadRoot "additional_output_file_inventory.txt") -Encoding UTF8
@@ -208,7 +255,7 @@ if (Test-Path -LiteralPath $ReaderToolsRoot) {
     }
 
     Get-ChildItem -LiteralPath $ReaderToolsRoot -Recurse -File -ErrorAction SilentlyContinue |
-        Select-Object FullName, Length, LastWriteTime |
+        ForEach-Object { [pscustomobject]@{ RelativePath = (Get-RelativePathForThinInventory -Root $ReaderToolsRoot -FullName $_.FullName); Length = $_.Length; LastWriteTime = $_.LastWriteTime } } |
         Format-Table -AutoSize |
         Out-String |
         Set-Content -LiteralPath (Join-Path $UploadRoot "reader_tools_file_inventory.txt") -Encoding UTF8
@@ -216,8 +263,8 @@ if (Test-Path -LiteralPath $ReaderToolsRoot) {
 }
 
 Get-ChildItem -LiteralPath $CaseRoot -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notlike "*\Upload_Thin\*" } |
-    Select-Object FullName, Length, LastWriteTime |
+    Where-Object { $_.FullName -notlike "*\Upload_Thin\*" -and -not (Test-ThinUploadDeniedRelativeName -RelativeName $_.Name) } |
+    ForEach-Object { [pscustomobject]@{ RelativePath = (Get-RelativePathForThinInventory -Root $CaseRoot -FullName $_.FullName); Length = $_.Length; LastWriteTime = $_.LastWriteTime } } |
     Format-Table -AutoSize |
     Out-String |
     Set-Content -LiteralPath (Join-Path $UploadRoot "case_file_inventory.txt") -Encoding UTF8
@@ -231,7 +278,7 @@ if (Test-Path -LiteralPath $ExtractedSpotlightRoot) {
     Get-ChildItem -LiteralPath $ExtractedSpotlightRoot -Recurse -File -ErrorAction SilentlyContinue |
         Sort-Object FullName |
         ForEach-Object {
-            $rel = $_.FullName.Substring($ExtractedSpotlightRoot.Length).TrimStart([char]'\',[char]'/')
+            $rel = Get-RelativePathForThinInventory -Root $ExtractedSpotlightRoot -FullName $_.FullName
             if ($rel -like "ApfsCopyOutByTarget\*" -or $rel -like "ApfsCopyOutByTarget/*") { return }
             if ($extractCopied -ge 300) { return }
             if ($_.Length -gt 67108864) { return }

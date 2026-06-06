@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$CurrentVersionRoot = "T:\VestigantSpotlightInv_V1_0_25"
+$CurrentVersionRoot = "T:\VestigantSpotlightInv_V1_0_26_1"
 $RepoRoot = "T:\VestigantSpotlight"
 $GitHubUserOrOrg = "racich-sys"
 $RepoName = "VestigantSpotlight"

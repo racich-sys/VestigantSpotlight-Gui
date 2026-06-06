@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <cctype>
 #include <ctime>
+#include <cstdio>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -87,6 +88,24 @@ std::wstring utf8ToWideCommand(const std::string& s) {
     return ws;
 }
 
+constexpr DWORD kExternalProcessTimeoutMs = 12UL * 60UL * 60UL * 1000UL;
+
+int waitForProcessWithTimeout(HANDLE processHandle) {
+    const DWORD waitResult = WaitForSingleObject(processHandle, kExternalProcessTimeoutMs);
+    if (waitResult == WAIT_TIMEOUT) {
+        TerminateProcess(processHandle, 0xEE00U);
+        return -2;
+    }
+    if (waitResult != WAIT_OBJECT_0) {
+        return static_cast<int>(GetLastError() ? GetLastError() : 1);
+    }
+    DWORD exitCode = 1;
+    if (!GetExitCodeProcess(processHandle, &exitCode)) {
+        return static_cast<int>(GetLastError() ? GetLastError() : 1);
+    }
+    return static_cast<int>(exitCode);
+}
+
 int runShellCommandNoWindow(const std::string& command) {
     const std::wstring cmdLine = utf8ToWideCommand(command);
     std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
@@ -110,12 +129,10 @@ int runShellCommandNoWindow(const std::string& command) {
     if (!ok) {
         return static_cast<int>(GetLastError() ? GetLastError() : 1);
     }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
+    const int exitCode = waitForProcessWithTimeout(pi.hProcess);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    return static_cast<int>(exitCode);
+    return exitCode;
 }
 #else
 int runShellCommandNoWindow(const std::string& command) {
@@ -277,13 +294,11 @@ int runProcessNoWindowRedirected(const std::wstring& commandLine, const fs::path
         CloseHandle(logHandle);
         return static_cast<int>(err ? err : 1);
     }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
+    const int exitCode = waitForProcessWithTimeout(pi.hProcess);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     CloseHandle(logHandle);
-    return static_cast<int>(exitCode);
+    return exitCode;
 }
 
 int runExecutableNoWindowRedirected(const fs::path& exe, const std::vector<std::string>& args, const fs::path& combinedOutputLog) {
@@ -727,6 +742,35 @@ void writeUiAndIosPlanningFiles(const fs::path& caseDir) {
     } catch (...) {}
 }
 
+bool thinUploadDeniedRelativeName(const fs::path& relativeName) {
+    std::string s = pathString(relativeName);
+    std::replace(s.begin(), s.end(), '\\', '/');
+    std::string lower = toLower(s);
+    const std::size_t slash = lower.find_last_of('/');
+    const std::string leaf = (slash == std::string::npos) ? lower : lower.substr(slash + 1);
+    static const std::set<std::string> deniedLeafNames = {
+        "aff4_stream_inventory_raw.txt",
+        "ios_focused_zip_extract.log",
+        "ios_focused_zip_extract_7z.log",
+        "ios_focused_zip_extract.ps1",
+        "ios_ffs_file_inventory.csv",
+        "image_file_inventory.csv"
+    };
+    return deniedLeafNames.find(leaf) != deniedLeafNames.end();
+}
+
+void copyThinUploadFileIfAllowed(const fs::path& src,
+                                 const fs::path& dst,
+                                 const fs::path& relativeName,
+                                 std::ofstream& manifest,
+                                 const std::string& missingStatus = "MISSING") {
+    if (thinUploadDeniedRelativeName(relativeName)) {
+        manifest << "REDACTED_BY_THIN_UPLOAD_POLICY," << pathString(src) << "," << pathString(dst) << "\n";
+        return;
+    }
+    copyFileIfExists(src, dst, manifest, missingStatus);
+}
+
 void createUploadBundle(const fs::path& caseDir) {
     try {
         appendRunStatus(caseDir, "upload_bundle_start", "copy focused upload files");
@@ -742,12 +786,12 @@ void createUploadBundle(const fs::path& caseDir) {
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
-        for (const auto& name : rootFiles) copyFileIfExists(caseDir / name, uploadDir / name.filename(), manifest);
+        for (const auto& name : rootFiles) copyThinUploadFileIfAllowed(caseDir / name, uploadDir / name.filename(), name, manifest);
         const std::vector<fs::path> logFiles = {
             "run_status.txt", "last_stage.txt", "run_progress.tsv", "last_progress.tsv", "VestigantSpotlight.log"
         };
-        for (const auto& name : logFiles) copyFileIfExists(caseDir / "logs" / name, uploadDir / name.filename(), manifest);
-        copyFileIfExists(caseDir / "logs" / "FATAL_CRASH.txt", uploadDir / "logs" / "FATAL_CRASH.txt", manifest, "NO_FATAL_CRASH_LOG");
+        for (const auto& name : logFiles) copyThinUploadFileIfAllowed(caseDir / "logs" / name, uploadDir / name.filename(), name, manifest);
+        copyThinUploadFileIfAllowed(caseDir / "logs" / "FATAL_CRASH.txt", uploadDir / "logs" / "FATAL_CRASH.txt", fs::path("FATAL_CRASH.txt"), manifest, "NO_FATAL_CRASH_LOG");
         const fs::path exportsDir = caseDir / "exports";
         std::error_code exportEc;
         if (fs::exists(exportsDir, exportEc) && fs::is_directory(exportsDir, exportEc)) {
@@ -758,7 +802,7 @@ void createUploadBundle(const fs::path& caseDir) {
                 }
                 std::error_code fileEc;
                 if (entry.is_regular_file(fileEc) && entry.path().extension() == ".csv") {
-                    copyFileIfExists(entry.path(), uploadDir / "exports" / entry.path().filename(), manifest);
+                    copyThinUploadFileIfAllowed(entry.path(), uploadDir / "exports" / entry.path().filename(), fs::path("exports") / entry.path().filename(), manifest);
                 }
             }
         } else {
@@ -11781,6 +11825,33 @@ std::string decimalZeroPad(std::uint32_t value, int width) {
 
 bool readExactFileBytes(const fs::path& path, std::uint64_t offset, std::size_t length, std::vector<unsigned char>& out, std::string& error) {
     out.clear();
+#if defined(_WIN32)
+    if (offset > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+        error = "Offset too large for Windows 64-bit file seek.";
+        return false;
+    }
+    FILE* f = nullptr;
+    const std::wstring widePath = wideProcessPath(path);
+    if (_wfopen_s(&f, widePath.c_str(), L"rb") != 0 || !f) {
+        error = "Unable to open file for exact single-file AFF4 ZIP probe: " + pathString(path);
+        return false;
+    }
+    if (_fseeki64(f, static_cast<long long>(offset), SEEK_SET) != 0) {
+        error = "64-bit seek failed at offset " + std::to_string(offset);
+        fclose(f);
+        return false;
+    }
+    out.assign(length, 0);
+    const std::size_t got = std::fread(out.data(), 1, length, f);
+    if (got != length) {
+        error = "Short read at offset " + std::to_string(offset) + ": requested=" + std::to_string(length) + " got=" + std::to_string(got);
+        out.resize(got);
+        fclose(f);
+        return false;
+    }
+    fclose(f);
+    return true;
+#else
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         error = "Unable to open file for exact single-file AFF4 ZIP probe: " + pathString(path);
@@ -11808,6 +11879,7 @@ bool readExactFileBytes(const fs::path& path, std::uint64_t offset, std::size_t 
         return false;
     }
     return true;
+#endif
 }
 
 
