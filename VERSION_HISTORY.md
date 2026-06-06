@@ -1,13 +1,36 @@
-# V1.0.27
+# V1.0.28.2
 
-V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and external comparison completed but the thin ZIP failed during PowerShell relative-path inventory generation.
+V1.0.28.2 is a narrow build/link hotfix after the V1.0.28.1 MSVC build failed with duplicate `isLikelyStoreV2GroupDirectoryName` symbols between `app_runner.obj` and `apfs_diagnostic_exporter.obj`.
+
+## Changes
+
+- Scoped the APFS diagnostic exporter copy of `isLikelyStoreV2GroupDirectoryName()` to the exporter translation unit.
+- Updated continuation, roadmap, and suggestions tracker files.
+- No extraction, parser, schema, GUI, or forensic interpretation behavior changed.
+
+## Validation
+
+- Local syntax checks were run for `src/parsers/apfs_diagnostic_exporter.cpp`, `src/app/app_runner.cpp`, and `src/core/app_info.cpp`.
+- A local object-symbol check confirmed `apfs_diagnostic_exporter.o` no longer exports a public `isLikelyStoreV2GroupDirectoryName` symbol.
+- Windows/MSVC validation remains required.
+
+# V1.0.28.1
+
+- Build hotfix for the V1.0.28 Windows/MSVC failure in `src\app\app_runner.cpp` where `asciiLower` was used before declaration after APFS diagnostic writer relocation.
+- Added a forward declaration for the existing runner-local helper.
+- Kept V1.0.28 APFS diagnostic writer relocation intact.
+- No APFS traversal, AFF4 reads, copy-out/staging, Store-V2 parsing, iOS parsing, schema, or GUI behavior was intentionally changed.
+
+# V1.0.28.1
+
+V1.0.28.1 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and external comparison completed but the thin ZIP failed during PowerShell relative-path inventory generation.
 
 ## Changed
 
 - Fixed `tools/Create-SourceProbeUploadZip.ps1` so `Get-RelativePathForThinInventory` no longer uses `[char]'\\'`, which Windows PowerShell treats as a two-character string and rejects.
 - Reused the robust relative-path helper for `ExtractedSpotlight` copy paths.
 - Changed `reader_tools_file_inventory.txt` to use relative paths instead of full local paths.
-- Added `scripts/Package-V1_0_27-macOS-AFF4-ThinFromExistingCase.ps1` for packaging an already-completed V1.0.26 AFF4/APFS case without rerunning the probe.
+- Added `scripts/Package-V1_0_28_1-macOS-AFF4-ThinFromExistingCase.ps1` for packaging an already-completed V1.0.26 AFF4/APFS case without rerunning the probe.
 - Added `docs/CONTINUATION_HANDOFF.md`, `docs/ROADMAP_CHECKLIST.md`, and `docs/SUGGESTIONS_AND_FIXES_TRACKER.md`.
 
 ## Not changed
@@ -18,7 +41,7 @@ V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and ex
 
 - Reviewed the uploaded V1.0.26 build log; the Windows/MSVC build completed and reported `Vestigant Spotlight v1.0.26`.
 - Reviewed the user-reported wrapper output showing the AFF4/APFS probe and external comparison completed before packaging failed.
-- Local syntax/text checks were performed for modified C++ and PowerShell packaging files. Windows/MSVC V1.0.27 validation remains required.
+- Local syntax/text checks were performed for modified C++ and PowerShell packaging files. Windows/MSVC V1.0.28.1 validation remains required.
 
 # V1.0.26
 
@@ -72,3 +95,11 @@ V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and ex
 - Moved iOS app DB row parsing into `src/parsers/ios_app_db_parser.cpp`.
 - Corrected AFF4/APFS normal-mode logging around suppressed diagnostics.
 - Preserved Store-V2 staged parser handoff.
+
+## V1.0.28.1
+
+- Reviewed V1.0.27 Windows/MSVC build and macOS AFF4/APFS thin output.
+- Moved the main APFS/AFF4 diagnostic writer families from `src/app/app_runner.cpp` into `src/parsers/apfs_diagnostic_exporter.cpp`.
+- Expanded `src/parsers/apfs_diagnostic_exporter.h` with typed writer declarations.
+- Kept APFS traversal, Store-V2 parsing, iOS parsing, SQLite schema, GUI behavior, and live extraction behavior unchanged.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.

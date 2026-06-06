@@ -125,3 +125,17 @@ Not verified here:
 - Added shared GUI view/export helper module (`src/gui/gui_view_helpers.h/.cpp`) to remove duplicated SQL/view helper logic between the Win32 GUI and `GuiExportWorker`.
 - No APFS traversal, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.
 - Windows/MSVC validation is pending.
+
+## V1.0.28.1 local validation
+
+- `src/parsers/apfs_diagnostic_exporter.cpp` C++20 syntax check passed.
+- `src/app/app_runner.cpp` C++20 syntax check passed.
+- `src/gui/gui_export_worker.cpp` C++20 syntax check passed.
+- `src/core/app_info.cpp` C++20 syntax check passed.
+- Linux CMake configure passed; Linux build timed out after compiling the moved APFS diagnostic exporter and reaching `app_runner.cpp`, with no compile error observed before timeout.
+## V1.0.28.2 local validation
+
+- Syntax checked `src/parsers/apfs_diagnostic_exporter.cpp`, `src/app/app_runner.cpp`, and `src/core/app_info.cpp`.
+- Compiled `src/parsers/apfs_diagnostic_exporter.cpp` to a local object and confirmed `isLikelyStoreV2GroupDirectoryName` is a local anonymous-namespace symbol, not a public duplicate.
+- Windows/MSVC build and AFF4/APFS thin output remain pending.
+

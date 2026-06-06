@@ -74,3 +74,24 @@ V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and ex
 - Moved iOS app DB row parsing into `src/parsers/ios_app_db_parser.cpp`.
 - Corrected AFF4/APFS normal-mode logging around suppressed diagnostics.
 - Preserved Store-V2 staged parser handoff.
+
+# V1.0.28.2
+
+V1.0.28.2 relocates the main APFS/AFF4 diagnostic/report writer bodies out of `app_runner.cpp` and into `apfs_diagnostic_exporter.cpp`.
+
+## Changed
+
+- Added typed APFS diagnostic writer declarations to `src/parsers/apfs_diagnostic_exporter.h`.
+- Moved main APFS diagnostic/report writer families into `src/parsers/apfs_diagnostic_exporter.cpp`.
+- Reduced `src/app/app_runner.cpp` by approximately 1,800 lines.
+- Updated continuation handoff, roadmap checklist, and suggestions/fixes tracker.
+
+## Not changed
+
+- No APFS traversal changes.
+- No AFF4 dynamic reader changes.
+- No APFS copy-out/staging changes.
+- No Store-V2 parser changes.
+- No iOS parser changes.
+- No SQLite schema changes.
+- No GUI behavior changes.

@@ -111,3 +111,7 @@ Runtime database dependency uses Windows `winsqlite3.dll` via `winsqlite3.lib`.
 - Top-level export CSVs are copied dynamically from `exports/*.csv`.
 - `countCsvDataRows()` and staged iOS app DB output path normalization were optimized/hardened.
 - Windows/MSVC validation is pending.
+
+## V1.0.28.2 build note
+
+V1.0.28.2 requires the same Windows/MSVC build path as V1.0.27. `src/parsers/apfs_diagnostic_exporter.cpp` remains part of both the CMake and MSVC build inputs.

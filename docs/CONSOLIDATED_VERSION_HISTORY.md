@@ -1,3 +1,19 @@
+# V1.0.28.2
+
+V1.0.28.2 is a narrow build/link hotfix after the V1.0.28.1 MSVC build failed with duplicate `isLikelyStoreV2GroupDirectoryName` symbols between `app_runner.obj` and `apfs_diagnostic_exporter.obj`.
+
+## Changes
+
+- Scoped the APFS diagnostic exporter copy of `isLikelyStoreV2GroupDirectoryName()` to the exporter translation unit.
+- Updated continuation, roadmap, and suggestions tracker files.
+- No extraction, parser, schema, GUI, or forensic interpretation behavior changed.
+
+## Validation
+
+- Local syntax checks were run for `src/parsers/apfs_diagnostic_exporter.cpp`, `src/app/app_runner.cpp`, and `src/core/app_info.cpp`.
+- A local object-symbol check confirmed `apfs_diagnostic_exporter.o` no longer exports a public `isLikelyStoreV2GroupDirectoryName` symbol.
+- Windows/MSVC validation remains required.
+
 # V1.0.27 Process and GUI SQLite Hardening
 
 V1.0.27 is a narrow hardening release after V1.0.26.1 built successfully and the macOS AFF4/APFS thin ZIP was generated and reviewed.
@@ -214,3 +230,9 @@ V0_9_60 restores AFF4/APFS image and Raw IMG/DD image choices in the GUI source-
 - Added shared GUI view/export helper module (`src/gui/gui_view_helpers.h/.cpp`) to remove duplicated SQL/view helper logic between the Win32 GUI and `GuiExportWorker`.
 - No APFS traversal, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.
 - Windows/MSVC validation is pending.
+
+## V1.0.28.1
+
+- Moved main APFS/AFF4 diagnostic/report writer families from `app_runner.cpp` into `apfs_diagnostic_exporter.cpp`.
+- Expanded `apfs_diagnostic_exporter.h` with typed writer declarations.
+- Kept APFS traversal, Store-V2 parsing, iOS parsing, SQLite schema, and GUI behavior unchanged.
