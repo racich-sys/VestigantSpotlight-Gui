@@ -322,13 +322,24 @@ void upgradeCaseSchemaForGuiNoThrow(const std::wstring& dbPath) {
 
 void ensureInvestigatorUiSchemaNoThrow(sqlite3* db);
 
+int guiSqliteBusyRetryHandler(void*, int count) {
+    if (count > 50) return 0;
+    Sleep(100);
+    return 1;
+}
+
+void configureGuiSqliteConnection(sqlite3* db) {
+    if (!db) return;
+    sqlite3_busy_handler(db, guiSqliteBusyRetryHandler, nullptr);
+    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+}
+
 class ReadOnlyDb {
 public:
     explicit ReadOnlyDb(const std::wstring& path) {
         const std::string p = narrow(path);
         if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
-            sqlite3_busy_timeout(db_, 30000);
-            sqlite3_exec(db_, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+            configureGuiSqliteConnection(db_);
             ensureInvestigatorUiSchemaNoThrow(db_);
             return;
         }
@@ -339,8 +350,7 @@ public:
             db_ = nullptr;
             throw std::runtime_error("Unable to open case database: " + msg);
         }
-        sqlite3_busy_timeout(db_, 30000);
-        sqlite3_exec(db_, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+        configureGuiSqliteConnection(db_);
     }
     ~ReadOnlyDb() { if (db_) sqlite3_close_v2(db_); }
     sqlite3* get() const { return db_; }

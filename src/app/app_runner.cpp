@@ -90,10 +90,27 @@ std::wstring utf8ToWideCommand(const std::string& s) {
 
 constexpr DWORD kExternalProcessTimeoutMs = 12UL * 60UL * 60UL * 1000UL;
 
-int waitForProcessWithTimeout(HANDLE processHandle) {
+HANDLE createKillOnCloseJobObject() {
+    HANDLE jobHandle = CreateJobObjectW(nullptr, nullptr);
+    if (!jobHandle) return nullptr;
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+        CloseHandle(jobHandle);
+        return nullptr;
+    }
+    return jobHandle;
+}
+
+int waitForProcessWithTimeout(HANDLE processHandle, HANDLE jobHandle) {
     const DWORD waitResult = WaitForSingleObject(processHandle, kExternalProcessTimeoutMs);
     if (waitResult == WAIT_TIMEOUT) {
-        TerminateProcess(processHandle, 0xEE00U);
+        if (jobHandle) {
+            TerminateJobObject(jobHandle, 0xEE00U);
+        } else {
+            TerminateProcess(processHandle, 0xEE00U);
+        }
         return -2;
     }
     if (waitResult != WAIT_OBJECT_0) {
@@ -115,23 +132,38 @@ int runShellCommandNoWindow(const std::string& command) {
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
+    HANDLE jobHandle = createKillOnCloseJobObject();
+    const DWORD creationFlags = CREATE_NO_WINDOW | (jobHandle ? CREATE_SUSPENDED : 0);
+
     PROCESS_INFORMATION pi{};
     BOOL ok = CreateProcessW(nullptr,
                              mutableCmd.data(),
                              nullptr,
                              nullptr,
                              FALSE,
-                             CREATE_NO_WINDOW,
+                             creationFlags,
                              nullptr,
                              nullptr,
                              &si,
                              &pi);
     if (!ok) {
-        return static_cast<int>(GetLastError() ? GetLastError() : 1);
+        const DWORD err = GetLastError();
+        if (jobHandle) CloseHandle(jobHandle);
+        return static_cast<int>(err ? err : 1);
     }
-    const int exitCode = waitForProcessWithTimeout(pi.hProcess);
+
+    if (jobHandle) {
+        if (!AssignProcessToJobObject(jobHandle, pi.hProcess)) {
+            CloseHandle(jobHandle);
+            jobHandle = nullptr;
+        }
+        ResumeThread(pi.hThread);
+    }
+
+    const int exitCode = waitForProcessWithTimeout(pi.hProcess, jobHandle);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+    if (jobHandle) CloseHandle(jobHandle);
     return exitCode;
 }
 #else
@@ -278,25 +310,39 @@ int runProcessNoWindowRedirected(const std::wstring& commandLine, const fs::path
     si.hStdError = logHandle;
     si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 
+    HANDLE jobHandle = createKillOnCloseJobObject();
+    const DWORD creationFlags = CREATE_NO_WINDOW | (jobHandle ? CREATE_SUSPENDED : 0);
+
     PROCESS_INFORMATION pi{};
     BOOL ok = CreateProcessW(nullptr,
                              mutableCmd.data(),
                              nullptr,
                              nullptr,
                              TRUE,
-                             CREATE_NO_WINDOW,
+                             creationFlags,
                              nullptr,
                              nullptr,
                              &si,
                              &pi);
     if (!ok) {
         const DWORD err = GetLastError();
+        if (jobHandle) CloseHandle(jobHandle);
         CloseHandle(logHandle);
         return static_cast<int>(err ? err : 1);
     }
-    const int exitCode = waitForProcessWithTimeout(pi.hProcess);
+
+    if (jobHandle) {
+        if (!AssignProcessToJobObject(jobHandle, pi.hProcess)) {
+            CloseHandle(jobHandle);
+            jobHandle = nullptr;
+        }
+        ResumeThread(pi.hThread);
+    }
+
+    const int exitCode = waitForProcessWithTimeout(pi.hProcess, jobHandle);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+    if (jobHandle) CloseHandle(jobHandle);
     CloseHandle(logHandle);
     return exitCode;
 }

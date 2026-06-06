@@ -8,6 +8,8 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <chrono>
+#include <thread>
 
 namespace vestigant::spotlight {
 namespace {
@@ -29,6 +31,19 @@ std::wstring widenAscii(const std::string& s) {
     return out;
 }
 
+
+int exportSqliteBusyRetryHandler(void*, int count) {
+    if (count > 50) return 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    return 1;
+}
+
+void configureExportSqliteConnection(sqlite3* db) {
+    if (!db) return;
+    sqlite3_busy_handler(db, exportSqliteBusyRetryHandler, nullptr);
+    sqlite3_exec(db, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+}
+
 std::string csvEscape(const std::string& s) {
     const bool quote = s.find_first_of(",\r\n\"") != std::string::npos;
     if (!quote) return s;
@@ -48,8 +63,7 @@ public:
             db_ = nullptr;
             throw std::runtime_error("Unable to open case database for export: " + msg);
         }
-        sqlite3_busy_timeout(db_, 30000);
-        sqlite3_exec(db_, "PRAGMA temp_store=MEMORY; PRAGMA cache_size=-65536;", nullptr, nullptr, nullptr);
+        configureExportSqliteConnection(db_);
     }
     ~ReadOnlyExportDb() { if (db_) sqlite3_close_v2(db_); }
     sqlite3* get() const { return db_; }

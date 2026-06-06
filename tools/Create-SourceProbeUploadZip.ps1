@@ -26,6 +26,27 @@ function Test-ThinUploadDeniedRelativeName {
     return $ThinUploadDeniedLeafNames.ContainsKey($leaf.ToLowerInvariant())
 }
 
+
+function Assert-ThinUploadZipDoesNotContainDeniedNames {
+    param([Parameter(Mandatory=$true)][string]$ZipPath)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $bad = New-Object System.Collections.Generic.List[string]
+        foreach ($entry in $zip.Entries) {
+            if (Test-ThinUploadDeniedRelativeName -RelativeName $entry.FullName) {
+                $bad.Add($entry.FullName) | Out-Null
+            }
+        }
+        if ($bad.Count -gt 0) {
+            throw "Thin upload ZIP contains denied raw files: $($bad -join ', ')"
+        }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
 function Get-RelativePathForThinInventory {
     param(
         [Parameter(Mandatory=$true)][string]$Root,
@@ -319,6 +340,8 @@ Compress-Archive -Path (Join-Path $UploadRoot "*") -DestinationPath $ZipPath -Fo
 if (!(Test-Path -LiteralPath $ZipPath)) {
     throw "Compress-Archive did not create: $ZipPath"
 }
+
+Assert-ThinUploadZipDoesNotContainDeniedNames -ZipPath $ZipPath
 
 Write-Host "Created upload package: $ZipPath"
 Get-Item -LiteralPath $ZipPath | Select-Object FullName, Length

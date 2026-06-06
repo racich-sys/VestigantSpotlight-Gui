@@ -1,4 +1,4 @@
-# V1.0.26.1 Validation Notes
+# V1.0.27 Validation Notes
 
 ## Baseline reviewed
 
@@ -19,7 +19,7 @@ Get-RelativePathForThinInventory : Cannot convert value "\\" to type "System.Cha
 - Replaced relative-path trimming with a `System.Uri.MakeRelativeUri` implementation compatible with Windows PowerShell 5.1.
 - Reused the helper for `ExtractedSpotlight` upload-relative paths.
 - Changed reader-tools inventory output to relative paths.
-- Added `scripts/Package-V1_0_26_1-macOS-AFF4-ThinFromExistingCase.ps1` so the existing completed V1.0.26 case can be packaged without rerunning the AFF4 probe.
+- Added `scripts/Package-V1_0_27-macOS-AFF4-ThinFromExistingCase.ps1` so the existing completed V1.0.26 case can be packaged without rerunning the AFF4 probe.
 - Added continuing-chat handoff, roadmap checklist, and suggestions/fixes tracker files under `docs/`.
 
 ## Local validation performed
@@ -31,7 +31,7 @@ Get-RelativePathForThinInventory : Cannot convert value "\\" to type "System.Cha
 
 ## Pending validation
 
-- Windows/MSVC V1.0.26.1 build.
+- Windows/MSVC V1.0.27 build.
 - Execute the packaging-only wrapper against the existing V1.0.26 case output.
-- Upload and review `Upload_Thin_MacOS_AFF4_V1_0_26_1.zip`.
+- Upload and review `Upload_Thin_MacOS_AFF4_V1_0_27.zip`.
 - Verify generated thin ZIP excludes denied raw logs and inventories.

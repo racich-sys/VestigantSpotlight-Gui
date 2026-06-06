@@ -5,9 +5,11 @@
 - [x] V1.0.24.1: Windows/MSVC build passed after GUI helper ambiguity hotfix.
 - [x] V1.0.25: Windows/MSVC build passed.
 - [x] V1.0.26: Windows/MSVC build passed and reported `Vestigant Spotlight v1.0.26`.
-- [ ] V1.0.26.1: Windows/MSVC build pending.
-- [ ] V1.0.26.1: Packaging-only thin ZIP from existing V1.0.26 AFF4/APFS case pending.
-- [ ] V1.0.26.1: Verify thin ZIP excludes denied raw logs and inventories.
+- [x] V1.0.26.1: Windows/MSVC build passed and reported `Vestigant Spotlight v1.0.26.1`.
+- [x] V1.0.26.1: macOS AFF4/APFS thin ZIP generated and reviewed.
+- [x] V1.0.26.1: Thin ZIP excludes denied raw logs and inventories.
+- [ ] V1.0.27: Windows/MSVC build pending.
+- [ ] V1.0.27: macOS AFF4/APFS thin ZIP pending.
 
 ## Thin upload / redaction
 
@@ -15,9 +17,9 @@
 - [x] V1.0.25: Dynamic top-level `exports/*.csv` copying added.
 - [x] V1.0.26: Added deny-list policy to in-app and standalone thin-upload helper.
 - [x] V1.0.26: Converted case/additional inventories to relative paths.
-- [x] V1.0.26.1: Fixed Windows PowerShell `[char]'\\'` packaging crash.
-- [x] V1.0.26.1: Added packaging-only wrapper for an already-completed AFF4/APFS case.
-- [ ] Add generated-ZIP deny-list self-check.
+- [x] V1.0.27: Fixed Windows PowerShell `[char]'\\'` packaging crash.
+- [x] V1.0.27: Added packaging-only wrapper for an already-completed AFF4/APFS case.
+- [x] V1.0.27: Add generated-ZIP deny-list self-check.
 - [ ] Decide whether `VestigantSpotlight.log` should be full, tail-only by default, or redacted summary-only.
 
 ## GUI review and export
@@ -48,6 +50,8 @@
 
 ## Performance and stability
 
+- [x] V1.0.27: Add Win32 Job Object wrapping for hidden external process trees.
+- [x] V1.0.27: Add bounded SQLite busy retry handling for GUI review/export read connections.
 - [x] V1.0.25: Faster CSV row counting via binary chunk newline count.
 - [x] V1.0.25: Safer iOS app database staging path normalization.
 - [x] V1.0.26: Hidden process timeout added.
@@ -57,7 +61,7 @@
 
 ## Documentation / continuity
 
-- [x] V1.0.26.1: Added `docs/CONTINUATION_HANDOFF.md`.
-- [x] V1.0.26.1: Added `docs/ROADMAP_CHECKLIST.md`.
-- [x] V1.0.26.1: Added `docs/SUGGESTIONS_AND_FIXES_TRACKER.md`.
+- [x] V1.0.27: Added `docs/CONTINUATION_HANDOFF.md`.
+- [x] V1.0.27: Added `docs/ROADMAP_CHECKLIST.md`.
+- [x] V1.0.27: Added `docs/SUGGESTIONS_AND_FIXES_TRACKER.md`.
 - [ ] Update these three files in every future package.

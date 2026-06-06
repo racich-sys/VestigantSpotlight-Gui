@@ -1,10 +1,10 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_0_26_1",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_0_27",
   [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_AFF4_V1_0_26",
   [string]$ReaderToolsRoot = "T:\VestigantReaderTools\aff4-cpp-lite",
   [string]$ExternalCompareOutRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_26_ExternalCompare",
-  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_26_1.zip",
-  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_26_1_UploadWork",
+  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_27.zip",
+  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_27_UploadWork",
   [switch]$IncludeLogsTailOnly,
   [switch]$DiagnosticOutputs
 )
