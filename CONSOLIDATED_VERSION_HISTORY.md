@@ -1,9 +1,10 @@
-# V1.0.23
+# V1.0.24.1
 
-- Added `src/parsers/apfs_diagnostic_models.h` as the shared APFS/AFF4 diagnostic row-model header.
-- Moved APFS diagnostic row/summary structs out of `src/app/app_runner.cpp` without changing extraction, Store-V2 parsing, iOS parsing, GUI view behavior, Apple/lzfse behavior, or schema.
-- Kept diagnostic CSV writer bodies in `app_runner.cpp` for a narrow, verifiable transition step before moving writer implementations.
-- Updated V1.0.23 build/launch/AFF4 wrapper scripts.
+- Fixed the V1.0.24 Windows/MSVC `C2668` ambiguous `buildWhere` compile failure in `src/gui/win32_gui.cpp`.
+- Removed the stale local `buildWhere` wrapper left behind after creating `src/gui/gui_view_helpers.h/.cpp`.
+- Explicitly routed review-page SQL `WHERE` assembly through the shared `vestigant::spotlight::buildWhere(...)` helper using captured filter state.
+- No APFS/AFF4 traversal, Store-V2 parsing, iOS parsing, schema, GUI views, or diagnostic writer behavior was intentionally changed.
+- Updated V1.0.24.1 build/launch/AFF4 wrapper scripts.
 
 # V1.0.18
 

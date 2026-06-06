@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 1.0.23 LANGUAGES C CXX)
+project(VestigantSpotlightInv VERSION 1.0.24.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,7 +71,7 @@ add_executable(VestigantSpotlightTests tests/main.cpp)
 target_link_libraries(VestigantSpotlightTests PRIVATE vestigant_spotlight_core)
 
 if(WIN32)
-  add_executable(VestigantSpotlight WIN32 src/gui/win32_gui.cpp src/gui/view_registry.cpp src/gui/gui_export_worker.cpp)
+  add_executable(VestigantSpotlight WIN32 src/gui/win32_gui.cpp src/gui/view_registry.cpp src/gui/gui_view_helpers.cpp src/gui/gui_export_worker.cpp)
   target_link_libraries(VestigantSpotlight PRIVATE vestigant_spotlight_core comctl32 shell32 ole32 user32 comdlg32 gdi32)
   add_custom_command(TARGET VestigantSpotlight POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/resources $<TARGET_FILE_DIR:VestigantSpotlight>/resources)

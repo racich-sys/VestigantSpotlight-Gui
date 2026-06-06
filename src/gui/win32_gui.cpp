@@ -8,6 +8,7 @@
 #include "db/case_db.h"
 #include "gui/view_registry.h"
 #include "gui/gui_export_worker.h"
+#include "gui/gui_view_helpers.h"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -777,51 +778,10 @@ void moveSelectedViewInCustom(int delta) {
     saveCurrentVisibleViewsAsCustom();
 }
 
-std::string sqlColumns(const ViewSpec& v) {
-    std::string out;
-    for (size_t i = 0; i < v.columns.size(); ++i) {
-        if (i) out += ",";
-        out += v.columns[i];
-    }
-    return out;
-}
-std::string buildWhere(const ViewSpec& v, const std::string& search) {
-    std::vector<std::string> clauses;
-    if (!search.empty() && !v.searchColumns.empty()) {
-        std::string q = "(";
-        for (size_t i = 0; i < v.searchColumns.size(); ++i) {
-            if (i) q += " OR ";
-            q += "COALESCE(CAST(";
-            q += v.searchColumns[i];
-            q += " AS TEXT),'') LIKE ?";
-        }
-        q += ")";
-        clauses.push_back(q);
-    }
-    if (gFilterColumn >= 0 && gFilterColumn < static_cast<int>(v.columns.size()) && !gFilterValue.empty()) {
-        std::string q = "COALESCE(CAST(";
-        q += v.columns[static_cast<size_t>(gFilterColumn)];
-        q += " AS TEXT),'') LIKE ?";
-        clauses.push_back(q);
-    }
-    if (clauses.empty()) return "";
-    std::string where = " WHERE ";
-    for (size_t i = 0; i < clauses.size(); ++i) {
-        if (i) where += " AND ";
-        where += clauses[i];
-    }
-    return where;
-}
 void bindSearch(sqlite3_stmt* st, const ViewSpec& v, const std::string& search, int& index) {
-    if (!search.empty()) {
-        std::string pattern = "%" + search + "%";
-        for (size_t i = 0; i < v.searchColumns.size(); ++i) sqlite3_bind_text(st, index++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-    }
-    if (gFilterColumn >= 0 && gFilterColumn < static_cast<int>(v.columns.size()) && !gFilterValue.empty()) {
-        std::string pattern = "%" + gFilterValue + "%";
-        sqlite3_bind_text(st, index++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-    }
+    vestigant::spotlight::bindViewSearch(st, v, search, gFilterColumn, gFilterValue, index);
 }
+
 std::string checkedIdListSql() {
     if (gCheckedArtifactIds.empty()) return "";
     std::string ids;
@@ -1087,60 +1047,8 @@ LRESULT CALLBACK ReviewViewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPAR
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-int viewColumnIndex(const ViewSpec& v, const char* columnName) {
-    for (size_t i = 0; i < v.columns.size(); ++i) {
-        if (std::string(v.columns[i]) == columnName) return static_cast<int>(i);
-    }
-    return -1;
-}
-std::string stmtText(sqlite3_stmt* st, int col) {
-    if (col < 0 || col >= sqlite3_column_count(st)) return "";
-    const unsigned char* raw = sqlite3_column_text(st, col);
-    return raw ? reinterpret_cast<const char*>(raw) : "";
-}
-std::string resolveArtifactIdForVisibleRow(sqlite3* db, const ViewSpec& v, sqlite3_stmt* st) {
-    int artifactCol = viewColumnIndex(v, "artifact_id");
-    if (artifactCol >= 0) {
-        std::string id = stmtText(st, artifactCol);
-        if (!id.empty()) return id;
-    }
-    int storeCol = viewColumnIndex(v, "store_guid");
-    int inodeCol = viewColumnIndex(v, "inode_num");
-    if (inodeCol < 0) inodeCol = viewColumnIndex(v, "child_inode_num");
-    if (inodeCol < 0) return "";
-    const std::string storeGuid = storeCol >= 0 ? stmtText(st, storeCol) : "";
-    const std::string inode = stmtText(st, inodeCol);
-    if (inode.empty()) return "";
-    sqlite3_stmt* q = nullptr;
-    const char* sqlWithStore = "SELECT artifact_id FROM artifacts WHERE COALESCE(store_guid,'')=? AND CAST(inode_num AS TEXT)=? ORDER BY artifact_id LIMIT 1";
-    const char* sqlNoStore = "SELECT artifact_id FROM artifacts WHERE CAST(inode_num AS TEXT)=? ORDER BY artifact_id LIMIT 1";
-    const char* sql = storeGuid.empty() ? sqlNoStore : sqlWithStore;
-    if (sqlite3_prepare_v2(db, sql, -1, &q, nullptr) != SQLITE_OK) return "";
-    int b = 1;
-    if (!storeGuid.empty()) sqlite3_bind_text(q, b++, storeGuid.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(q, b++, inode.c_str(), -1, SQLITE_TRANSIENT);
-    std::string id;
-    if (sqlite3_step(q) == SQLITE_ROW) id = stmtText(q, 0);
-    sqlite3_finalize(q);
-    return id;
-}
 std::wstring tagsForArtifact(sqlite3* db, const std::string& artifactId) {
-    if (artifactId.empty()) return L"";
-    sqlite3_stmt* st = nullptr;
-    const char* sql =
-        "SELECT GROUP_CONCAT(tag_name, '; ') FROM ("
-        "SELECT it.tag_name FROM artifact_tags at "
-        "JOIN investigator_tags it ON it.tag_id=at.tag_id "
-        "WHERE at.artifact_id=? ORDER BY lower(it.tag_name))";
-    if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) return L"";
-    sqlite3_bind_int64(st, 1, std::strtoll(artifactId.c_str(), nullptr, 10));
-    std::wstring out;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        const unsigned char* raw = sqlite3_column_text(st, 0);
-        if (raw) out = widen(reinterpret_cast<const char*>(raw));
-    }
-    sqlite3_finalize(st);
-    return out;
+    return widen(vestigant::spotlight::tagsForArtifact(db, artifactId));
 }
 
 std::map<std::string, std::wstring> tagsForArtifacts(sqlite3* db, const std::vector<std::string>& artifactIds) {
@@ -1704,7 +1612,7 @@ void loadReviewPage() {
     const int requestedPage = gCurrentPage;
     const int capturedFilterColumn = gFilterColumn;
     const std::string capturedFilterValue = gFilterValue;
-    const std::string where = buildWhere(v, search);
+    const std::string where = vestigant::spotlight::buildWhere(v, search, capturedFilterColumn, capturedFilterValue);
     const std::string orderBy = reviewOrderByForPage(v, search, (capturedFilterColumn >= 0 && !capturedFilterValue.empty()));
     const std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + orderBy + " LIMIT ? OFFSET ?";
     const size_t checkedCountAtRequest = gCheckedArtifactIds.size();

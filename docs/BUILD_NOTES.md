@@ -18,3 +18,10 @@ Windows 10 or Windows 11 SDK
 ```
 
 Runtime database dependency uses Windows `winsqlite3.dll` via `winsqlite3.lib`.
+
+
+## V1.0.24.1
+
+- Added shared GUI view/export helper module (`src/gui/gui_view_helpers.h/.cpp`) to remove duplicated SQL/view helper logic between the Win32 GUI and `GuiExportWorker`.
+- No APFS traversal, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.
+- Windows/MSVC validation is pending.

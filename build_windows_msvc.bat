@@ -204,6 +204,10 @@ echo Compiling GUI view registry...
 cl %CXXFLAGS% /c "src\gui\view_registry.cpp" /Fo:"%OBJ%\view_registry.obj"
 if errorlevel 1 exit /b !errorlevel!
 
+echo Compiling GUI view helpers...
+cl %CXXFLAGS% /c "src\gui\gui_view_helpers.cpp" /Fo:"%OBJ%\gui_view_helpers.obj"
+if errorlevel 1 exit /b !errorlevel!
+
 echo Compiling GUI export worker...
 cl %CXXFLAGS% /c "src\gui\gui_export_worker.cpp" /Fo:"%OBJ%\gui_export_worker.obj"
 if errorlevel 1 exit /b !errorlevel!
@@ -215,6 +219,7 @@ if errorlevel 1 exit /b !errorlevel!
 (
   type "%COMMON_RSP%"
   echo "%OBJ%\view_registry.obj"
+  echo "%OBJ%\gui_view_helpers.obj"
   echo "%OBJ%\gui_export_worker.obj"
   echo "%OBJ%\win32_gui.obj"
   echo comctl32.lib
