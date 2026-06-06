@@ -185,7 +185,7 @@ std::optional<ApfsDirectoryEntry> ApfsAff4Reader::decodeDirectoryRecord(const No
     return entry;
 }
 
-// AFF4 stream inventory helpers moved from app_runner.cpp in V1.1.0.1.
+// AFF4 stream inventory helpers moved from app_runner.cpp in V1.1.1.
 
 namespace {
 
@@ -296,6 +296,11 @@ Aff4StreamInventoryResult runAff4StreamInventory(const RunOptions& opt,
                                                  Aff4ToolResolver toolResolver,
                                                  Aff4ExecutableRunner executableRunner,
                                                  Aff4ShellCommandRunner shellRunner) {
+#if defined(_WIN32)
+    (void)shellRunner; // Reserved for non-Windows shell-style AFF4 inventory fallbacks.
+#else
+    (void)executableRunner; // Windows uses direct process execution; non-Windows uses shellRunner.
+#endif
     Aff4StreamInventoryResult result;
     result.status = "NOT_AFF4_SOURCE";
     if (!isAff4SourcePathLocal(originalInput)) return result;

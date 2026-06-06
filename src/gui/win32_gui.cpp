@@ -60,6 +60,7 @@ HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
 void setDetailsPaneMessage(const std::wstring& message);
+void worker();
 HWND gTagList{}, gTagName{}, gTagNote{}, gTaggedList{}, gTagSummary{};
 HWND gIosStatus{}, gIosReadiness{}, gIosPlan{};
 std::vector<HWND> gProcessControls;
@@ -91,6 +92,9 @@ std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
 std::mutex gExportThreadsMutex;
 std::vector<std::thread> gExportThreads;
+std::mutex gIngestThreadMutex;
+std::thread gIngestThread;
+std::atomic_bool gIngestActive{false};
 HFONT gUiFont{};
 bool gCaseInfoDirty = false;
 bool gIosReviewMode = false;
@@ -1519,6 +1523,60 @@ void joinExportThreadsNoThrow() {
             if (t.joinable()) t.join();
         } catch (...) {}
     }
+}
+
+
+bool isIngestRunningNoThrow() {
+    try { return gIngestActive.load(); } catch (...) { return false; }
+}
+
+void joinCompletedIngestThreadNoThrow() {
+    try {
+        std::lock_guard<std::mutex> lock(gIngestThreadMutex);
+        if (!gIngestActive.load() && gIngestThread.joinable()) gIngestThread.join();
+    } catch (...) {}
+}
+
+void joinIngestThreadNoThrow() {
+    try {
+        std::lock_guard<std::mutex> lock(gIngestThreadMutex);
+        if (gIngestThread.joinable()) gIngestThread.join();
+        gIngestActive.store(false);
+    } catch (...) {}
+}
+
+bool startIngestThreadNoThrow(HWND owner) {
+    try {
+        std::lock_guard<std::mutex> lock(gIngestThreadMutex);
+        if (gIngestActive.load()) return false;
+        if (gIngestThread.joinable()) gIngestThread.join();
+        gIngestActive.store(true);
+        gIngestThread = std::thread([owner]() {
+            try {
+                worker();
+            } catch (const std::exception& ex) {
+                postLog(L"ERROR: ingest worker terminated unexpectedly: " + widen(ex.what()));
+                postStatus(L"ERROR: ingest worker terminated unexpectedly.");
+            } catch (...) {
+                postLog(L"ERROR: ingest worker terminated unexpectedly: unknown exception");
+                postStatus(L"ERROR: ingest worker terminated unexpectedly.");
+            }
+            gIngestActive.store(false);
+            if (!gShuttingDown.load() && owner && IsWindow(owner)) {
+                PostMessageW(owner, WM_SET_INGEST_STATUS, 0, reinterpret_cast<LPARAM>(new std::wstring(L"Ingest worker finished.")));
+            }
+        });
+        return true;
+    } catch (const std::exception& ex) {
+        gIngestActive.store(false);
+        postLog(L"ERROR starting ingest worker: " + widen(ex.what()));
+        postStatus(L"ERROR: could not start ingest worker.");
+    } catch (...) {
+        gIngestActive.store(false);
+        postLog(L"ERROR starting ingest worker: unknown exception");
+        postStatus(L"ERROR: could not start ingest worker.");
+    }
+    return false;
 }
 
 bool postExportResult(HWND owner, UINT msgId, bool ok, std::wstring message) {
@@ -3047,9 +3105,17 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             int srcType = gSourceType ? static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0)) : 0;
             if (srcType == 2) postLog(L"Selected source type: AFF4/APFS image (staged). The run will preserve/register the selected evidence and perform currently implemented image/readiness/probe workflow steps.");
             else if (srcType == 3) postLog(L"Selected source type: Raw IMG/DD image (staged). The run will preserve/register the selected evidence and perform currently implemented raw-image/readiness workflow steps.");
+            joinCompletedIngestThreadNoThrow();
+            if (isIngestRunningNoThrow()) {
+                postStatus(L"Ingest already running. Wait for the current run to finish before starting another.");
+                MessageBoxW(hwnd, L"An ingest/build worker is already running. Wait for it to finish before starting another run.", L"Vestigant Spotlight - Ingest Running", MB_OK | MB_ICONINFORMATION);
+                return 0;
+            }
             postProgress(0);
             postStatus(L"Queued: ingest worker starting.");
-            std::thread(worker).detach();
+            if (!startIngestThreadNoThrow(hwnd)) {
+                postStatus(L"ERROR: ingest worker could not be started.");
+            }
             return 0;
         }
         case ID_BROWSE_CASE: { auto p = browseSqlite(hwnd); if (!p.empty()) { setText(gCaseDbPath, p); size_t pos = p.find_last_of(L"\\/"); if (pos != std::wstring::npos) setText(gOut, p.substr(0, pos)); } return 0; }
@@ -3169,7 +3235,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

@@ -1,0 +1,29 @@
+V1.1.1 patch manifest
+
+Changed/added files expected in patch package:
+- VERSION
+- VERSION.txt
+- CMakeLists.txt
+- VERSION_HISTORY.md
+- V1_1_1_DELETED_FILES_MANIFEST.md
+- docs/CONSOLIDATED_VERSION_HISTORY.md
+- docs/CONTINUATION_HANDOFF.md
+- docs/ROADMAP_CHECKLIST.md
+- docs/SUGGESTIONS_AND_FIXES_TRACKER.md
+- docs/V1_1_1_EVIDENCE_INTAKE_AND_GUI_INGEST_THREAD.md
+- scripts/Build-V1_1_1.ps1
+- scripts/Launch-V1_1_1-GUI.ps1
+- scripts/Package-V1_1_1-macOS-AFF4-ThinFromExistingCase.ps1
+- scripts/Run-V1_1_1-macOS-AFF4-Probe-AndZip.ps1
+- scripts/Run-V1_1_1-macOS-AFF4-Probe-AndZip.txt
+- scripts/Initialize-GitHubRepo.ps1
+- scripts/New-ReleaseBranch.ps1
+- scripts/Sync-Version-To-GitRepo.ps1
+- src/app/app_runner.cpp
+- src/core/app_info.cpp
+- src/gui/win32_gui.cpp
+- src/ingest/evidence_intake.cpp
+- src/ingest/evidence_intake.h
+- src/parsers/apfs_aff4_reader.cpp
+- validation/V1_1_1_validation_notes.md
+- validation/V1_1_1_local_validation.log

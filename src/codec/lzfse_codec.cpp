@@ -74,7 +74,7 @@ LzfseDecodeResult decodeAppleLzfseOrLzvnChunk(const std::vector<unsigned char>& 
 #endif
 }
 
-// APFS decmpfs resource-fork reconstruction helpers moved from app_runner.cpp in V1.1.0.1.
+// APFS decmpfs resource-fork reconstruction helpers moved from app_runner.cpp in V1.1.1.
 std::uint32_t readBe32Bytes(const std::vector<unsigned char>& data, std::size_t off) {
     if (off + 4U > data.size()) throw std::runtime_error("readBe32 beyond buffer");
     return (static_cast<std::uint32_t>(data[off]) << 24U) |
