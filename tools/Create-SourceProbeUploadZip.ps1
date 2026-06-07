@@ -103,7 +103,7 @@ function Copy-FirstExistingCaseFile {
         if (Test-Path -LiteralPath $p) {
             $item = Get-Item -LiteralPath $p -ErrorAction Stop
             $relForPolicy = $RelativeName.Replace('\\', '/')
-            if (($relForPolicy -like 'exports/*.csv') -and ($item.Length -gt $ThinUploadMaxDynamicExportCsvBytes)) {
+            if ((($relForPolicy -like 'exports/*.csv') -or ($relForPolicy -like 'exports/upload_samples/*')) -and ($item.Length -gt $ThinUploadMaxDynamicExportCsvBytes)) {
                 return $false
             }
 

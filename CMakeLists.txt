@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 1.1.4 LANGUAGES C CXX)
+project(VestigantSpotlightInv VERSION 1.1.7.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -43,6 +43,7 @@ set(CORE_SOURCES
   src/parsers/ios_app_db_parser.cpp
   src/parsers/apfs_volume_reader.cpp
   src/parsers/apfs_aff4_reader.cpp
+  src/parsers/aff4_probe_worker.cpp
   src/parsers/apfs_diagnostic_exporter.cpp
   src/codec/lzfse_codec.cpp
   src/enrich_sql/sqlite_enrichment.cpp

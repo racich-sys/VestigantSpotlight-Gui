@@ -1,3 +1,11 @@
+## V1.1.5.1
+
+- Propagated ingest cancellation into guarded AFF4 dynamic/direct probe entry points and selected expensive bounded loops.
+- Added case-directory writability preflight before normal logging/database setup.
+- Added thin-upload size/policy guard for `exports/upload_samples` in C++ and PowerShell packagers.
+- Changed focused iOS 7-Zip extraction log redirection to UTF-8 `Out-File`.
+- Wrapped APFS staged Store-V2 diagnostic sample exports in localized error handling.
+
 
 ## V1.1.4
 

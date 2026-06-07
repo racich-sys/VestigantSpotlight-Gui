@@ -2,6 +2,51 @@
 
 ## Current packaged version
 
+- Current source package: `VestigantSpotlightInv_V1_1_7_1.zip`
+- Version string: `1.1.7.1`
+- Most recently validated stable baseline: `V1.1.6.1` Windows/MSVC build + macOS AFF4/APFS thin output.
+- Latest generated version before this package: `V1.1.7`; Windows/MSVC failed because `aff4_probe_worker.cpp` needed helpers left in `app_runner.cpp`.
+- V1.1.7.1 fixes that build boundary and cleans source package layout.
+
+## First file to read in a new chat
+
+Read `docs/NEW_CHAT_CONTINUATION_GUIDE.md`, then this handoff.
+
+## User shorthand
+
+If a future request begins with `repeat`, review all uploaded/copied information, identify the newest source/build/thin evidence, continue to the next version, implement as many safe outstanding roadmap/suggestion items as possible, update the handoff/roadmap/suggestions tracker/workflow ledger, package artifacts, and provide concrete PowerShell commands.
+
+## Current V1.1.7.1 scope
+
+Implemented:
+
+- Worker-local helper boundary for moved AFF4 dynamic probe code:
+  - `shouldSkipLibAff4DynamicProbeForKnownBlockingLayout(...)`
+  - `findToolCandidate(...)`
+  - `lastWindowsErrorString(...)`
+- Source package cleanup:
+  - removed obsolete versioned scripts from `scripts/`;
+  - removed old root-level package manifests;
+  - preserved append-only version history under `docs/`.
+- Added/updated:
+  - `docs/NEW_CHAT_CONTINUATION_GUIDE.md`
+  - `docs/SOURCE_PACKAGE_CLEANUP_POLICY.md`
+  - `docs/FULL_VERSION_HISTORY.md`
+  - `docs/VERSION_HISTORY_APPEND_ONLY_POLICY.md`
+
+## Next validation needed
+
+1. Build V1.1.7.1 on Windows/MSVC.
+2. Upload `V1_1_7_1_build.log`.
+3. Run macOS AFF4/APFS thin regression.
+4. Upload `Upload_Thin_MacOS_AFF4_V1_1_7_1.zip`.
+
+---
+
+# Spotlight2 / Vestigant Spotlight Continuation Handoff
+
+## Current packaged version
+
 - Current source package: `VestigantSpotlightInv_V1_1_2.zip`
 - Version string: `1.1.2`
 - Base version reviewed before this package: `V1.1.2`
@@ -90,3 +135,32 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_2\scripts
 ## V1.1.4 handoff update
 
 Baseline reviewed: V1.1.3 Windows/MSVC build and macOS AFF4/APFS thin ZIP. V1.1.4 is a repeat-cycle hardening package. It does not change live APFS extraction. It adds bplist offset-table/top-object-offset metadata, safer GUI checked-artifact snapshots, and a stricter atomic ingest launch gate. The next large target remains `writeAff4CppLiteDynamicLoadProbe` extraction to an `aff4_probe_worker` boundary, but this should be done as a dedicated version because it is the highest-risk remaining refactor.
+
+
+## V1.1.5 handoff update
+
+Baseline reviewed: V1.1.4 Windows/MSVC build and macOS AFF4/APFS thin ZIP. V1.1.5 is a repeat-cycle hardening package. It propagates cancellation into AFF4 dynamic/direct probes, adds case-directory writability preflight, enforces thin-upload size policy for upload samples, writes 7-Zip extraction logs as UTF-8, and catches APFS staged diagnostic sample export failures locally. Live APFS extraction, Store-V2 parsing, iOS parser semantics, and schema are unchanged.
+
+Next high-risk target remains extracting the dynamic AFF4/APFS probe monolith into an `aff4_probe_worker` boundary. Do this only as a dedicated version with repeated build validation.
+
+## V1.1.5.1 handoff update
+
+V1.1.5 failed MSVC compilation because a cancellation check returned `false` inside an `ApfsOmapTargetResolution`-returning lambda. V1.1.5.1 fixes only that typed return. Next step: build V1.1.5.1 on Windows/MSVC and run the macOS AFF4/APFS thin wrapper.
+
+## V1.1.6 handoff update
+
+V1.1.6 is a partial but physical Tracker #17 modularization. It moves the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp` and updates build files. The libaff4 dynamic-load probe remains in `app_runner.cpp`; see `docs/WORKFLOW_LEDGER.md` for the dependency finding and next split plan.
+
+
+## V1.1.6.1 build-hotfix note
+
+V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp`, but the MSVC build exposed a Windows-only missing helper: `wideProcessPath`. V1.1.6.1 adds a local Windows helper in the worker and corrects the versioned build script gate. This is recorded as a repeat-process pitfall: after moving code from `app_runner.cpp`, grep for Windows-only helper dependencies that Linux syntax checks cannot see.
+
+
+## V1.1.7 update
+
+- Baseline: validated V1.1.6.1.
+- Completed Tracker #17 major step: moved `writeAff4CppLiteDynamicLoadProbe(...)` from `app_runner.cpp` into `Aff4ProbeWorker::executeDynamicLoadProbe(...)` in `src/parsers/aff4_probe_worker.cpp`.
+- `writeAff4DirectMapReaderProbe(...)` had already been moved in V1.1.6; both large AFF4/APFS probe bodies now live in `aff4_probe_worker.cpp`.
+- Added cancellation checks into the shared APFS OMAP traversal helper so the direct-map and dynamic-load paths can stop during B-tree traversal.
+- Remaining related work: compare V1.1.7 Windows build and thin output against V1.1.6.1; then clean duplicated/unused helper functions and continue moving staged probe workers only after parity is confirmed.

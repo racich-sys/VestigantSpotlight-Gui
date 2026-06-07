@@ -116,6 +116,7 @@ REM ---------------------------------------------------------------------------
   echo src\parsers\ios_app_db_parser.cpp^|ios_app_db_parser.obj
   echo src\parsers\apfs_volume_reader.cpp^|apfs_volume_reader.obj
   echo src\parsers\apfs_aff4_reader.cpp^|apfs_aff4_reader.obj
+  echo src\parsers\aff4_probe_worker.cpp^|aff4_probe_worker.obj
   echo src\parsers\apfs_diagnostic_exporter.cpp^|apfs_diagnostic_exporter.obj
   echo src\codec\lzfse_codec.cpp^|lzfse_codec.obj
   echo src\enrich_sql\sqlite_enrichment.cpp^|sqlite_enrichment.obj

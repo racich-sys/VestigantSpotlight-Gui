@@ -77,3 +77,33 @@ This file tracks review suggestions, proposed fixes, implementation status, and 
 | 61 | GUI checked-artifact/export request construction still read mutable checked-state globals directly. | Add checked-state snapshot helpers and use snapshots when constructing review/export requests. | [x] Implemented | V1.1.4 | Compile validation pending; full window-state encapsulation remains future work. |
 | 62 | Rapid repeated Build / Process Case clicks should be rejected before a second ingest worker can be created. | Use `gIngestActive.compare_exchange_strong` in the guarded ingest launcher. | [x] Implemented | V1.1.4 | Windows GUI runtime validation pending. |
 | 63 | `writeAff4CppLiteDynamicLoadProbe` remains the largest monolith. | Extract through an `aff4_probe_worker` boundary only after a dedicated compile/test pass. | [ ] Pending | Not yet | Highest-risk remaining modularization item. |
+
+| 64 | Cancel Ingest did not reach deep AFF4/APFS probes. | Pass the existing cancellation token into AFF4 dynamic/direct probe entry points and check it in selected bounded loops. | [x] Implemented | V1.1.5 | Local syntax validation passed; Windows long-run cancellation behavior pending. |
+| 65 | Thin upload recursively copied `exports/upload_samples` without the dynamic export size guard. | Replace recursive copy with explicit per-file policy/size-guard handling; mirror nested policy in the standalone PowerShell packager. | [x] Implemented | V1.1.5 | Thin ZIP validation pending. |
+| 66 | Focused iOS 7-Zip extraction logs used default PowerShell redirection encoding. | Pipe extraction output to `Out-File -Encoding UTF8` for targeted app DB and focused CoreSpotlight extraction logs. | [x] Implemented | V1.1.5 | Windows iOS ZIP runtime validation pending. |
+| 67 | APFS staged Store-V2 diagnostic sample CSV exports could abort final probe summary writing. | Wrap diagnostic sample export group in localized try/catch and record run status on failure. | [x] Implemented | V1.1.5 | Local syntax validation passed. |
+| 68 | Case directory writability was not explicitly checked before logger/database setup. | Add a small preflight write/remove probe before starting normal run status/logging. | [x] Implemented | V1.1.5 | Windows read-only path validation pending. |
+| 69 | `writeAff4CppLiteDynamicLoadProbe` remains the main app-runner monolith. | Extract to `aff4_probe_worker.cpp` as a dedicated high-risk version; do not combine with live APFS traversal changes. | [ ] Pending | Not yet | Highest-priority modularization target after V1.1.5 validates. |
+| 70 | V1.1.5 cancellation branch returned `false` from an `ApfsOmapTargetResolution` lambda. | Return populated cancellation-status `ApfsOmapTargetResolution out` instead. | [x] Implemented | V1.1.5.1 | Build hotfix; Windows/MSVC validation pending. |
+
+| 71 | Tracker #17: `writeAff4DirectMapReaderProbe` remained inside `app_runner.cpp`. | Move the direct-map probe body into `src/parsers/aff4_probe_worker.cpp` and delegate through `Aff4ProbeWorker`. | [x] Implemented | V1.1.6 | Linux syntax/build/self-test passed locally; Windows/MSVC pending. |
+| 72 | Tracker #17: `writeAff4CppLiteDynamicLoadProbe` remains inside `app_runner.cpp`. | Perform separate dependency-boundary pass before physical extraction to avoid duplicating app-runner-local probe helpers unsafely. | [ ] Deferred | Pending | Direct-map split was completed first; dynamic-load function requires a larger worker context. |
+
+
+## V1.1.6.1 build-hotfix note
+
+V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp`, but the MSVC build exposed a Windows-only missing helper: `wideProcessPath`. V1.1.6.1 adds a local Windows helper in the worker and corrects the versioned build script gate. This is recorded as a repeat-process pitfall: after moving code from `app_runner.cpp`, grep for Windows-only helper dependencies that Linux syntax checks cannot see.
+
+
+## V1.1.7 update
+
+- Baseline: validated V1.1.6.1.
+- Completed Tracker #17 major step: moved `writeAff4CppLiteDynamicLoadProbe(...)` from `app_runner.cpp` into `Aff4ProbeWorker::executeDynamicLoadProbe(...)` in `src/parsers/aff4_probe_worker.cpp`.
+- `writeAff4DirectMapReaderProbe(...)` had already been moved in V1.1.6; both large AFF4/APFS probe bodies now live in `aff4_probe_worker.cpp`.
+- Added cancellation checks into the shared APFS OMAP traversal helper so the direct-map and dynamic-load paths can stop during B-tree traversal.
+- Remaining related work: compare V1.1.7 Windows build and thin output against V1.1.6.1; then clean duplicated/unused helper functions and continue moving staged probe workers only after parity is confirmed.
+
+| 40 | V1.1.7 dynamic AFF4/APFS probe relocation left helper functions in `app_runner.cpp`, causing Windows/MSVC missing identifier errors. | Add worker-local helper boundary for known blocking AFF4 layout detection, reader tool lookup, and Win32 error formatting. | [x] Implemented | V1.1.7.1 | Local C++ syntax checks passed; Windows/MSVC validation pending. |
+| 41 | Active source package contained many obsolete version-specific scripts and root-level package manifests. | Keep only current version scripts plus generic scripts; preserve history in append-only docs. | [x] Implemented | V1.1.7.1 | Package cleanup manifest records deleted files. |
+| 42 | Version history risked fragmentation/truncation. | Add `docs/FULL_VERSION_HISTORY.md` and append-only policy baseline from uploaded workflow/history docs. | [x] Implemented | V1.1.7.1 | Future packages must append to this history. |
+| 43 | New chat continuation still required reconstructing setup from chat history. | Add `docs/NEW_CHAT_CONTINUATION_GUIDE.md` with current paths, required external files, commands, and repeat workflow. | [x] Implemented | V1.1.7.1 | Use as first artifact in new chat. |

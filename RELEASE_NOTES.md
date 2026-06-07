@@ -1,3 +1,11 @@
+## V1.1.5.1
+
+- Propagated ingest cancellation into guarded AFF4 dynamic/direct probe entry points and selected expensive bounded loops.
+- Added case-directory writability preflight before normal logging/database setup.
+- Added thin-upload size/policy guard for `exports/upload_samples` in C++ and PowerShell packagers.
+- Changed focused iOS 7-Zip extraction log redirection to UTF-8 `Out-File`.
+- Wrapped APFS staged Store-V2 diagnostic sample exports in localized error handling.
+
 
 ## V1.1.4
 
@@ -60,3 +68,11 @@ V1.0.29 is a narrow stability and hardening release after V1.0.28.2 successfully
 ## Validation status
 
 Local syntax/configuration checks passed for the modified source files. Windows/MSVC build and runtime testing remain required.
+
+## V1.1.7.1
+
+- Build hotfix for V1.1.7 after Windows/MSVC exposed missing helper dependencies in `src/parsers/aff4_probe_worker.cpp`.
+- Added worker-local helper boundary for known blocking AFF4 layout detection, reader tool resolution, and Win32 error reporting.
+- Preserved both large AFF4/APFS probe bodies outside `app_runner.cpp`.
+- Cleaned active source package by removing obsolete version-specific scripts and root-level old package manifests.
+- Added append-only full version history baseline and new-chat continuation guide.

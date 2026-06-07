@@ -129,3 +129,61 @@
 - [ ] Extract dynamic AFF4/APFS probe monolith to `aff4_probe_worker.cpp`.
 - [ ] Implement APFS live absolute-path reconstruction only after comparator validation.
 - [ ] Implement full NSKeyedArchiver UID graph decode.
+
+
+## V1.1.5 repeat-cycle checklist
+
+- [x] Reviewed V1.1.4 build and macOS AFF4/APFS thin output before editing.
+- [x] Preserved live APFS/AFF4 extraction semantics and Store-V2 parsing behavior.
+- [x] Propagated ingest cancellation token into AFF4 dynamic/direct probe entry points.
+- [x] Added selected cancellation checks to expensive APFS/AFF4 bounded loops.
+- [x] Added case-directory writability preflight.
+- [x] Added thin-upload size guard for `exports/upload_samples` in C++ bundler.
+- [x] Added nested upload-samples size guard to standalone thin-upload PowerShell helper.
+- [x] Switched focused iOS 7-Zip extraction logs to UTF-8 `Out-File`.
+- [x] Wrapped staged Store-V2 diagnostic sample exports in localized try/catch.
+- [ ] Extract dynamic AFF4/APFS probe monolith to `aff4_probe_worker.cpp`.
+- [ ] Relocate full `stageZipEvidenceSource(...)` into EvidenceIntake.
+- [ ] Implement live APFS horizontal leaf traversal only after comparator validation.
+
+## V1.1.5.1 build-hotfix checklist
+
+- [x] Fix V1.1.5 MSVC C2440 return-type error.
+- [x] Preserve V1.1.5 forensic behavior and cancellation intent.
+- [x] Update workflow ledger/tracker so the return-type issue is not repeated.
+- [ ] Validate Windows/MSVC build.
+- [ ] Validate macOS AFF4/APFS thin run.
+
+## V1.1.6 roadmap checklist
+
+- [x] Add `src/parsers/aff4_probe_worker.h/.cpp`.
+- [x] Move `writeAff4DirectMapReaderProbe` body out of `app_runner.cpp`.
+- [x] Update app runner call sites to use `Aff4ProbeWorker::executeDirectMapReaderProbe`.
+- [x] Wire new module into CMake and Windows MSVC build lists.
+- [ ] Move `writeAff4CppLiteDynamicLoadProbe` out of `app_runner.cpp` after dependency boundary pass.
+
+
+## V1.1.6.1 build-hotfix note
+
+V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp`, but the MSVC build exposed a Windows-only missing helper: `wideProcessPath`. V1.1.6.1 adds a local Windows helper in the worker and corrects the versioned build script gate. This is recorded as a repeat-process pitfall: after moving code from `app_runner.cpp`, grep for Windows-only helper dependencies that Linux syntax checks cannot see.
+
+
+## V1.1.7 update
+
+- Baseline: validated V1.1.6.1.
+- Completed Tracker #17 major step: moved `writeAff4CppLiteDynamicLoadProbe(...)` from `app_runner.cpp` into `Aff4ProbeWorker::executeDynamicLoadProbe(...)` in `src/parsers/aff4_probe_worker.cpp`.
+- `writeAff4DirectMapReaderProbe(...)` had already been moved in V1.1.6; both large AFF4/APFS probe bodies now live in `aff4_probe_worker.cpp`.
+- Added cancellation checks into the shared APFS OMAP traversal helper so the direct-map and dynamic-load paths can stop during B-tree traversal.
+- Remaining related work: compare V1.1.7 Windows build and thin output against V1.1.6.1; then clean duplicated/unused helper functions and continue moving staged probe workers only after parity is confirmed.
+
+
+## V1.1.7.1 cleanup/build gate
+
+- [x] V1.1.7 Windows/MSVC failure diagnosed: missing helpers in `aff4_probe_worker.cpp`.
+- [x] V1.1.7.1 adds worker-local helper boundary for dynamic AFF4/APFS probe relocation.
+- [x] Obsolete old version-specific scripts removed from active `scripts/` directory.
+- [x] Old root-level patch/deletion manifests removed from active source root.
+- [x] Append-only full version history baseline added under `docs/`.
+- [x] New-chat continuation guide added.
+- [ ] V1.1.7.1 Windows/MSVC build validation pending.
+- [ ] V1.1.7.1 macOS AFF4/APFS thin validation pending.

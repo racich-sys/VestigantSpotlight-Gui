@@ -1,47 +1,62 @@
-# Vestigant Spotlight V0_9_60 Notes
+# Troubleshooting — V1.1.7.1
 
-V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
+## Build script not found
 
-Key changes:
-- The Case Information bottom log is now the live processing log. It clears at run start, timestamps messages, mirrors run/progress status, and emits periodic heartbeat messages while processing continues.
-- View loading now shows an explicit marquee progress indicator above the investigation grid and a loading message in the details pane so long SQLite view loads are not mistaken for hangs.
-- The V1 GUI source selector now exposes only fully implemented Folder and ZIP intake paths. AFF4/APFS and raw image support remain roadmap items and are not presented as clickable V1 options.
-- Legacy V7-only schema tables/indexes were removed from new case initialization.
-- CLI/operator self-test mode is deprecated; the automated test executable uses an internal automated self-test path.
-- Duplicate AFF4/APFS child/descendant root-tree probe output writers were consolidated into one traversal-output writer.
+Confirm the ZIP extracted to:
 
-Validation summary:
-- Linux CMake configure/build passed.
-- VestigantSpotlightTests passed.
-- C++20 syntax checks passed for modified non-Windows translation units.
-- Windows/MSVC GUI compile and runtime validation remain required.
-
-# Troubleshooting
-
-Current version: 0.9.60
-
-## Build fails before CLI/GUI link
-
-Upload the build log.  Recent MSVC-specific failure classes included oversized raw string literals (`C2026`) and GUI SQL helper scope mistakes.  V0_9_37 keeps raw-string static checks in validation and continues consolidating SQL/view ownership.
-
-## Run stalls or stops writing
-
-Collect state before rerunning:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "T:\VestigantSpotlightInv_V0_9_60\scripts\Collect-V0_9_60-DBBloat-State.ps1" `
-  -CaseRoot "Q:\SpotlightCase\TestiOS_WhatsApp_V0_9_60_ReusedCache" `
-  -OutZip "D:\Downloads\Upload_State_V0_9_37_NoWrites_Stopped_Check.zip" `
-  -StopVestigant
+```text
+T:\VestigantSpotlightInv_V1_1_7_1
 ```
 
-## Even-looking counts
+and that the source root contains:
 
-Check `exports/parser_limits_and_suppression_summary.csv`.  Native record count should be unlimited unless a max-record option is explicitly set.  Compact key/value and date counts are expected in normal iOS investigator mode.
+```text
+build_windows_msvc.bat
+build_windows_msvc_nocmake.bat
+scripts\Build-V1_1_7_1.ps1
+```
 
-## V0_9_60 - Windows MSVC batch-label build hotfix
+## Unexpected CLI version after build
 
-V0_9_60 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
+Open the relevant `scripts\Build-*.ps1` file and confirm the version gate matches the source package version. For V1.1.7.1 it must match:
 
-No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
+```text
+1.1.7.1
+```
 
+## Missing helper compile errors in `aff4_probe_worker.cpp`
+
+V1.1.7 moved the dynamic AFF4/APFS probe into `aff4_probe_worker.cpp`. V1.1.7.1 fixes the known missing helper errors for:
+
+```text
+shouldSkipLibAff4DynamicProbeForKnownBlockingLayout
+findToolCandidate
+lastWindowsErrorString
+```
+
+## Thin ZIP contains raw logs or inventories
+
+The thin upload should not contain raw full inventories or raw tool logs. Review:
+
+```text
+docs/THIN_UPLOAD_REVIEW_WORKFLOW.md
+```
+
+Denied examples include:
+
+```text
+aff4_stream_inventory_raw.txt
+ios_focused_zip_extract.log
+ios_focused_zip_extract_7z.log
+ios_focused_zip_extract.ps1
+ios_ffs_file_inventory.csv
+image_file_inventory.csv
+```
+
+## AFF4/APFS probe appears to hang
+
+Use the GUI Cancel Ingest button where available. V1.1.5 and later propagate cancellation into more AFF4/APFS loops, but some lower-level reader/tool calls may still need additional cancellation checkpoints.
+
+## New-chat continuation uncertainty
+
+Use `docs/NEW_CHAT_CONTINUATION_GUIDE.md`. It lists the current baseline, paths, required external files, and repeat-process expectations.
