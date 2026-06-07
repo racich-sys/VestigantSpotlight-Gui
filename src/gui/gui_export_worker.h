@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <functional>
 
 #include "gui/view_registry.h"
 
@@ -20,6 +21,7 @@ struct GuiViewExportRequest {
     int pageSize = 1000;
     std::set<long long> checkedArtifactIds;
     std::wstring outPath;
+    std::function<bool()> shouldCancel;
 };
 
 struct GuiExportResult {
@@ -36,11 +38,13 @@ public:
 
     static GuiExportResult exportCheckedArtifacts(const std::wstring& dbPath,
                                                   const std::vector<long long>& artifactIds,
-                                                  const std::wstring& outPath);
+                                                  const std::wstring& outPath,
+                                                  std::function<bool()> shouldCancel = {});
 
     static GuiExportResult exportTaggedArtifacts(const std::wstring& dbPath,
                                                  long long tagId,
-                                                 const std::wstring& outPath);
+                                                 const std::wstring& outPath,
+                                                 std::function<bool()> shouldCancel = {});
 };
 
 } // namespace vestigant::spotlight

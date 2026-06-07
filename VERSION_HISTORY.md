@@ -1,3 +1,11 @@
+## V1.1.3
+
+- Added GUI export-worker cancellation callbacks for shutdown-aware long CSV exports.
+- Added secure System32 RichEdit load/cleanup path.
+- Wrapped orphan source-row purge deletes in a single transaction.
+- Strengthened non-live APFS next-leaf iterator scaffolding for future comparator validation.
+- Updated workflow ledger, roadmap checklist, suggestions tracker, and handoff notes.
+
 ## V1.1.2
 
 - Added repeat-cycle workflow ledger.

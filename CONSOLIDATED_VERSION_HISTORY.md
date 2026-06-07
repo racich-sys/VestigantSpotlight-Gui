@@ -1,3 +1,7 @@
+## V1.1.3
+
+Repeat-cycle hardening: export cancellation callbacks, orphan purge transaction, secure RichEdit load, APFS iterator scaffolding update, and workflow ledger updates.
+
 ## V1.1.2
 
 - Added repeat-cycle workflow ledger.

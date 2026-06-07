@@ -3304,6 +3304,8 @@ fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir
         if (rc != 0) throw std::runtime_error("ZIP extraction failed. See log: " + pathString(logPath));
     }
 #else
+    (void)profile;
+    (void)iosFocusedUsed;
     std::string cmd = "unzip -q -o " + commandQuote(zipPath) + " -d " + commandQuote(stageRoot);
     log.info("ZIP source detected. Extracting to controlled staging folder before Store-V2 discovery: " + pathString(stageRoot));
     const int rc = runShellCommandNoWindow(cmd);
@@ -3335,18 +3337,34 @@ long long purgeOrphanSourceRows(CaseDatabase& db, const fs::path& caseDir, Logge
         "source_partition_probe"
     };
     long long total = 0;
-    for (const auto& table : tables) {
-        try {
-            const std::string sql = "DELETE FROM " + table + " WHERE source_id IS NOT NULL AND source_id<>'' AND source_id NOT IN (SELECT source_id FROM evidence_sources)";
-            db.exec(sql);
-            const long long changes = sqlite3_changes(db.raw());
-            if (changes > 0) {
-                total += changes;
-                log.info("Purged orphan source rows from " + table + ": " + std::to_string(changes));
+    bool transactionOpen = false;
+    try {
+        db.begin();
+        transactionOpen = true;
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to begin orphan source-row purge transaction; continuing with SQLite default behavior: ") + ex.what());
+    }
+    try {
+        for (const auto& table : tables) {
+            try {
+                const std::string sql = "DELETE FROM " + table + " WHERE source_id IS NOT NULL AND source_id<>'' AND source_id NOT IN (SELECT source_id FROM evidence_sources)";
+                db.exec(sql);
+                const long long changes = sqlite3_changes(db.raw());
+                if (changes > 0) {
+                    total += changes;
+                    log.info("Purged orphan source rows from " + table + ": " + std::to_string(changes));
+                }
+            } catch (const std::exception& ex) {
+                log.warn("Unable to purge orphan source rows from " + table + ": " + ex.what());
             }
-        } catch (const std::exception& ex) {
-            log.warn("Unable to purge orphan source rows from " + table + ": " + ex.what());
         }
+        if (transactionOpen) {
+            db.commit();
+            transactionOpen = false;
+        }
+    } catch (...) {
+        if (transactionOpen) db.rollbackNoThrow();
+        throw;
     }
     if (total > 0) {
         appendRunStatus(caseDir, "orphan_source_rows_purged", "rows=" + std::to_string(total));

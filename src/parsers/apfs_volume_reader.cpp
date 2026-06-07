@@ -141,9 +141,13 @@ ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& 
 
 
 std::uint64_t apfsReadNextLeafOidFromBtreeInfoFooter(const std::vector<unsigned char>& node) {
+    // Comparator-only helper: APFS B-tree footer semantics must be validated
+    // against real nodes before this is wired into live extraction.  The helper
+    // is deliberately bounds-checked and returns zero for malformed candidates.
     if (node.size() < 96U) return 0;
     const std::uint16_t btnFlags = readLe16Local(node, 32U);
-    if ((btnFlags & 0x0001U) == 0U) return 0;
+    const bool isLeaf = (btnFlags & 0x0002U) != 0U;
+    if (!isLeaf) return 0;
     const std::size_t footerStart = node.size() - 40U;
     if (footerStart + 40U > node.size()) return 0;
     return readLe64Local(node, footerStart + 32U);
@@ -370,8 +374,12 @@ std::vector<ApfsDirectoryEntry> ApfsVolumeReader::enumerateDirectory(std::uint64
         }
         benchmarks_.leafNodesVisited++;
         if (passedTarget) break;
-        if (!nextLeafReader_) break;
-        const std::uint64_t nextNode = nextLeafReader_(node, currentNode);
+        std::uint64_t nextNode = 0;
+        if (nextLeafReader_) {
+            nextNode = nextLeafReader_(node, currentNode);
+        } else {
+            nextNode = apfsReadNextLeafOidFromBtreeInfoFooter(node);
+        }
         if (nextNode == 0 || nextNode == currentNode) break;
         benchmarks_.nextLeafTransitions++;
         currentNode = nextNode;

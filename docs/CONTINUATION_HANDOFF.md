@@ -79,3 +79,10 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_2\scripts
 4. Add passive APFS path-resolution comparator CSVs before using path reconstruction in live staging.
 5. Build a real bounded bplist object model before emitting NSKeyedArchiver unflattened investigator fields.
 6. Defer full Win32 GUI global-state encapsulation until current worker paths have been validated.
+
+## V1.1.3 handoff update
+
+- Baseline reviewed: V1.1.2 Windows/MSVC build log and macOS AFF4/APFS thin ZIP.
+- Implemented: GUI export cancellation callbacks, orphan-source purge transaction, secure RichEdit load/cleanup, non-live APFS next-leaf helper strengthening, workflow ledger update.
+- Not changed: live AFF4/APFS extraction, Store-V2 parser semantics, iOS NSKeyedArchiver interpretation, SQLite schema.
+- Next validation required: Windows/MSVC V1.1.3 build and macOS AFF4/APFS thin run.

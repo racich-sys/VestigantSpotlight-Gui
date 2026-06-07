@@ -1834,6 +1834,7 @@ void exportCurrentPage(HWND owner) {
     request.pageSize = pageSize();
     request.checkedArtifactIds = gCheckedArtifactIds;
     request.outPath = out;
+    request.shouldCancel = []() { return gShuttingDown.load(); };
 
     setReviewSummary(L"Export Current Page in progress... GUI remains active.");
     if (gExportPage) EnableWindow(gExportPage, FALSE);
@@ -1874,6 +1875,7 @@ void exportFilteredView(HWND owner) {
     request.orderBy = reviewOrderBy(v);
     request.checkedArtifactIds = gCheckedArtifactIds;
     request.outPath = out;
+    request.shouldCancel = []() { return gShuttingDown.load(); };
 
     setReviewSummary(L"Export Filtered in progress... GUI remains active.");
     if (gExportFiltered) EnableWindow(gExportFiltered, FALSE);
@@ -1902,7 +1904,7 @@ void exportCheckedArtifacts(HWND owner) {
     if (gExportChecked) EnableWindow(gExportChecked, FALSE);
 
     registerExportThread(std::thread([owner, dbPath, idsToExport, out]() {
-        const GuiExportResult result = GuiExportWorker::exportCheckedArtifacts(dbPath, idsToExport, out);
+        const GuiExportResult result = GuiExportWorker::exportCheckedArtifacts(dbPath, idsToExport, out, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_CHECKED_RESULT, result.ok, result.message);
     }));
 }
@@ -1924,7 +1926,7 @@ void exportTaggedArtifacts(HWND owner) {
     if (gTaggedList) EnableWindow(gTaggedList, FALSE);
 
     registerExportThread(std::thread([owner, dbPath, tagId, out]() {
-        const GuiExportResult result = GuiExportWorker::exportTaggedArtifacts(dbPath, tagId, out);
+        const GuiExportResult result = GuiExportWorker::exportTaggedArtifacts(dbPath, tagId, out, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_TAGGED_RESULT, result.ok, result.message);
     }));
 }
@@ -3248,7 +3250,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } if (gRichEditModule) { FreeLibrary(gRichEditModule); gRichEditModule = nullptr; gRichEditAvailable = false; gRichEditClassName = L"EDIT"; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -3259,6 +3261,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     SetUnhandledExceptionFilter(unhandledFilter);
     std::set_terminate(terminateHandler);
     gInst = hInstance;
+    gRichEditModule = LoadLibraryExW(L"Msftedit.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (gRichEditModule) { gRichEditClassName = L"RichEdit50W"; gRichEditAvailable = true; }
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     gUiFont = CreateFontW(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
     WNDCLASSW wc{}; wc.lpfnWndProc = wndProc; wc.hInstance = hInstance; wc.lpszClassName = L"VestigantSpotlightWnd"; wc.hCursor = LoadCursor(nullptr, IDC_ARROW); wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
