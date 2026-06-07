@@ -1,8 +1,25 @@
-## V1_1_9
+# V1.1.10.1 Release Notes
+
+- Documentation/script-command hotfix on V1.1.10.
+- Corrected the package-facing build instructions to the full pattern: `Set-Location D:\Downloads`, hash the ZIP, remove `T:\VestigantSpotlightInv_V1_1_10_1`, expand to `T:\`, then run `scripts\Build-V1_1_10_1.ps1`.
+- Corrected macOS AFF4/APFS thin instructions to `scripts\Run-V1_1_10_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut`.
+- Updated `docs/NEW_CHAT_CONTINUATION_GUIDE.md` so a new chat can continue from the newest source upload without relying on prior chat history.
+- No parser, extraction, GUI, Store-V2, iOS, schema, or forensic interpretation behavior was intentionally changed.
+
+## V1_1_10
+
+- Used V1.1.9.1 as the base.
+- Performed a documentation/script/source-package hygiene pass.
+- Regenerated V1.1.10 build, GUI launch, AFF4/APFS thin-run, and package-existing-case wrappers.
+- Removed only clearly obsolete active-package artifacts: stale root-level V1.1.9 manifest/patch files and stale V1.1.9 source-review inventory files replaced by V1.1.10 review files.
+- Preserved append-only version history and historical validation notes.
+- No AFF4/APFS traversal, copy-out, staging, Store-V2 parsing, iOS parsing, GUI behavior, or SQLite schema behavior was intentionally changed.
+
+## V1_1_10
 
 - Promoted guarded live AFF4/APFS OMAP horizontal leaf traversal for APFS OMAP target lookups and volume root-tree lookups.
 - Added bounded next-leaf transition handling with cycle detection, cancellation checks, and transition limits.
-- Reviewed every `.md`, `.txt`, and `.ps1` source-package file and recorded decisions in `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.*`.
+- Reviewed every `.md`, `.txt`, and `.ps1` source-package file and recorded decisions in `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.*`.
 - Removed obsolete root-level prior-version package manifests while preserving append-only version history under `docs/`.
 - No Store-V2 parser schema, iOS parser behavior, or GUI view semantics were intentionally changed.
 

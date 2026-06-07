@@ -141,7 +141,7 @@ ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& 
 
 
 std::uint64_t apfsReadNextLeafOidFromBtreeInfoFooter(const std::vector<unsigned char>& node) {
-    // Bounded helper used by comparator code and, beginning in V1.1.9, by the
+    // Bounded helper used by comparator code and, beginning in V1.1.9.1, by the
     // guarded AFF4/APFS live probe to follow horizontal APFS B-tree leaf links.
     // It is deliberately bounds-checked and returns zero for malformed nodes.
     if (node.size() < 96U) return 0;

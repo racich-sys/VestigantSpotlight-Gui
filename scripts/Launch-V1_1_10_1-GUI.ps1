@@ -1,5 +1,5 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_1_9"
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_1_10_1"
 )
 
 $ErrorActionPreference = "Stop"

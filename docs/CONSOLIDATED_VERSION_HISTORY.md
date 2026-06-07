@@ -1,3 +1,11 @@
+## V1_1_10_1
+
+- Documentation/script-command hotfix on V1.1.10.
+- Updated build, quick-start, help, and new-chat continuation instructions to use the full extract/build PowerShell block for `VestigantSpotlightInv_V1_1_10_1.zip`.
+- Updated macOS AFF4/APFS thin regression instructions to use `Run-V1_1_10_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut`.
+- Regenerated current-version PowerShell wrappers for V1.1.10.1.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, SQLite schema, Store-V2 parser, or forensic interpretation behavior was intentionally changed.
+
 # Version History
 
 ## V1.1.1

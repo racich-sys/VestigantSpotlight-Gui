@@ -876,7 +876,7 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
         const std::uint16_t btnFlags = readLe16(node, 32);
         const std::uint16_t btnLevel = readLe16(node, 34);
         const std::uint32_t nkeys = readLe32(node, 36);
-        aff4ApfsAppendBranchPathForProbe(out.branchPath, "oid=" + std::to_string(nodeOid) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
+        aff4ApfsAppendBranchPathForProbe(out.branchPath, "oid=" + std::to_string(nodeOid) + ";flags=" + std::to_string(btnFlags) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
         if (label != "BTREE" && label != "BTREE_NODE") {
             out.lookupStatus = "VOLUME_OMAP_NODE_UNEXPECTED_OBJECT_TYPE";
             out.interpretation = purpose + ": node in the volume OMAP path was not an APFS B-tree node.";
@@ -4674,7 +4674,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 const std::uint16_t btnFlags = readLe16(node, 32);
                                 const std::uint16_t btnLevel = readLe16(node, 34);
                                 const std::uint32_t nkeys = readLe32(node, 36);
-                                appendBranchPath(out.branchPath, "oid=" + std::to_string(nodeOid) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
+                                appendBranchPath(out.branchPath, "oid=" + std::to_string(nodeOid) + ";flags=" + std::to_string(btnFlags) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
                                 if (label != "BTREE" && label != "BTREE_NODE") {
                                     out.lookupStatus = "VOLUME_OMAP_NODE_UNEXPECTED_OBJECT_TYPE";
                                     out.interpretation = purpose + ": node in the volume OMAP path was not an APFS B-tree node.";
@@ -4902,7 +4902,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 const std::uint16_t btnFlags = readLe16(node, 32);
                                 const std::uint16_t btnLevel = readLe16(node, 34);
                                 const std::uint32_t nkeys = readLe32(node, 36);
-                                appendBranchPath(out.branchPath, "oid=" + std::to_string(nodeOid) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
+                                appendBranchPath(out.branchPath, "oid=" + std::to_string(nodeOid) + ";flags=" + std::to_string(btnFlags) + ";level=" + std::to_string(btnLevel) + ";nkeys=" + std::to_string(nkeys));
                                 if (label != "BTREE" && label != "BTREE_NODE") {
                                     out.lookupStatus = "VOLUME_OMAP_NODE_UNEXPECTED_OBJECT_TYPE";
                                     out.interpretation = "A node in the volume OMAP path was not an APFS B-tree node.";

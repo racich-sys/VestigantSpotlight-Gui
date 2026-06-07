@@ -1,11 +1,20 @@
+## V1.1.10 update
+
+- Current generated source package: V1.1.10.
+- Base used for changes: V1.1.9.1.
+- Scope: source-package documentation/script cleanup and current-version wrapper regeneration only.
+- Removed only clearly obsolete active-package clutter; ambiguous historical notes/scripts were retained for user approval before any future removal.
+- Source-package `.md`, `.txt`, and `.ps1` review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.md`.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, or SQLite schema behavior was intentionally changed.
+
 # Spotlight2 Workflow Ledger
 
-## V1.1.9 update
+## V1.1.10 update
 
-- Current generated source package: V1.1.9.
+- Current generated source package: V1.1.10.
 - Validated baseline reviewed before this version: V1.1.8 Windows/MSVC build and macOS AFF4/APFS thin output.
 - Main change: guarded live APFS OMAP horizontal leaf traversal with bounded next-leaf transitions.
-- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.md`.
+- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.md`.
 
 
 ## Current cycle — V1.1.7.1
@@ -191,3 +200,26 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Logger writes are mutex-protected for concurrent GUI/export/ingest paths.
 - APFS decmpfs reconstruction remains bounded; the expected-output safety cap is now 256 MiB.
 
+
+
+## V1.1.10 Update
+
+- Reviewed uploaded V1.1.9 source ZIP, Windows/MSVC build log, macOS AFF4/APFS thin output, and user-provided Windows/x64 risk note before changes.
+- Confirmed V1.1.9 compiled/linked and the binary reported `Vestigant Spotlight v1.1.9`, but the PowerShell build wrapper still checked for `1.1.8`.
+- Confirmed V1.1.9 thin output completed AFF4/APFS Store-V2 staging/enrichment with stable baseline counts: `raw_record_count=25000`, `artifact_count=25000`, `staged_groups=11`, `staged_files=8986`, `copied_files=9235`.
+- Confirmed V1.1.9 external compare counts matched the V1.0.27/V1.1.4 documented baseline: `external_file_count=4123`, `vestigant_file_count=8986`, `file_match_rows=2213`, `external_only_rows=1424`, `vestigant_only_rows=6710`, `hash_different_path_rows=431`, `RELATIVE_PATH_SIZE_MISMATCH=486`.
+- Applied a narrow hotfix only: version-wrapper guard correction and warning cleanup.
+- Test decision for V1.1.10: AFF4/APFS thin test required because wrapper/version packaging changed; AFF4/APFS full test not required until the next APFS completeness change. iOS thin/full test not required because no iOS code path changed.
+
+## V1.1.10.1 command-block documentation hotfix
+
+- Corrected current-version build documentation to include the full extraction/build PowerShell block requested by the user.
+- Corrected current-version macOS AFF4/APFS thin test documentation to include `Run-V1_1_10_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut`.
+- Updated `docs/NEW_CHAT_CONTINUATION_GUIDE.md` so new chats started from the newest upload include the full commands.
+- No source parser/extraction behavior changed.
+
+### TEST SCOPE DECISION
+
+- AFF4/APFS: thin only after Windows build, because wrappers/docs changed and APFS behavior did not.
+- iOS: not required, because no iOS intake/parser/schema/view code changed.
+- Trigger for full AFF4/APFS test: any future change to traversal, copy-out, decompression, staging, external compare, or Store-V2 parse behavior.

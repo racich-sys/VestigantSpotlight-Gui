@@ -1,11 +1,20 @@
+## V1.1.10 update
+
+- Current generated source package: V1.1.10.
+- Base used for changes: V1.1.9.1.
+- Scope: source-package documentation/script cleanup and current-version wrapper regeneration only.
+- Removed only clearly obsolete active-package clutter; ambiguous historical notes/scripts were retained for user approval before any future removal.
+- Source-package `.md`, `.txt`, and `.ps1` review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.md`.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, or SQLite schema behavior was intentionally changed.
+
 # Troubleshooting — V1.1.7.1
 
-## V1.1.9 update
+## V1.1.10 update
 
-- Current generated source package: V1.1.9.
+- Current generated source package: V1.1.10.
 - Validated baseline reviewed before this version: V1.1.8 Windows/MSVC build and macOS AFF4/APFS thin output.
 - Main change: guarded live APFS OMAP horizontal leaf traversal with bounded next-leaf transitions.
-- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.md`.
+- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.md`.
 
 
 ## Build script not found

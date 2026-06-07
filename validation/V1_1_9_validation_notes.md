@@ -1,4 +1,4 @@
-# V1.1.9 Validation Notes
+# V1.1.9.1 Validation Notes
 
 ## Baseline reviewed
 
@@ -13,12 +13,12 @@
 - C++20 syntax check: `src/gui/gui_export_worker.cpp`.
 - C++20 syntax check: `src/core/app_info.cpp`.
 - Linux CMake configure/build.
-- CLI version check returned `Vestigant Spotlight v1.1.9`.
+- CLI version check returned `Vestigant Spotlight v1.1.9.1.1`.
 - Local self-test passed.
 
 ## Required external validation
 
-- Windows/MSVC V1.1.9 build.
-- V1.1.9 macOS AFF4/APFS thin run.
+- Windows/MSVC V1.1.9.1 build.
+- V1.1.9.1 macOS AFF4/APFS thin run.
 - Compare external-reference counts and mismatch diagnostics against V1.1.8.
 - Review whether next-leaf traversal changes staged Store-V2 file counts or mismatch classes.

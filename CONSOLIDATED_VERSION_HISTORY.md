@@ -1,3 +1,20 @@
+## V1_1_10_1
+
+- Documentation/script-command hotfix on V1.1.10.
+- Updated build, quick-start, help, and new-chat continuation instructions to use the full extract/build PowerShell block for `VestigantSpotlightInv_V1_1_10_1.zip`.
+- Updated macOS AFF4/APFS thin regression instructions to use `Run-V1_1_10_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut`.
+- Regenerated current-version PowerShell wrappers for V1.1.10.1.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, SQLite schema, Store-V2 parser, or forensic interpretation behavior was intentionally changed.
+
+## V1_1_10
+
+- Used V1.1.9.1 as the base.
+- Reviewed all source-package `.md`, `.txt`, and `.ps1` files and recorded decisions in `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.*`.
+- Regenerated V1.1.10 build, GUI launch, AFF4/APFS thin-run, and package-existing-case wrappers.
+- Removed obsolete active-package clutter: stale root-level V1.1.9 manifest/patch files and stale V1.1.9 source-review inventory files replaced by V1.1.10 review files.
+- Preserved append-only version history and historical validation notes.
+- No AFF4/APFS traversal, copy-out, staging, Store-V2 parsing, external comparison, iOS parsing, GUI behavior, or SQLite schema behavior was intentionally changed.
+
 ## V1.1.5.1
 
 - Propagated ingest cancellation into guarded AFF4 dynamic/direct probe entry points and selected expensive bounded loops.

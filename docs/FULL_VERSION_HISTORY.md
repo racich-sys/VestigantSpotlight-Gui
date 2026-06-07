@@ -1,3 +1,26 @@
+## V1_1_10_1
+
+- Documentation/script-command hotfix on V1.1.10.
+- Updated build, quick-start, help, and new-chat continuation instructions to use the full extract/build PowerShell block for `VestigantSpotlightInv_V1_1_10_1.zip`.
+- Updated macOS AFF4/APFS thin regression instructions to use `Run-V1_1_10_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut`.
+- Regenerated current-version PowerShell wrappers for V1.1.10.1.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, SQLite schema, Store-V2 parser, or forensic interpretation behavior was intentionally changed.
+
+## V1_1_10
+
+- Used V1.1.9.1 as the base.
+- Reviewed all source-package `.md`, `.txt`, and `.ps1` files and recorded decisions in `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_10.*`.
+- Regenerated V1.1.10 build, GUI launch, AFF4/APFS thin-run, and package-existing-case wrappers.
+- Removed obsolete active-package clutter: stale root-level V1.1.9 manifest/patch files and stale V1.1.9 source-review inventory files replaced by V1.1.10 review files.
+- Preserved append-only version history and historical validation notes.
+- No AFF4/APFS traversal, copy-out, staging, Store-V2 parsing, external comparison, iOS parsing, GUI behavior, or SQLite schema behavior was intentionally changed.
+
+## V1_1_9_1
+
+- Build-wrapper hotfix: `scripts/Build-V1_1_9_1.ps1` now checks for CLI version `1.1.9.1` instead of the stale `1.1.8` guard inherited by V1.1.9.
+- Removed non-blocking MSVC C4189 warnings in `src/parsers/aff4_probe_worker.cpp` by including decoded `btnFlags` in APFS OMAP branch-path diagnostics rather than leaving the value unused.
+- No APFS extraction policy, Store-V2 parser schema, iOS parser behavior, GUI view semantics, or forensic interpretation rules were intentionally changed.
+
 ## V1_1_9
 
 - Promoted guarded live AFF4/APFS OMAP horizontal leaf traversal for APFS OMAP target lookups and volume root-tree lookups.
@@ -10,10 +33,10 @@
 
 ## V1_1_8
 
-- Uses the user-provided `BaselineVersionHistory.md` as the append-only baseline version history going forward.
+- Uses this `BaselineVersionHistory.md` as the append-only version-history baseline going forward.
 - Adds Windows long-path support helpers and routes APFS/AFF4 Store-V2 evidence copy-out/reconstruction writes through long-path-capable file writing on Windows.
 - Forces a WAL checkpoint/truncate before upload packaging and changes `CaseDatabase::close()` to request `SQLITE_CHECKPOINT_TRUNCATE` rather than `FULL`.
-- Adds mutex protection to `Logger` file/message writes for concurrent GUI/export/ingest logging paths.
+- Adds mutex protection to `Logger` file/message writes for concurrent GUI/export/ingest paths.
 - Tightens APFS decmpfs expected-output safety cap from 512 MiB to 256 MiB.
 - Preserves V1.1.7.1 AFF4 probe-worker architecture; both dynamic and direct AFF4/APFS probe bodies remain outside `app_runner.cpp`.
 - No live APFS traversal replacement, iOS parser semantic change, Store-V2 schema change, or GUI view behavior change.
