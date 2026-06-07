@@ -3,7 +3,8 @@ param(
     [string]$Out = "Q:\SpotlightCase\V0_8_75_iOS_CoreSpotlight",
     [string]$ZipPath = "D:\Downloads\Upload_Thin_V0_8_75_iOS_CoreSpotlight.zip",
     [switch]$CleanOut,
-    [switch]$NoClipboardOrExplorer
+    [switch]$NoClipboardOrExplorer,
+    [switch]$FullDiagnostics
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +46,9 @@ if (Test-Path -LiteralPath $InputZipOrFolder -PathType Leaf) {
 }
 
 
+$ExportProfile = if ($FullDiagnostics) { "diagnostics" } else { "minimal" }
+Write-Host "iOS export profile: $ExportProfile (FullDiagnostics=$($FullDiagnostics.IsPresent))"
+
 & $Cli `
   --mode diagnostics `
   --profile ios `
@@ -52,7 +56,7 @@ if (Test-Path -LiteralPath $InputZipOrFolder -PathType Leaf) {
   --out $Out `
   --full-scan `
   --decode-core-native-values `
-  --export-profile diagnostics `
+  --export-profile $ExportProfile `
   --verbose
 
 & $UploadScript `

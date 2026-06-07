@@ -1,4 +1,58 @@
-## V1_3_0
+## V1_3_2_2
+
+- iOS stack-overflow hotfix after V1.3.2 iOS thin crashed with Windows structured exception `0xc00000fd` immediately after native 7-Zip inventory parsing.
+- Increased Windows/MSVC executable stack reserve for CLI, tests, and GUI to reduce stack exhaustion risk during very large iOS ZIP/app-database processing.
+- Added iOS app-database record-inventory stage/progress markers around candidate enumeration, transaction start, per-database progress, and per-table parse warnings.
+- Updated the iOS thin wrapper so failed runs rename any generated upload ZIP to `_FAILED.zip` rather than leaving a normal-looking thin result.
+- No AFF4/APFS extraction semantics, Store-V2 parsing, or iOS forensic interpretation logic was intentionally changed.
+
+TEST SCOPE DECISION
+- AFF4/APFS: not required for this hotfix.
+- iOS: thin required.
+- Reason: V1.3.2.2 targets the iOS ZIP/app-database stack-overflow failure and failed-upload labeling behavior only.
+- Trigger for escalating iOS to full test: repeat `0xc00000fd`, zero parsed records after successful inventory import, malformed communication-frequency view, or severe slowdown after database inventory.
+- Required next uploaded artifacts: `V1_3_2_2_build.log` and `Upload_Thin_iOS_CoreSpotlight_V1_3_2_2.zip` or `_FAILED.zip` with logs if it fails.
+
+## V1_3_2
+
+- Priority order implemented as requested: (1) AFF4/APFS progress visibility, (3) iOS communication/identity analysis, then (2) Case tab stability follow-through.
+- Added AFF4 direct-map progress heartbeats during long-running AFF4/APFS direct reader stages so the GUI no longer remains stuck at `open_sqlite` while resource monitor shows AFF4 reads.
+- Updated GUI heartbeat/status display to include a stage-percent-derived `GB of GB processed` estimate when the source file size and progress percent are available.
+- Added iOS communication identity derivation for parsed app/KnowledgeC records: identity-bound communication markers, thread-volume markers, deleted/expired Spotlight communication markers, and intent-target hints are preserved in provenance/contact fields when present in parsed snippets/metadata.
+- Expanded KnowledgeC parsing to include `/app/activity` and `/item/interactions` streams and to tag share/message intents with cautious `COMMUNICATION_INTENT` provenance rather than unsupported exfiltration conclusions.
+- Added `vw_ios_communication_frequency` and GUI/export registration for `iOS - Communication Frequency & Volume` to group committed parsed records by thread/contact/source identifier.
+- Added `ios_communication_frequency.csv` to investigator exports.
+- Added Safari/Chrome/WebKit download table categorization as `WEB_DOWNLOADS` without asserting exfiltration.
+- Preserved conservative forensic language: new iOS fields surface communication/thread/intent evidence and provenance, not final conclusions about user intent.
+
+TEST SCOPE DECISION
+- AFF4/APFS: thin required.
+- iOS: thin required before relying on new communication-frequency and KnowledgeC intent outputs.
+- Reason: V1.3.2 changes AFF4 progress reporting only, but it also changes iOS parser categorization/provenance and adds a new iOS review/export view.
+- Trigger for escalating AFF4/APFS to full test: any regression in staged Store-V2 counts, remaining mismatch diagnostics, or a repeat of status/progress stalling without heartbeats.
+- Trigger for escalating iOS to full test: incorrect counts in `vw_ios_communication_frequency`, parser slowdown, malformed provenance/contact extraction, or missing KnowledgeC rows.
+- Required next uploaded artifacts: `V1_3_2_build.log`, `Upload_Thin_MacOS_AFF4_V1_3_2.zip`, and an iOS thin output if the iOS communication view is tested.
+
+## V1_3_2
+
+- Base reviewed before changes: V1.3.0 source package, `V1_3_0_build.log`, `Upload_Thin_MacOS_AFF4_V1_3_0.zip`, and uploaded refined roadmap suggestions.
+- Windows/MSVC V1.3.0 build completed successfully and reported `Vestigant Spotlight v1.3.0`.
+- V1.3.0 thin AFF4/APFS package continued to contain coherent Store-V2 staged groups; no regression was identified before this stability pass.
+- Completed remaining APFS next-leaf buffer hoisting in three OMAP/root-tree horizontal-leaf traversal paths in `src/parsers/aff4_probe_worker.cpp`; the next-leaf scratch buffer is now allocated outside the bounded depth loop and reused.
+- Hardened the Case Information tab during active ingest: case-location/case-database/open/save mutations are blocked or deferred while the ingest worker owns the case database, case-mutation controls are disabled during processing, and autosave now reports `Autosave deferred during ingest` instead of a misleading failure when processing is active.
+- Updated roadmap/tracker documentation so Groups B/C and later suggestions remain tracked as future APFS completeness, iOS reconstruction, and APFS unification work.
+- No new forensic interpretation labels were added. No iOS parser behavior, SQLite schema, Store-V2 parser behavior, decompression behavior, or APFS copy-out semantics were intentionally changed.
+
+## TEST SCOPE DECISION
+
+- AFF4/APFS: thin required after Windows build.
+- iOS: not required.
+- Reason: V1.3.2 touches APFS traversal-buffer allocation and Win32 GUI case-tab runtime behavior, but does not change copy-out semantics, decoder behavior, Store-V2 parsing, iOS parsing, or database schema.
+- Trigger for escalating AFF4/APFS to full test: any regression in staged group/file counts, remaining mismatch diagnostics, parser failures, decompression failures, or case-tab processing behavior in the thin run.
+- Trigger for iOS testing: any later change to iOS ZIP staging, CoreSpotlight parsing, app DB parsing, bplist/NSKeyedArchiver reconstruction, iOS schema, or iOS GUI views.
+- Required next uploaded artifacts: `V1_3_2_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_2.zip`.
+
+## V1_3_2
 
 - Scope: coordinated Win32 GUI runtime hardening release after V1.1.11 validation.
 - Reviewed uploaded `V1_1_11_build.log`: Windows/MSVC build completed successfully, CLI/tests/GUI linked, and `Vestigant Spotlight v1.1.11` was reported.
@@ -13,10 +67,10 @@
 
 - AFF4/APFS: thin only after Windows build.
 - iOS: not required.
-- Reason: V1.3.0 changes Win32 GUI review-grid rendering and current-package documentation/scripts only. V1.1.11 AFF4/APFS thin output was reviewed before the change, and no extraction/traversal/copy-out/decompression/parser code was intentionally changed.
+- Reason: V1.3.2 changes Win32 GUI review-grid rendering and current-package documentation/scripts only. V1.1.11 AFF4/APFS thin output was reviewed before the change, and no extraction/traversal/copy-out/decompression/parser code was intentionally changed.
 - Trigger for escalating AFF4/APFS to full test: any next change to live APFS traversal, copy-out, decompression, extent handling, path reconstruction, external compare logic, or Store-V2 staging behavior.
 - Trigger for iOS testing: any next change to iOS ZIP staging, CoreSpotlight parsing, FFS lookup, app DB parsing, bplist/NSKeyedArchiver handling, iOS schema, or iOS GUI views.
-- Required next uploaded artifacts: `V1_3_0_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_0.zip`.
+- Required next uploaded artifacts: `V1_3_2_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_2.zip`.
 
 ## V1_1_11
 
@@ -1367,7 +1421,7 @@
 
 - Build-helper hotfix for aff4-cpp-lite under VS2022.
 - Preserves retargeting from Windows SDK 8.1/v140 to installed Windows 10/11 SDK/v143.
-- Restores the legacy native `lz4.1.3.1.2` package required by `libaff4.vcxproj` before MSBuild.
+- Restores the legacy native `lz4.1.3.2.2` package required by `libaff4.vcxproj` before MSBuild.
 - No intended parser, GUI, source-probe, APFS/HFS, or database behavior changes.
 
 ## V0_8_13_1

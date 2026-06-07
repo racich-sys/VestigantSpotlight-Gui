@@ -1,8 +1,8 @@
-# GUI Database Access Audit - V1.3.0
+# GUI Database Access Audit - V1.3.2
 
 ## Finding
 
-The GUI currently uses short-lived `ReadOnlyDb` helper instances at multiple review and detail query sites. The helper configures busy handling and PRAGMAs on each connection. V1.3.0 did not replace this with a global pooled SQLite handle because the risk of introducing lock lifetime and stale-schema problems is higher than the immediate benefit without runtime evidence of VFS exhaustion.
+The GUI currently uses short-lived `ReadOnlyDb` helper instances at multiple review and detail query sites. The helper configures busy handling and PRAGMAs on each connection. V1.3.2 did not replace this with a global pooled SQLite handle because the risk of introducing lock lifetime and stale-schema problems is higher than the immediate benefit without runtime evidence of VFS exhaustion.
 
 ## Decision
 

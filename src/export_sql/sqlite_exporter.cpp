@@ -407,6 +407,7 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_app_live_activity_timeline.csv", "Timeline of parsed local iOS app-database records with schema/timestamp provenance.");
     row("exports/ios_communications_review_records.csv", "Unified iOS communications review rows from Messages, WhatsApp, call history, and other message/chat/call-like app database records.");
     row("exports/ios_communications_review_summary.csv", "Grouped counts and date coverage for the unified iOS communications review rows.");
+    row("exports/ios_communication_frequency.csv", "Thread/contact grouped iOS communication frequency and volume based on committed parsed app/KnowledgeC records.");
     row("exports/ios_spotlight_communication_candidates.csv", "CoreSpotlight string probes that appear communication-related, with conservative app-database context.");
     row("exports/ios_spotlight_decode_coverage_summary.csv", "Spotlight-first decode coverage by iOS CoreSpotlight store: raw records, recovered values, human text values, and native decode status.");
     row("exports/ios_spotlight_bplist_nskeyedarchiver_summary.csv", "Bounded summary of iOS CoreSpotlight binary plist / NSKeyedArchiver payload token discovery.");
@@ -999,7 +1000,11 @@ void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& expor
     const bool fullExport = (profile == "full");
     const bool diagnosticsExport = (profile == "diagnostics");
     const bool supportDataExport = fullExport || diagnosticsExport || profile == "support";
+    const bool thinIosExportProfile = !supportDataExport;
     log.info("Export profile=" + profile + (fullExport ? " (full CSV exports enabled)" : " (thin/minimal full-case CSV exports)"));
+    if (thinIosExportProfile) {
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_thin_suppression", "full iOS FFS/record/date exports suppressed; bounded samples and summaries only");
+    }
     appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_start", "profile=" + profile);
     writeParserLimitsAndSuppressionSummary(db, exportDir / "parser_limits_and_suppression_summary.csv", log);
 
@@ -1142,17 +1147,21 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
 )SQL", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_timeline_index_updates.csv", "SELECT * FROM vw_ios_timeline_index_updates ORDER BY last_updated_utc DESC, store_guid, CAST(inode_num AS INTEGER), raw_record_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_ffs_file_inventory.csv", "SELECT * FROM vw_ios_ffs_file_inventory ORDER BY normalized_path", log);
+        else exportQuery(db, exportDir / "ios_ffs_file_inventory_sample.csv", "SELECT * FROM vw_ios_ffs_file_inventory ORDER BY normalized_path LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_database_inventory.csv", "SELECT * FROM vw_ios_database_artifact_inventory ORDER BY database_category, app_hint, normalized_path", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_database_record_inventory.csv", "SELECT * FROM vw_ios_app_database_record_inventory ORDER BY database_category, database_name, table_name", log);
         exportQuery(db, exportDir / "ios_app_database_record_summary.csv", "SELECT * FROM vw_ios_app_database_record_summary ORDER BY database_category, record_category", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_parsed_records.csv", "SELECT * FROM vw_ios_app_parsed_records ORDER BY database_category, record_category, record_timestamp_utc, database_name, table_name, ios_app_record_id", log);
+        else exportQuery(db, exportDir / "ios_app_parsed_records_sample.csv", "SELECT * FROM vw_ios_app_parsed_records ORDER BY database_category, record_category, record_timestamp_utc, database_name, table_name, ios_app_record_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_app_parsed_record_summary.csv", "SELECT * FROM vw_ios_app_parsed_record_summary ORDER BY database_category, record_category", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_apple_messages_parsed_records.csv", "SELECT * FROM vw_ios_apple_messages_parsed_records ORDER BY record_timestamp_utc, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_apple_messages_parsed_summary.csv", "SELECT * FROM vw_ios_apple_messages_parsed_summary ORDER BY record_category, parse_status", log);
         exportQuery(db, exportDir / "ios_apple_messages_database_status.csv", "SELECT * FROM vw_ios_apple_messages_database_status ORDER BY apple_messages_residency_status, normalized_path", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_live_activity_timeline.csv", "SELECT * FROM vw_ios_app_live_activity_timeline ORDER BY record_timestamp_utc DESC, database_category, record_category, ios_app_record_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_communications_review_records.csv", "SELECT * FROM vw_ios_communications_review_records ORDER BY communication_source, record_timestamp_utc DESC, communication_record_type, ios_app_record_id", log);
+        else exportQuery(db, exportDir / "ios_communications_review_records_sample.csv", "SELECT * FROM vw_ios_communications_review_records ORDER BY communication_source, record_timestamp_utc DESC, communication_record_type, ios_app_record_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_communications_review_summary.csv", "SELECT * FROM vw_ios_communications_review_summary ORDER BY communication_source, record_category, communication_record_type", log);
+        exportQuery(db, exportDir / "ios_communication_frequency.csv", "SELECT * FROM vw_ios_communication_frequency ORDER BY total_records_in_thread DESC, last_communication_utc DESC", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_communication_candidates.csv", "SELECT * FROM vw_ios_spotlight_communication_candidates ORDER BY communication_candidate_type, raw_kv_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_contact_identity_records.csv", "SELECT * FROM vw_ios_contact_identity_records ORDER BY contact_identity_type, database_name, table_name, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_contact_identity_summary.csv", "SELECT * FROM vw_ios_contact_identity_summary ORDER BY contact_review_row_count DESC, database_name, table_name", log);
@@ -1207,9 +1216,13 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_spotlight_object_inode_diagnostic_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_diagnostic_summary ORDER BY raw_record_count DESC, object_count DESC, source_id, store_guid, object_record_bucket", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_object_inode_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_summary ORDER BY raw_record_count DESC, raw_key_value_rows DESC, latest_last_updated_utc DESC, source_id, store_guid, spotlight_inode_or_object_id, spotlight_store_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_record_review.csv", "SELECT * FROM vw_ios_spotlight_record_review ORDER BY spotlight_review_priority, spotlight_date_utc DESC, raw_record_id", log);
+        else exportQuery(db, exportDir / "ios_spotlight_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_record_review ORDER BY spotlight_review_priority, spotlight_date_utc DESC, raw_record_id LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_date_provenance.csv", "SELECT * FROM vw_ios_spotlight_date_provenance ORDER BY spotlight_date_utc DESC, store_guid, CAST(spotlight_inode_or_object_id AS INTEGER), raw_record_id", log);
+        else exportQuery(db, exportDir / "ios_spotlight_date_provenance_sample.csv", "SELECT * FROM vw_ios_spotlight_date_provenance ORDER BY spotlight_date_utc DESC, store_guid, CAST(spotlight_inode_or_object_id AS INTEGER), raw_record_id LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_investigative_items_with_dates.csv", "SELECT * FROM vw_ios_spotlight_investigative_items_with_dates ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id", log);
+        else exportQuery(db, exportDir / "ios_spotlight_investigative_items_with_dates_sample.csv", "SELECT * FROM vw_ios_spotlight_investigative_items_with_dates ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_investigative_item_date_evidence.csv", "SELECT * FROM vw_ios_spotlight_investigative_item_date_evidence ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id, raw_date_id", log);
+        else exportQuery(db, exportDir / "ios_spotlight_investigative_item_date_evidence_sample.csv", "SELECT * FROM vw_ios_spotlight_investigative_item_date_evidence ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id, raw_date_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_date_field_summary.csv", "SELECT * FROM vw_ios_spotlight_date_field_summary ORDER BY date_candidate_count DESC, store_guid, spotlight_date_source_field", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_high_value_timeline.csv", "SELECT * FROM vw_ios_spotlight_high_value_timeline ORDER BY review_priority, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_file_reference_review.csv", "SELECT * FROM vw_ios_spotlight_file_reference_review ORDER BY file_reference_status, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);

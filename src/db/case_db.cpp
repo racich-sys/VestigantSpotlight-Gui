@@ -3742,6 +3742,27 @@ FROM vw_ios_communications_review_records
 GROUP BY communication_source, database_category, app_hint, record_category, communication_record_type, parse_status
 ORDER BY communication_source, record_category, communication_record_type;
 
+DROP VIEW IF EXISTS vw_ios_communication_frequency;
+CREATE VIEW vw_ios_communication_frequency AS
+SELECT
+    COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+    COUNT(*) AS total_records_in_thread,
+    MIN(record_timestamp_utc) AS first_communication_utc,
+    MAX(record_timestamp_utc) AS last_communication_utc,
+    GROUP_CONCAT(DISTINCT contact_or_participant) AS involved_identities,
+    GROUP_CONCAT(DISTINCT app_hint) AS apps_utilized,
+    GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+    GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+    'Thread/contact grouped iOS communication frequency view. Thread identifiers use item_identifier when available, then contact/source primary key fallback. Treat as committed parsed-record frequency, not a final communication assertion without source-row review.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+  AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
+GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
+ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
+
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS
 WITH probe AS (
@@ -8442,6 +8463,27 @@ SELECT communication_source, database_category, app_hint, record_category, commu
 FROM vw_ios_communications_review_records
 GROUP BY communication_source, database_category, app_hint, record_category, communication_record_type, parse_status
 ORDER BY communication_source, record_category, communication_record_type;
+
+DROP VIEW IF EXISTS vw_ios_communication_frequency;
+CREATE VIEW vw_ios_communication_frequency AS
+SELECT
+    COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+    COUNT(*) AS total_records_in_thread,
+    MIN(record_timestamp_utc) AS first_communication_utc,
+    MAX(record_timestamp_utc) AS last_communication_utc,
+    GROUP_CONCAT(DISTINCT contact_or_participant) AS involved_identities,
+    GROUP_CONCAT(DISTINCT app_hint) AS apps_utilized,
+    GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+    GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+    'Thread/contact grouped iOS communication frequency view. Thread identifiers use item_identifier when available, then contact/source primary key fallback. Treat as committed parsed-record frequency, not a final communication assertion without source-row review.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+  AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
+GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
+ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS

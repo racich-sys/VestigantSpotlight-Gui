@@ -1,21 +1,19 @@
-# Vestigant Spotlight V1.3.0
+# Vestigant Spotlight V1.3.2
 
-V1.3.0 is a coordinated stability and architecture milestone.
+V1.3.2 is a Group A stability release after V1.3.0 validation.
 
-## Changed
+## Completed in this version
 
-- Continued APFS buffer reuse in `aff4_probe_worker.cpp` for hot horizontal-leaf and root-tree traversal paths.
-- Added APFS traversal consolidation groundwork and documentation.
-- Audited GUI export thread lifecycle; no detached export-thread pattern was found in the current V1.3.0 GUI source.
-- Audited GUI database access and deferred pooling pending runtime evidence.
-- Updated workflow, roadmap, tracker, handoff, and new-chat continuation documentation.
+- Reused APFS next-leaf scratch buffers outside bounded OMAP/root-tree depth loops in `aff4_probe_worker.cpp`.
+- Hardened Case Information tab behavior during ingest so case path/database/open/save mutations are deferred or blocked while processing owns the case database.
+- Updated roadmap/tracker documentation for Groups A, B, C, D, and E.
 
 ## Not changed
 
-- No new forensic interpretation labels were added.
-- No iOS parser behavior changed.
-- No SQLite schema changed.
-- No Store-V2 parser behavior changed.
+- No new exfiltration/destruction conclusions or labels.
+- No iOS parser changes.
+- No SQLite schema changes.
+- No APFS copy-out/decompression/Store-V2 parser semantic changes.
 
 ## Test scope
 

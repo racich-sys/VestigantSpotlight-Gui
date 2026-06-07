@@ -1,10 +1,10 @@
-# APFS Traversal Consolidation Plan - V1.3.0
+# APFS Traversal Consolidation Plan - V1.3.2
 
 ## Purpose
 
-V1.3.0 starts the transition from duplicated APFS B-tree traversal logic toward shared, testable helpers that can later support a common BlockReader-style APFS reader for direct-map AFF4, dynamic/libaff4, and future raw-image paths.
+V1.3.2 starts the transition from duplicated APFS B-tree traversal logic toward shared, testable helpers that can later support a common BlockReader-style APFS reader for direct-map AFF4, dynamic/libaff4, and future raw-image paths.
 
-## Implemented in V1.3.0
+## Implemented in V1.3.2
 
 - Kept horizontal leaf loading centralized through `aff4ApfsLoadNextLeafForProbe(...)`.
 - Added an explicit source comment that next-leaf footer parsing should remain centralized rather than duplicated at direct-map/dynamic call sites.

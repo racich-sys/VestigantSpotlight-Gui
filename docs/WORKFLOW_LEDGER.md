@@ -1,30 +1,30 @@
-# Current Continuation Handoff - V1.3.0
+# Current Continuation Handoff - V1.3.2
 
 ## Current package
 
-- `VestigantSpotlightInv_V1_3_0.zip`
-- Current version: `1.3.0`
+- `VestigantSpotlightInv_V1_3_2_2.zip`
+- Current version: `1.3.2`
 
 ## Standard build command block
 
 ```powershell
 Set-Location D:\Downloads
 
-Get-FileHash .\VestigantSpotlightInv_V1_3_0.zip -Algorithm SHA256
+Get-FileHash .\VestigantSpotlightInv_V1_3_2_2.zip -Algorithm SHA256
 
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_0" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_0.zip -DestinationPath T:\ -Force
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_2_2" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_2_2.zip -DestinationPath T:\ -Force
 
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Build-V1_3_0.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Build-V1_3_2_2.ps1
 ```
 
 ## AFF4/APFS thin-create command
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Run-V1_3_0-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Run-V1_3_2_2-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
-## V1.3.0 work completed
+## V1.3.2 work completed
 
 - Group A stability/architecture workstream started as the first V1.3 milestone.
 - APFS hot traversal paths reuse next-leaf/root-tree diagnostic buffers.
@@ -34,8 +34,8 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts
 
 ## Next required uploads
 
-- `V1_3_0_build.log`
-- `Upload_Thin_MacOS_AFF4_V1_3_0.zip`
+- `V1_3_2_2_build.log`
+- `Upload_Thin_MacOS_AFF4_V1_3_2_2.zip`
 
 ## Test scope decision
 
@@ -45,7 +45,7 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts
 
 ---
 
-# V1.3.0 Workflow Ledger Entry
+# V1.3.2 Workflow Ledger Entry
 
 Date: 2026-06-07
 
@@ -55,12 +55,12 @@ Reviewed inputs:
 - User two-pass implementation status and roadmap suggestions
 
 Result:
-- Created V1.3.0 as a focused stability release under the V1.2 branch.
+- Created V1.3.2 as a focused stability release under the V1.2 branch.
 - Implemented APFS guided lookup buffer reuse and next-leaf output-buffer reuse in `src/parsers/aff4_probe_worker.cpp`.
 - Did not add unsupported forensic interpretation labels.
 
 Validation in packaging environment:
-- Verified version metadata references updated to 1.3.0.
+- Verified version metadata references updated to 1.3.2.
 - Verified no stale V1.2.0 / 1.2.0 references remain in text/code files.
 - Performed static source checks for the changed APFS worker section.
 
@@ -70,12 +70,12 @@ Test scope:
 
 Thin-create command:
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Run-V1_3_0-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Run-V1_3_2_2-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
 ---
 
-## V1.3.0 update
+## V1.3.2 update
 
 - Scope: documentation/package hygiene release.
 - Consolidated standalone development notes into `docs/CONSOLIDATED_DEVELOPMENT_NOTES.md`.
@@ -94,28 +94,28 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts
 
 - AFF4/APFS: thin only after Windows build.
 - iOS: not required.
-- Reason: V1.3.0 changes Win32 GUI review-grid rendering behavior and documentation only. The V1.1.11 build and AFF4/APFS thin output were reviewed before this version; no extraction/traversal/copy-out/decompression/parser code changed.
+- Reason: V1.3.2 changes Win32 GUI review-grid rendering behavior and documentation only. The V1.1.11 build and AFF4/APFS thin output were reviewed before this version; no extraction/traversal/copy-out/decompression/parser code changed.
 - Trigger for escalating AFF4/APFS to full test: any next change to live APFS traversal, copy-out, decompression, extent handling, path reconstruction, external compare logic, or Store-V2 staging behavior.
 - Trigger for iOS testing: any next change to iOS ZIP staging, CoreSpotlight parsing, FFS lookup, app DB parsing, bplist/NSKeyedArchiver handling, iOS schema, or iOS GUI views.
-- Required next uploaded artifacts: `V1_3_0_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_0.zip`.
+- Required next uploaded artifacts: `V1_3_2_2_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_2_2.zip`.
 
-## Standard V1.3.0 build command block
+## Standard V1.3.2 build command block
 
 ```powershell
 Set-Location D:\Downloads
 
-Get-FileHash .\VestigantSpotlightInv_V1_3_0.zip -Algorithm SHA256
+Get-FileHash .\VestigantSpotlightInv_V1_3_2_2.zip -Algorithm SHA256
 
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_0" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_0.zip -DestinationPath T:\ -Force
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_2_2" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_2_2.zip -DestinationPath T:\ -Force
 
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Build-V1_3_0.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Build-V1_3_2_2.ps1
 ```
 
-## Standard V1.3.0 AFF4/APFS thin command
+## Standard V1.3.2 AFF4/APFS thin command
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Run-V1_3_0-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Run-V1_3_2_2-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
 
@@ -344,3 +344,11 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - AFF4/APFS: thin only after Windows build, because wrappers/docs changed and APFS behavior did not.
 - iOS: not required, because no iOS intake/parser/schema/view code changed.
 - Trigger for full AFF4/APFS test: any future change to traversal, copy-out, decompression, staging, external compare, or Store-V2 parse behavior.
+
+## V1.3.2.2 - iOS thin export-stall correction
+
+- Reviewed V1.3.2.1 stopped iOS state: parse/enrichment completed, but thin run became impractical during heavy full iOS export materialization.
+- Changed the default iOS thin wrapper to use the minimal export profile; `-FullDiagnostics` remains available for full/support diagnostic CSVs.
+- Added bounded sample exports for heavy iOS review surfaces when not in support/full/diagnostics export mode.
+- Heavy full iOS exports remain available only when explicitly requested.
+- Test scope: iOS thin required; AFF4/APFS not required for this export-profile hotfix.

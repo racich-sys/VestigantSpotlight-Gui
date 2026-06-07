@@ -421,6 +421,26 @@ CREATE TABLE IF NOT EXISTS review_view_preferences (
   updated_utc TEXT,
   PRIMARY KEY(platform, view_name, preset_name)
 );
+DROP VIEW IF EXISTS vw_ios_communication_frequency;
+CREATE VIEW IF NOT EXISTS vw_ios_communication_frequency AS
+SELECT
+    COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+    COUNT(*) AS total_records_in_thread,
+    MIN(record_timestamp_utc) AS first_communication_utc,
+    MAX(record_timestamp_utc) AS last_communication_utc,
+    GROUP_CONCAT(DISTINCT contact_or_participant) AS involved_identities,
+    GROUP_CONCAT(DISTINCT app_hint) AS apps_utilized,
+    GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+    GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+    'Partial committed SQLite preview/analysis view. Thread identifiers are taken from item_identifier when available, otherwise contact/source primary key fallback.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+  AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
+GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
+ORDER BY total_records_in_thread DESC;
 )SQL";
     char* err = nullptr;
     if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
@@ -1464,6 +1484,31 @@ void showColumnContextMenu(HWND owner, int column, POINT screenPoint) {
     DestroyMenu(menu);
 }
 
+
+void setCaseMutationControlsEnabled(bool enabled) {
+    const BOOL e = enabled ? TRUE : FALSE;
+    if (gCaseName) EnableWindow(gCaseName, e);
+    if (gCaseNumber) EnableWindow(gCaseNumber, e);
+    if (gInvestigator) EnableWindow(gInvestigator, e);
+    if (gCompany) EnableWindow(gCompany, e);
+    if (gOut) EnableWindow(gOut, e);
+    if (gCaseDbPath) EnableWindow(gCaseDbPath, e);
+    if (gBrowseOut) EnableWindow(gBrowseOut, e);
+    if (gBrowseCase) EnableWindow(gBrowseCase, e);
+    if (gOpenCase) EnableWindow(gOpenCase, e);
+    if (gSaveCaseInfo) EnableWindow(gSaveCaseInfo, e);
+}
+
+bool blockCaseMutationDuringIngest(HWND hwnd, const wchar_t* action) {
+    if (!gIngestActive.load()) return false;
+    std::wstring msg = L"The case is currently processing. Wait for ingest to complete before ";
+    msg += action ? action : L"changing case information";
+    msg += L".";
+    postStatus(msg);
+    if (hwnd) MessageBoxW(hwnd, msg.c_str(), L"Vestigant Spotlight - Ingest Running", MB_OK | MB_ICONINFORMATION);
+    return true;
+}
+
 void loadCaseSummary() {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"No case database opened."); return; }
     try {
@@ -1495,6 +1540,11 @@ void loadCaseSummary() {
 }
 
 void saveCaseInformationCore(bool autosave) {
+    if (gIngestActive.load()) {
+        if (gCaseAutosaveStatus) setText(gCaseAutosaveStatus, autosave ? L"Autosave deferred during ingest" : L"Save deferred during ingest");
+        if (!autosave) setReviewSummary(L"Case information cannot be saved while ingest is running. The running workflow owns the case database handle.");
+        return;
+    }
     if (gOpenedCaseDb.empty() && !getText(gCaseDbPath).empty()) gOpenedCaseDb = getText(gCaseDbPath);
     if (gOpenedCaseDb.empty()) {
         if (!autosave) setReviewSummary(L"Open a case database before saving case information.");
@@ -1524,7 +1574,7 @@ void saveCaseInformationCore(bool autosave) {
         if (gCaseAutosaveStatus) setText(gCaseAutosaveStatus, autosave ? L"Autosaved" : L"Saved");
         if (!autosave) setReviewSummary(L"Case information saved to SQLite case database.");
     } catch (const std::exception& ex) {
-        if (gCaseAutosaveStatus) setText(gCaseAutosaveStatus, L"Autosave failed");
+        if (gCaseAutosaveStatus) setText(gCaseAutosaveStatus, autosave ? L"Autosave failed" : L"Save failed");
         if (!autosave) setReviewSummary(L"ERROR saving case information: " + widen(ex.what()));
     }
 }
@@ -2454,7 +2504,19 @@ std::wstring formatBytesPerSecond(unsigned long long bytes, unsigned long long s
     std::wostringstream os;
     os.setf(std::ios::fixed);
     os.precision(2);
-    os << L"source size " << mb << L" MB; elapsed average " << rate << L" MB/s";
+    os << mb << L" MB source; elapsed average " << rate << L" MB/s";
+    return os.str();
+}
+
+std::wstring formatGbProcessedOfTotal(unsigned long long totalBytes, int percent) {
+    if (totalBytes == 0 || percent < 0) return L"";
+    if (percent > 100) percent = 100;
+    const double totalGb = static_cast<double>(totalBytes) / 1000000000.0;
+    const double doneGb = totalGb * (static_cast<double>(percent) / 100.0);
+    std::wostringstream os;
+    os.setf(std::ios::fixed);
+    os.precision(1);
+    os << doneGb << L" GB of " << totalGb << L" GB processed (stage estimate)";
     return os.str();
 }
 
@@ -2478,6 +2540,7 @@ std::wstring stageDisplayName(const std::wstring& stage) {
 
 void worker() {
     EnableWindow(gRun, FALSE);
+    setCaseMutationControlsEnabled(false);
     postClearProcessLog();
     postProgress(1);
     const auto ingestStart = std::chrono::steady_clock::now();
@@ -2499,6 +2562,7 @@ void worker() {
         monitor = std::thread([statusPath, progressPath, rootProgressPath, ingestStart, inputBytesForRate, &monitorDone]() {
             std::wstring lastStatus;
             std::wstring lastProgress;
+            int lastProgressPercent = -1;
             unsigned long long lastHeartbeatSecond = 0;
             while (!monitorDone.load()) {
                 const std::wstring currentStatus = lastNonEmptyLine(statusPath);
@@ -2515,9 +2579,12 @@ void worker() {
                     std::wstring stage, message;
                     int pct = parseProgressPercent(currentProgress, stage, message);
                     if (pct >= 0) {
+                        lastProgressPercent = pct;
                         postProgress(pct);
                         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - ingestStart).count();
                         std::wstring status = L"Ingest running: " + std::to_wstring(pct) + L"% | elapsed " + formatElapsedSeconds(static_cast<unsigned long long>(elapsed));
+                        const std::wstring gbProcessed = formatGbProcessedOfTotal(inputBytesForRate, pct);
+                        if (!gbProcessed.empty()) status += L" | " + gbProcessed;
                         if (!stage.empty()) status += L" - " + stageDisplayName(stage);
                         if (!message.empty()) status += L" - " + message;
                         postStatus(status);
@@ -2528,7 +2595,9 @@ void worker() {
                 if (elapsedNow >= 5 && elapsedNow / 5 != lastHeartbeatSecond / 5) {
                     lastHeartbeatSecond = elapsedNow;
                     std::wstring heartbeat = L"Still processing | elapsed " + formatElapsedSeconds(elapsedNow);
-                    if (inputBytesForRate > 0) heartbeat += L" | source-size/time average " + formatBytesPerSecond(inputBytesForRate, elapsedNow);
+                    const std::wstring gbProcessed = formatGbProcessedOfTotal(inputBytesForRate, lastProgressPercent);
+                    if (!gbProcessed.empty()) heartbeat += L" | " + gbProcessed;
+                    if (inputBytesForRate > 0) heartbeat += L" | " + formatBytesPerSecond(inputBytesForRate, elapsedNow);
                     if (!lastStatus.empty()) heartbeat += L" | last stage " + stageDisplayName(lastStatus);
                     postLog(heartbeat);
                 }
@@ -2592,7 +2661,9 @@ void worker() {
     monitorDone.store(true);
     if (monitor.joinable()) monitor.join();
     EnableWindow(gRun, TRUE);
+    setCaseMutationControlsEnabled(true);
 }
+
 
 bool isInvestigationTabIndex(int index) {
     return index == 1 || index == 2;
@@ -3161,7 +3232,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (!p.empty()) setText(gInput, p);
             return 0;
         }
-        case ID_BROWSE_OUT: { auto p = browseFolder(hwnd); if (!p.empty()) { setText(gOut, p); if (getText(gCaseDbPath).empty()) setText(gCaseDbPath, p + L"\\VestigantSpotlight.case.sqlite"); postStatus(L"Case location selected: " + p); } return 0; }
+        case ID_BROWSE_OUT: { if (blockCaseMutationDuringIngest(hwnd, L"changing the case location")) return 0; auto p = browseFolder(hwnd); if (!p.empty()) { setText(gOut, p); if (getText(gCaseDbPath).empty()) setText(gCaseDbPath, p + L"\\VestigantSpotlight.case.sqlite"); postStatus(L"Case location selected: " + p); } return 0; }
         case ID_BROWSE_ROOT: { auto p = browseFolder(hwnd); if (!p.empty()) setText(gEvidenceRoot, p); return 0; }
         case ID_BROWSE_7Z: { auto p = browseExe(hwnd); if (!p.empty()) setText(gSevenZip, p); return 0; }
         case ID_RUN: {
@@ -3197,9 +3268,9 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             postLog(L"Cancellation requested by investigator. The worker will stop at the next implemented safe checkpoint.");
             return 0;
         }
-        case ID_BROWSE_CASE: { auto p = browseSqlite(hwnd); if (!p.empty()) { setText(gCaseDbPath, p); size_t pos = p.find_last_of(L"\\/"); if (pos != std::wstring::npos) setText(gOut, p.substr(0, pos)); } return 0; }
-        case ID_OPEN_CASE: { openCaseFromPath(); return 0; }
-        case ID_SAVE_CASE_INFO: { saveCaseInformation(); return 0; }
+        case ID_BROWSE_CASE: { if (blockCaseMutationDuringIngest(hwnd, L"changing the case database")) return 0; auto p = browseSqlite(hwnd); if (!p.empty()) { setText(gCaseDbPath, p); size_t pos = p.find_last_of(L"\\/"); if (pos != std::wstring::npos) setText(gOut, p.substr(0, pos)); } return 0; }
+        case ID_OPEN_CASE: { if (blockCaseMutationDuringIngest(hwnd, L"opening a different case database")) return 0; openCaseFromPath(); return 0; }
+        case ID_SAVE_CASE_INFO: { if (blockCaseMutationDuringIngest(hwnd, L"saving case information")) return 0; saveCaseInformation(); return 0; }
         case ID_OPEN_DASHBOARD: { openSiblingFile(hwnd, L"investigator_dashboard.html"); return 0; }
         case ID_OPEN_REVIEW_INDEX: { openSiblingFile(hwnd, L"review_index.html"); return 0; }
         case ID_OPEN_CASE_FOLDER: { openCaseFolderAction(hwnd); return 0; }

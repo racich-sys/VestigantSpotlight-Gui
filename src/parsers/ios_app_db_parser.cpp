@@ -36,6 +36,84 @@ bool contains(const std::string& s, const char* needle) {
     return s.find(needle ? needle : "") != std::string::npos;
 }
 
+
+std::string printableWindow(const std::string& s, std::size_t pos, std::size_t width) {
+    if (pos >= s.size()) return {};
+    const std::size_t end = std::min<std::size_t>(s.size(), pos + width);
+    std::string out;
+    out.reserve(end - pos);
+    for (std::size_t i = pos; i < end; ++i) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c >= 0x20 && c < 0x7f) out.push_back(static_cast<char>(c));
+        else if (!out.empty() && out.back() != ' ') out.push_back(' ');
+    }
+    return trim(out);
+}
+
+std::string firstMetadataWindow(const std::string& text, const std::vector<const char*>& needles, std::size_t width = 96) {
+    const std::string lower = lowerCopy(text);
+    for (const char* needle : needles) {
+        const std::string n = lowerCopy(needle ? std::string(needle) : std::string());
+        const std::size_t pos = lower.find(n);
+        if (pos != std::string::npos) return printableWindow(text, pos, width);
+    }
+    return {};
+}
+
+struct IosCommunicationDerivedFields {
+    std::string recordCategory;
+    std::string contact;
+    std::string itemIdentifier;
+    std::string title;
+    std::string parseStatus;
+    std::string provenance;
+};
+
+IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& recordCategory,
+                                                            const std::string& contactOrParticipant,
+                                                            const std::string& itemIdentifier,
+                                                            const std::string& title,
+                                                            const std::string& textSnippet,
+                                                            const std::string& parseStatus,
+                                                            const std::string& provenance) {
+    IosCommunicationDerivedFields out{recordCategory, contactOrParticipant, itemIdentifier, title, parseStatus, provenance};
+    const std::string combined = title + " " + textSnippet + " " + itemIdentifier + " " + contactOrParticipant + " " + provenance;
+    const std::string lower = lowerCopy(combined);
+    auto addProv = [&](const std::string& token) {
+        if (out.provenance.find(token) == std::string::npos) out.provenance += (out.provenance.empty() ? "" : "; ") + token;
+    };
+    if (lower.find("kmditemauthor") != std::string::npos || lower.find("kmditemrecipient") != std::string::npos ||
+        lower.find("kmditemphonenumbers") != std::string::npos || lower.find("kmditememailaddresses") != std::string::npos) {
+        addProv("IDENTITY_BOUND_COMMUNICATION=True");
+        if (out.contact.empty()) {
+            std::string identity;
+            if (lower.find("kmditemphonenumbers") != std::string::npos || lower.find("phone") != std::string::npos) identity += "[Phone_Match] ";
+            if (lower.find("kmditememailaddresses") != std::string::npos || lower.find("email") != std::string::npos) identity += "[Email_Match] ";
+            const std::string nearby = firstMetadataWindow(combined, {"kMDItemAuthor", "kMDItemRecipient", "kMDItemPhoneNumbers", "kMDItemEmailAddresses", "personHandle", "emailAddress"});
+            if (!nearby.empty()) identity += nearby;
+            out.contact = trim(identity);
+        }
+    }
+    if (lower.find("kmditemdomainidentifier") != std::string::npos) {
+        addProv("THREAD_VOLUME_TRACKING_ENABLED=True");
+        if (out.itemIdentifier.empty()) {
+            out.itemIdentifier = firstMetadataWindow(combined, {"kMDItemDomainIdentifier"}, 128);
+        }
+    }
+    if (lower.find("kmditemexpirationdate") != std::string::npos || lower.find("_kmditemisdeleted") != std::string::npos) {
+        if (out.recordCategory == "MESSAGE_RECORDS" || out.recordCategory == "CHAT_RECORDS" || out.recordCategory == "MAIL_RECORDS" || out.recordCategory == "COMMUNICATIONS_SUPPORT_TABLE") {
+            out.recordCategory = "MESSAGE_DELETED_OR_RECOVERABLE";
+            if (out.title.find("TOMBSTONE / DELETED COMMUNICATION") == std::string::npos) out.title = "TOMBSTONE / DELETED COMMUNICATION: " + out.title;
+            addProv("SPOTLIGHT_DELETED_OR_EXPIRED_COMMUNICATION=True");
+        }
+    }
+    if (lower.find("personhandle") != std::string::npos || lower.find("emailaddress") != std::string::npos || lower.find("insendmessageintent") != std::string::npos) {
+        addProv("INTENT_TARGET_HINT_PRESENT=True");
+        if (out.contact.empty()) out.contact = "Extracted_Intent_Target: " + firstMetadataWindow(combined, {"personHandle", "emailAddress", "name"}, 96);
+    }
+    return out;
+}
+
 std::string sqlIdentLocal(const std::string& name) {
     std::string out = "\"";
     for (char c : name) out += (c == '"') ? "\"\"" : std::string(1, c);
@@ -90,6 +168,7 @@ std::string iosAppDbRecordCategory(const std::string& databaseCategory,
         return "COMMUNICATIONS_SUPPORT_TABLE";
     }
     if (contains(c, "safari") || contains(c, "chrome") || contains(c, "webkit")) {
+        if (contains(t, "download")) return "WEB_DOWNLOADS";
         if (contains(t, "history") || contains(t, "url") || contains(cols, "url")) return "WEB_HISTORY";
         if (contains(t, "visit")) return "WEB_VISITS";
         if (contains(t, "cache")) return "WEB_CACHE";
@@ -330,6 +409,7 @@ void bindIosParsedRecord(SqlStatement& parsedIns,
                          const std::string& textSnippet,
                          const std::string& parseStatus,
                          const std::string& provenance) {
+    const auto derived = deriveIosCommunicationFields(recordCategory, contactOrParticipant, itemIdentifier, title, textSnippet, parseStatus, provenance);
     int i = 1;
     parsedIns.bind(i++, sourceId);
     parsedIns.bind(i++, inv.id);
@@ -338,18 +418,18 @@ void bindIosParsedRecord(SqlStatement& parsedIns,
     parsedIns.bind(i++, inv.cat);
     parsedIns.bind(i++, inv.app);
     parsedIns.bind(i++, table);
-    parsedIns.bind(i++, recordCategory);
+    parsedIns.bind(i++, derived.recordCategory);
     parsedIns.bind(i++, sourcePk);
     parsedIns.bind(i++, recordTimestampUtc);
     parsedIns.bind(i++, timestampSource);
-    parsedIns.bind(i++, contactOrParticipant);
+    parsedIns.bind(i++, derived.contact);
     parsedIns.bind(i++, url);
-    parsedIns.bind(i++, title);
+    parsedIns.bind(i++, derived.title);
     parsedIns.bind(i++, filePath);
-    parsedIns.bind(i++, itemIdentifier);
+    parsedIns.bind(i++, derived.itemIdentifier);
     parsedIns.bind(i++, textSnippet);
-    parsedIns.bind(i++, parseStatus);
-    parsedIns.bind(i++, provenance);
+    parsedIns.bind(i++, derived.parseStatus);
+    parsedIns.bind(i++, derived.provenance);
     parsedIns.bind(i++, sqlNowUtc());
     parsedIns.stepDone();
     parsedIns.reset();
@@ -728,9 +808,9 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
               + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKDOCUMENTMETADATAKEY__TITLE", "metadata_document_title") + ", "
               + sqliteOptionalColumnExpr(ext, metaTable, "m", "Z_DKINTENTMETADATAKEY__SERIALIZEDINTERACTION", "metadata_serialized_interaction")
               + " FROM " + sqlIdentLocal(table) + " o LEFT JOIN " + sqlIdentLocal(metaTable) + " m ON o.ZSTRUCTUREDMETADATA=m.Z_PK "
-              + "WHERE COALESCE(o.ZSTREAMNAME,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
+              + "WHERE COALESCE(o.ZSTREAMNAME,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit','/app/activity','/item/interactions') LIMIT ?";
     } else {
-        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit') LIMIT ?";
+        sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE COALESCE(ZSTREAMNAME,zstreamname,'') IN ('/app/inFocus','/document/open','/app/intents','/display/isBacklit','/app/activity','/item/interactions') LIMIT ?";
     }
 
     sqlite3_stmt* st = nullptr;
@@ -760,7 +840,7 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
     std::size_t rows = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
         const std::string stream = columnValue(st, streamNameCol, 256);
-        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
+        if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit" && stream != "/app/activity" && stream != "/item/interactions") continue;
         const std::string bundleId = columnValue(st, valueStringCol, 512);
         const auto startTs = normalizeIosAppTimestamp(columnValue(st, startDateCol, 128), "ZSTARTDATE");
         const auto creationTs = normalizeIosAppTimestamp(columnValue(st, creationDateCol, 128), "ZCREATIONDATE");
@@ -774,6 +854,16 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
         if (!intentVerb.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_verb=") + intentVerb;
         if (!docTitle.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("document_title=") + docTitle;
         if (!serialized.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("serialized_interaction_preview=") + serialized;
+        std::string parseStatus = "parsed_knowledgec_zobject_interaction_joined_metadata";
+        std::string provenance = hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v1_3_2" : "read_only_sqlite_coreduet_knowledgec table=" + table;
+        if (intentClass == "INSendMessageIntent" || bundleId == "com.apple.sharingd" || stream == "/item/interactions" || stream == "/app/activity") {
+            title = "COMMUNICATION INTENT: Document Shared/Sent";
+            parseStatus = "parsed_knowledgec_communication_intent";
+            provenance += "; COMMUNICATION_INTENT_STREAM=True";
+            if (serialized.find("personHandle") != std::string::npos || serialized.find("emailAddress") != std::string::npos || serialized.find("name") != std::string::npos) {
+                provenance += "; INTENT_TARGET_IDENTIFIED=True";
+            }
+        }
         if (snippet.size() > 2000) snippet.resize(2000);
         bindIosParsedRecord(parsedIns, sourceId, inv, table, "KNOWLEDGEC_EVENTS",
                             columnValue(st, rowidCol, 256),
@@ -785,8 +875,8 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
                             "",
                             stream,
                             snippet,
-                            "parsed_knowledgec_zobject_interaction_joined_metadata",
-                            hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v0_9_48" : "read_only_sqlite_coreduet_knowledgec table=" + table);
+                            parseStatus,
+                            provenance);
         ++rows;
     }
     sqlite3_finalize(st);
@@ -833,7 +923,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
             const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);
             const std::string stream = columnValue(st, streamNameCol, 256);
-            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit") continue;
+            if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit" && stream != "/app/activity" && stream != "/item/interactions") continue;
             const std::string bundleId = columnValue(st, valueStringCol, 512);
             bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                                 columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
@@ -857,29 +947,16 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             ++rows;
             continue;
         }
-        int i = 1;
-        parsedIns.bind(i++, sourceId);
-        parsedIns.bind(i++, inv.id);
-        parsedIns.bind(i++, inv.norm);
-        parsedIns.bind(i++, inv.name);
-        parsedIns.bind(i++, inv.cat);
-        parsedIns.bind(i++, inv.app);
-        parsedIns.bind(i++, table);
-        parsedIns.bind(i++, recordCategory);
-        parsedIns.bind(i++, columnValue(st, pkCol, 256));
-        parsedIns.bind(i++, ts.first);
-        parsedIns.bind(i++, ts.second);
-        parsedIns.bind(i++, columnValue(st, contactCol, 512));
-        parsedIns.bind(i++, columnValue(st, urlCol, 1000));
-        parsedIns.bind(i++, columnValue(st, titleCol, 1000));
-        parsedIns.bind(i++, columnValue(st, pathCol, 1000));
-        parsedIns.bind(i++, columnValue(st, itemCol, 512));
-        parsedIns.bind(i++, columnValue(st, textCol, 2000));
-        parsedIns.bind(i++, "parsed_generic_app_db_row");
-        parsedIns.bind(i++, "read_only_sqlite_dynamic_schema table=" + table);
-        parsedIns.bind(i++, sqlNowUtc());
-        parsedIns.stepDone();
-        parsedIns.reset();
+        bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
+                            columnValue(st, pkCol, 256), ts.first, ts.second,
+                            columnValue(st, contactCol, 512),
+                            columnValue(st, urlCol, 1000),
+                            columnValue(st, titleCol, 1000),
+                            columnValue(st, pathCol, 1000),
+                            columnValue(st, itemCol, 512),
+                            columnValue(st, textCol, 2000),
+                            "parsed_generic_app_db_row",
+                            "read_only_sqlite_dynamic_schema table=" + table);
         ++rows;
     }
     sqlite3_finalize(st);
@@ -963,6 +1040,8 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
         if (statusWriter) statusWriter(caseDir, stage, message);
     };
 
+    writeStatus("ios_app_db_record_inventory_start", "enumerate extracted iOS app database candidates");
+
     std::vector<IosAppDbInventory> invs;
     try {
         auto q = db.prepare("SELECT ios_db_id,normalized_path,database_name,database_category,app_hint,extracted_path FROM ios_app_database_inventory WHERE source_id=? AND COALESCE(extracted_path,'')<>'' ORDER BY ios_db_id");
@@ -983,11 +1062,14 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
         return;
     }
 
+    writeStatus("ios_app_db_record_inventory_candidates", "extracted_databases=" + std::to_string(invs.size()));
+
     std::size_t tableRows = 0;
     std::size_t opened = 0;
     std::size_t parsedRows = 0;
     try {
         db.begin();
+        writeStatus("ios_app_db_record_inventory_db_transaction", "started metadata import and bounded row parsing transaction");
         {
             auto del = db.prepare("DELETE FROM ios_app_database_record_inventory WHERE source_id=?");
             del.bind(1, sourceId);
@@ -1002,7 +1084,12 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
         auto parsedIns = db.prepare("INSERT INTO ios_app_parsed_records(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,contact_or_participant,url,title,file_path,item_identifier,text_snippet,parse_status,provenance,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         auto upd = db.prepare("UPDATE ios_app_database_inventory SET parse_status=?, record_inventory_status=? WHERE ios_db_id=?");
 
+        std::size_t dbIndex = 0;
         for (const auto& inv : invs) {
+            ++dbIndex;
+            if ((dbIndex % 25) == 1 || dbIndex == invs.size()) {
+                writeStatus("ios_app_db_record_inventory_progress", "database=" + std::to_string(dbIndex) + "/" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
+            }
             std::string parseStatus = "not_opened";
             std::string recordStatus = "no_tables_counted";
             if (!std::filesystem::is_regular_file(inv.extracted)) {
@@ -1055,7 +1142,13 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
                 ins.stepDone();
                 ins.reset();
                 if (rowCount > 0 && IosAppDbParser::isTargetRecordCategory(recCat)) {
-                    parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
+                    try {
+                        parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
+                    } catch (const std::exception& ex) {
+                        writeStatus("ios_app_db_table_parse_warning", "ios_db_id=" + std::to_string(inv.id) + " table=" + table + " error=" + ex.what());
+                    } catch (...) {
+                        writeStatus("ios_app_db_table_parse_warning", "ios_db_id=" + std::to_string(inv.id) + " table=" + table + " error=unknown");
+                    }
                 }
                 ++tableRows;
                 ++tableCount;

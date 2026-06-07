@@ -183,7 +183,7 @@ if errorlevel 1 exit /b !errorlevel!
 ) > "%CLI_RSP%"
 
 echo Linking VestigantSpotlightCli.exe...
-link /nologo /OUT:"%OUT%\VestigantSpotlightCli.exe" /SUBSYSTEM:CONSOLE @"%CLI_RSP%"
+link /nologo /OUT:"%OUT%\VestigantSpotlightCli.exe" /SUBSYSTEM:CONSOLE /STACK:33554432 @"%CLI_RSP%"
 if errorlevel 1 exit /b !errorlevel!
 
 echo.
@@ -198,7 +198,7 @@ if errorlevel 1 exit /b !errorlevel!
 ) > "%TESTS_RSP%"
 
 echo Linking VestigantSpotlightTests.exe...
-link /nologo /OUT:"%OUT%\VestigantSpotlightTests.exe" /SUBSYSTEM:CONSOLE @"%TESTS_RSP%"
+link /nologo /OUT:"%OUT%\VestigantSpotlightTests.exe" /SUBSYSTEM:CONSOLE /STACK:33554432 @"%TESTS_RSP%"
 if errorlevel 1 exit /b !errorlevel!
 
 echo.
@@ -234,7 +234,7 @@ if errorlevel 1 exit /b !errorlevel!
 ) > "%GUI_RSP%"
 
 echo Linking VestigantSpotlight.exe...
-link /nologo /OUT:"%OUT%\VestigantSpotlight.exe" /SUBSYSTEM:WINDOWS @"%GUI_RSP%"
+link /nologo /OUT:"%OUT%\VestigantSpotlight.exe" /SUBSYSTEM:WINDOWS /STACK:33554432 @"%GUI_RSP%"
 if errorlevel 1 exit /b !errorlevel!
 
 echo.

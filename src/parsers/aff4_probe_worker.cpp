@@ -24,6 +24,7 @@
 #include <fstream>
 #include <functional>
 #include <iomanip>
+#include <chrono>
 #include <limits>
 #include <map>
 #include <set>
@@ -308,6 +309,31 @@ std::string jsonEscape(const std::string& s) {
     return out;
 }
 
+std::string cleanStatusField(std::string s) {
+    for (char& c : s) {
+        if (c == '\t' || c == '\r' || c == '\n') c = ' ';
+    }
+    return s;
+}
+
+void appendRunProgress(const fs::path& caseDir, int percent, const std::string& stage, const std::string& detail = {}) {
+    try {
+        std::error_code ec;
+        fs::create_directories(caseDir / "logs", ec);
+        const std::string ts = nowUtc();
+        const std::string cleanStage = cleanStatusField(stage);
+        const std::string cleanDetail = cleanStatusField(detail);
+        auto writeOne = [&](const fs::path& path, std::ios::openmode mode) {
+            std::ofstream out(path, mode | std::ios::binary);
+            out << ts << "\t" << percent << "\t" << cleanStage << "\t" << cleanDetail << "\n" << std::flush;
+        };
+        writeOne(caseDir / "logs" / "run_progress.tsv", std::ios::app);
+        writeOne(caseDir / "logs" / "last_progress.tsv", std::ios::trunc);
+        writeOne(caseDir / "run_progress.tsv", std::ios::app);
+        writeOne(caseDir / "last_progress.tsv", std::ios::trunc);
+    } catch (...) {}
+}
+
 void appendRunStatus(const fs::path& caseDir, const std::string& stage, const std::string& detail = {}) {
     try {
         std::error_code ec;
@@ -315,9 +341,9 @@ void appendRunStatus(const fs::path& caseDir, const std::string& stage, const st
         std::ofstream out(caseDir / "run_status.txt", std::ios::app | std::ios::binary);
         out << nowUtc() << " " << stage;
         if (!detail.empty()) out << " " << detail;
-        out << "\n";
+        out << "\n" << std::flush;
         std::ofstream last(caseDir / "last_stage.txt", std::ios::binary);
-        last << stage << "\n";
+        last << stage << "\n" << std::flush;
     } catch (...) {}
 }
 
@@ -859,6 +885,8 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
     std::uint64_t nodeOid = omRow.omTreeOid;
     std::uint64_t nodeOffset = omRow.treeVirtualOffset;
     long long nodeRead = omRow.treeBytesRead;
+    std::vector<unsigned char> nextLeafNodeBuffer;
+    nextLeafNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
     constexpr std::uint32_t kMaxDepth = 8;
     for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
         if (cancelCheck && cancelCheck()) {
@@ -897,8 +925,6 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
             std::set<std::uint64_t> visitedLeaves;
             std::uint32_t nextLeafTransitions = 0;
             constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
-            std::vector<unsigned char> nextLeafNodeBuffer;
-            nextLeafNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
             while (true) {
                 if (!visitedLeaves.insert(nodeOid).second) {
                     aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -1638,6 +1664,14 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
         return false;
     };
     if (directProbeCancelled()) return;
+    appendRunProgress(caseDir, 30, "aff4_direct_map_reader_probe_start", "direct AFF4 map/index/data reader active");
+    auto lastDirectHeartbeat = std::chrono::steady_clock::now();
+    auto directHeartbeat = [&](const std::string& stage, const std::string& detail, int percent = 30) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - lastDirectHeartbeat < std::chrono::seconds(10)) return;
+        lastDirectHeartbeat = now;
+        appendRunProgress(caseDir, percent, stage, detail);
+    };
     std::size_t mapEntryCount = 0;
     std::size_t mapEntriesScanned = 0;
     std::size_t chunksDecoded = 0;
@@ -1732,6 +1766,9 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
             mapEntries.reserve(mapEntryCount);
             for (std::size_t mi = 0; mi < mapEntryCount; ++mi) {
                 if (directProbeCancelled()) return;
+                if ((mi % 50000U) == 0U) {
+                    directHeartbeat("aff4_direct_map_entries_indexing", "map_entry=" + std::to_string(mi) + " of " + std::to_string(mapEntryCount), 30);
+                }
                 const std::size_t moff = mi * 28U;
                 Aff4DirectMapEntry me;
                 me.virtualOffset = readLe64(mapBytes, moff);
@@ -3182,6 +3219,9 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
             const std::size_t maxMapEntriesToScan = std::min<std::size_t>(mapEntries.size(), 50000U);
             for (std::size_t scanIndex = 0; scanIndex < maxMapEntriesToScan && alignedApfsHits < 50U; ++scanIndex) {
                 if (directProbeCancelled()) return;
+                if ((scanIndex % 1000U) == 0U) {
+                    directHeartbeat("aff4_direct_map_chunk_scan", "scan_entry=" + std::to_string(scanIndex) + " of " + std::to_string(maxMapEntriesToScan) + "; chunks_decoded=" + std::to_string(chunksDecoded) + "; apfs_hits=" + std::to_string(alignedApfsHits), 31);
+                }
                 const auto& scanEntry = mapEntries[scanIndex];
                 const std::uint64_t virtualOffset = scanEntry.virtualOffset;
                 const std::uint64_t length = scanEntry.length;
@@ -3201,6 +3241,9 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                     }
                     if (usedLz4) ++lz4ChunksDecoded;
                     ++chunksDecoded;
+                    if ((chunksDecoded % 250U) == 0U) {
+                        directHeartbeat("aff4_direct_map_chunks_decoded", "chunks_decoded=" + std::to_string(chunksDecoded) + "; lz4_chunks=" + std::to_string(lz4ChunksDecoded) + "; apfs_hits=" + std::to_string(alignedApfsHits), 32);
+                    }
                     if (chunksDecoded == 1U) {
                         add("direct_first_chunk_decode", "DECODE_OK", virtualOffset, streamOffset, originalMapEntryIndex, chunk, static_cast<long long>(dec.size()), {}, hexSampleBytes(dec.data(), std::min<std::size_t>(dec.size(), 64U)), "First AFF4 image-stream chunk decoded directly from map/index/data ZIP members after sorting the AFF4 map by APFS virtual offset.");
                     }
@@ -3254,6 +3297,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                 }
             }
             probeDirectApfsFromBestNx();
+            appendRunProgress(caseDir, 34, "aff4_direct_map_reader_probe_complete", "map_entries_scanned=" + std::to_string(mapEntriesScanned) + "; chunks_decoded=" + std::to_string(chunksDecoded) + "; apfs_hits=" + std::to_string(alignedApfsHits));
             finalStatus = chunksDecoded > 0U ? "DIRECT_MAP_READER_SMOKE_OK" : "DIRECT_MAP_READER_NO_CHUNKS_DECODED";
             finalNotes = "scan_entries=" + std::to_string(maxMapEntriesToScan) + "; map_entries_total=" + std::to_string(mapEntryCount);
         }
@@ -3425,6 +3469,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                       const std::atomic_bool* cancelToken,
                                       Logger& log) {
     if (!isAff4SourcePath(originalInput)) return;
+    appendRunProgress(caseDir, 29, "aff4_dynamic_load_probe_entry", "AFF4 dynamic probe entered; direct-map guard may route to direct reader");
     auto dynamicProbeCancelled = [&]() -> bool {
         if (cancelToken && cancelToken->load()) {
             appendRunStatus(caseDir, "aff4_dynamic_load_probe_cancelled", "cancel requested by investigator");
@@ -4668,6 +4713,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             std::uint64_t nodeOid = omRow.omTreeOid;
                             std::uint64_t nodeOffset = omRow.treeVirtualOffset;
                             long long nodeRead = omRow.treeBytesRead;
+                            std::vector<unsigned char> nextLeafNodeBuffer;
+                            nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
                                 out.branchDepth = depth;
@@ -4700,8 +4747,6 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     std::set<std::uint64_t> visitedLeaves;
                                     std::uint32_t nextLeafTransitions = 0;
                                     constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
-                                    std::vector<unsigned char> nextLeafNodeBuffer;
-                                    nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                                     while (true) {
                                         if (!visitedLeaves.insert(nodeOid).second) {
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -4898,6 +4943,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             std::uint64_t nodeOid = omRow.omTreeOid;
                             std::uint64_t nodeOffset = omRow.treeVirtualOffset;
                             long long nodeRead = omRow.treeBytesRead;
+                            std::vector<unsigned char> nextLeafNodeBuffer;
+                            nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
                                 out.branchDepth = depth;
@@ -4930,8 +4977,6 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     std::set<std::uint64_t> visitedLeaves;
                                     std::uint32_t nextLeafTransitions = 0;
                                     constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
-                                    std::vector<unsigned char> nextLeafNodeBuffer;
-                                    nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                                     while (true) {
                                         if (!visitedLeaves.insert(nodeOid).second) {
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -6656,7 +6701,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         apfsSpotlightInodeProbeRows.push_back(ir);
                     };
 
-                    // V1.3.0: Reuse APFS B-tree node buffers across guided target lookups.
+                    // V1.3.2: Reuse APFS B-tree node buffers across guided target lookups.
                     // These guided lookups run in tight loops over staged Spotlight candidates; keeping the
                     // backing storage alive avoids repeated heap allocation while preserving the existing
                     // read and provenance semantics.
