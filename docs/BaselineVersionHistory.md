@@ -10,10 +10,10 @@
 
 ## V1_1_8
 
-- Uses the user-provided `BaselineVersionHistory.md` as the append-only baseline version history going forward.
+- Uses this `BaselineVersionHistory.md` as the append-only version-history baseline going forward.
 - Adds Windows long-path support helpers and routes APFS/AFF4 Store-V2 evidence copy-out/reconstruction writes through long-path-capable file writing on Windows.
 - Forces a WAL checkpoint/truncate before upload packaging and changes `CaseDatabase::close()` to request `SQLITE_CHECKPOINT_TRUNCATE` rather than `FULL`.
-- Adds mutex protection to `Logger` file/message writes for concurrent GUI/export/ingest logging paths.
+- Adds mutex protection to `Logger` file/message writes for concurrent GUI/export/ingest paths.
 - Tightens APFS decmpfs expected-output safety cap from 512 MiB to 256 MiB.
 - Preserves V1.1.7.1 AFF4 probe-worker architecture; both dynamic and direct AFF4/APFS probe bodies remain outside `app_runner.cpp`.
 - No live APFS traversal replacement, iOS parser semantic change, Store-V2 schema change, or GUI view behavior change.

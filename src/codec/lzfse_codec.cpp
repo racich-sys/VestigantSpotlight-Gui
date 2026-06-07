@@ -266,7 +266,7 @@ ApfsDecmpfsReconstructionResult reconstructDecmpfsResourceForkDissectStyle(const
                                                                                  std::uint64_t expectedUncompressedSize,
                                                                                  int compressionType) {
     ApfsDecmpfsReconstructionResult rr;
-    if (expectedUncompressedSize == 0 || expectedUncompressedSize > 512ULL * 1024ULL * 1024ULL) {
+    if (expectedUncompressedSize == 0 || expectedUncompressedSize > 256ULL * 1024ULL * 1024ULL) {
         rr.status = "DECOMPFS_EXPECTED_SIZE_UNSAFE";
         rr.notes = "Expected uncompressed size was zero or above the bounded reconstruction cap.";
         return rr;

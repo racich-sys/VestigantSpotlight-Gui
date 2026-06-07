@@ -80,7 +80,7 @@ void CaseDatabase::open(const fs::path& dbPath) {
 }
 void CaseDatabase::close() {
     if (db_) {
-        sqlite3_wal_checkpoint_v2(db_, nullptr, SQLITE_CHECKPOINT_FULL, nullptr, nullptr);
+        sqlite3_wal_checkpoint_v2(db_, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);
         int rc = sqlite3_close(db_);
         if (rc == SQLITE_BUSY) {
             // V0.9.42: prefer a deferred close over leaving callers with a live handle

@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ public:
     const std::vector<std::string>& messages() const { return messages_; }
 private:
     std::ofstream file_;
+    mutable std::mutex mutex_;
     bool verbose_ = false;
     std::vector<std::string> messages_;
     void write(const std::string& level, const std::string& message);

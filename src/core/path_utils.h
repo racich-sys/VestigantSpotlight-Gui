@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -13,6 +14,11 @@ bool containsI(const std::string& haystack, const std::string& needle);
 std::string trim(std::string s);
 std::string nowUtc();
 std::string pathString(const fs::path& p);
+
+#if defined(_WIN32)
+std::wstring makeWin32LongPath(const fs::path& p);
+#endif
+bool writeBinaryFilePortable(const fs::path& p, const unsigned char* data, std::size_t size, std::string* error = nullptr);
 std::string safeRelativeString(const fs::path& root, const fs::path& p);
 std::string normalizeSlash(std::string s);
 std::string ltrimSlashes(std::string s);

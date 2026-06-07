@@ -1,5 +1,13 @@
 # Suggestions and Fixes Tracker
 
+## V1.1.9 update
+
+- Current generated source package: V1.1.9.
+- Validated baseline reviewed before this version: V1.1.8 Windows/MSVC build and macOS AFF4/APFS thin output.
+- Main change: guarded live APFS OMAP horizontal leaf traversal with bounded next-leaf transitions.
+- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.md`.
+
+
 This file tracks review suggestions, proposed fixes, implementation status, and validation status across versions. Keep it current in every future package.
 
 | ID | Suggestion / issue | Proposed fix | Status | Implemented in | Validation status / notes |
@@ -107,3 +115,12 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 | 41 | Active source package contained many obsolete version-specific scripts and root-level package manifests. | Keep only current version scripts plus generic scripts; preserve history in append-only docs. | [x] Implemented | V1.1.7.1 | Package cleanup manifest records deleted files. |
 | 42 | Version history risked fragmentation/truncation. | Add `docs/FULL_VERSION_HISTORY.md` and append-only policy baseline from uploaded workflow/history docs. | [x] Implemented | V1.1.7.1 | Future packages must append to this history. |
 | 43 | New chat continuation still required reconstructing setup from chat history. | Add `docs/NEW_CHAT_CONTINUATION_GUIDE.md` with current paths, required external files, commands, and repeat workflow. | [x] Implemented | V1.1.7.1 | Use as first artifact in new chat. |
+
+## V1.1.8 Update
+
+- `BaselineVersionHistory.md` is now the append-only version-history baseline in `docs/FULL_VERSION_HISTORY.md` and `VERSION_HISTORY.md`.
+- Windows long-path evidence writes were added for APFS/AFF4 Store-V2 copy-out and decmpfs reconstruction output paths.
+- SQLite WAL checkpoint/truncate is requested before upload packaging.
+- Logger writes are mutex-protected for concurrent GUI/export/ingest paths.
+- APFS decmpfs reconstruction remains bounded; the expected-output safety cap is now 256 MiB.
+

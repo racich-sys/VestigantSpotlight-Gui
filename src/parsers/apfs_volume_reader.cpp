@@ -141,9 +141,9 @@ ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& 
 
 
 std::uint64_t apfsReadNextLeafOidFromBtreeInfoFooter(const std::vector<unsigned char>& node) {
-    // Comparator-only helper: APFS B-tree footer semantics must be validated
-    // against real nodes before this is wired into live extraction.  The helper
-    // is deliberately bounds-checked and returns zero for malformed candidates.
+    // Bounded helper used by comparator code and, beginning in V1.1.9, by the
+    // guarded AFF4/APFS live probe to follow horizontal APFS B-tree leaf links.
+    // It is deliberately bounds-checked and returns zero for malformed nodes.
     if (node.size() < 96U) return 0;
     const std::uint16_t btnFlags = readLe16Local(node, 32U);
     const bool isLeaf = (btnFlags & 0x0002U) != 0U;

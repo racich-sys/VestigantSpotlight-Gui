@@ -5623,6 +5623,9 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         result.timelineCount = counts.timeline;
         result.orphanCandidateCount = counts.orphanCandidates;
         store.writeSummary(result);
+        appendRunStatus(caseDir, "sqlite_wal_checkpoint", "flushing WAL to main database before upload packaging");
+        try { db.exec("PRAGMA wal_checkpoint(TRUNCATE);"); }
+        catch (const std::exception& ex) { log.warn(std::string("WAL checkpoint/truncate warning before upload packaging: ") + ex.what()); }
         db.close();
         try {
             std::error_code copyEc;

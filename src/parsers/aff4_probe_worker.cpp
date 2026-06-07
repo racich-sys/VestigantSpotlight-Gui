@@ -169,6 +169,104 @@ std::string lastWindowsErrorString() {
 #endif
 }
 
+class EvidenceBinaryWriter {
+public:
+    EvidenceBinaryWriter() = default;
+    explicit EvidenceBinaryWriter(const fs::path& path) { open(path); }
+    ~EvidenceBinaryWriter() { close(); }
+
+    bool open(const fs::path& path) {
+        close();
+        path_ = path;
+#if defined(_WIN32)
+        const std::wstring wide = makeWin32LongPath(path);
+        handle_ = CreateFileW(wide.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle_ == INVALID_HANDLE_VALUE) {
+            error_ = "CreateFileW failed for " + pathString(path) + "; win32_error=" + std::to_string(GetLastError());
+            ok_ = false;
+            return false;
+        }
+        ok_ = true;
+        return true;
+#else
+        stream_.open(path, std::ios::binary | std::ios::trunc);
+        if (!stream_) {
+            error_ = "open failed for " + pathString(path);
+            ok_ = false;
+            return false;
+        }
+        ok_ = true;
+        return true;
+#endif
+    }
+
+    bool write(const unsigned char* data, std::size_t size) {
+        if (!ok_) return false;
+#if defined(_WIN32)
+        const unsigned char* cur = data;
+        std::size_t left = size;
+        while (left != 0) {
+            const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(left, 1U << 20));
+            DWORD written = 0;
+            if (!WriteFile(handle_, cur, chunk, &written, nullptr) || written != chunk) {
+                error_ = "WriteFile failed for " + pathString(path_) + "; win32_error=" + std::to_string(GetLastError());
+                ok_ = false;
+                return false;
+            }
+            cur += chunk;
+            left -= chunk;
+        }
+        return true;
+#else
+        if (size != 0) stream_.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
+        if (!stream_) {
+            error_ = "write failed for " + pathString(path_);
+            ok_ = false;
+            return false;
+        }
+        return true;
+#endif
+    }
+
+    bool write(const std::vector<unsigned char>& data) { return write(data.data(), data.size()); }
+    explicit operator bool() const { return ok_; }
+    const std::string& error() const { return error_; }
+
+    bool close() {
+#if defined(_WIN32)
+        if (handle_ != INVALID_HANDLE_VALUE) {
+            const BOOL closed = CloseHandle(handle_);
+            handle_ = INVALID_HANDLE_VALUE;
+            if (!closed) {
+                error_ = "CloseHandle failed for " + pathString(path_) + "; win32_error=" + std::to_string(GetLastError());
+                ok_ = false;
+                return false;
+            }
+        }
+#else
+        if (stream_.is_open()) {
+            stream_.close();
+            if (!stream_) {
+                error_ = "close failed for " + pathString(path_);
+                ok_ = false;
+                return false;
+            }
+        }
+#endif
+        return ok_;
+    }
+
+private:
+    fs::path path_;
+    bool ok_ = false;
+    std::string error_;
+#if defined(_WIN32)
+    HANDLE handle_ = INVALID_HANDLE_VALUE;
+#else
+    std::ofstream stream_;
+#endif
+};
+
 bool hasExtensionInsensitive(const fs::path& p, const std::string& ext) {
     std::string e = p.extension().string();
     std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
@@ -626,6 +724,98 @@ void aff4ApfsAppendBranchPathForProbe(std::string& path, const std::string& segm
     path += segment;
 }
 
+void aff4ApfsAppendProbeNote(std::string& notes, const std::string& note) {
+    if (note.empty()) return;
+    if (!notes.empty()) notes += "; ";
+    notes += note;
+}
+
+bool aff4ApfsFindBestOmapLeafEntryForProbe(const std::vector<unsigned char>& node,
+                                           std::uint32_t nkeys,
+                                           std::uint64_t targetOid,
+                                           std::uint64_t targetXid,
+                                           std::uint32_t& matchedEntryIndex,
+                                           std::uint64_t& matchedKeyOid,
+                                           std::uint64_t& matchedKeyXid,
+                                           std::uint32_t& valueFlags,
+                                           std::uint32_t& valueSize,
+                                           std::uint64_t& valuePaddr,
+                                           std::string& bestDetail,
+                                           std::string& firstDecodeNote,
+                                           const std::function<bool()>& cancelCheck,
+                                           bool& cancelled) {
+    cancelled = false;
+    bool found = false;
+    std::uint64_t bestXid = 0;
+    const std::uint32_t limit = std::min<std::uint32_t>(nkeys, 65536U);
+    for (std::uint32_t i = 0; i < limit; ++i) {
+        if (cancelCheck && cancelCheck()) {
+            cancelled = true;
+            return false;
+        }
+        std::size_t keyAbs = 0;
+        std::size_t valAbs = 0;
+        std::string detail;
+        if (!aff4ApfsFixedKvAbsForProbe(node, i, 16U, keyAbs, valAbs, detail)) {
+            if (i == 0 && firstDecodeNote.empty()) firstDecodeNote = detail;
+            continue;
+        }
+        const std::uint64_t keyOid = readLe64(node, keyAbs + 0U);
+        const std::uint64_t keyXid = readLe64(node, keyAbs + 8U);
+        if (keyOid != targetOid || keyXid > targetXid) continue;
+        if (!found || keyXid >= bestXid) {
+            found = true;
+            bestXid = keyXid;
+            bestDetail = detail;
+            matchedEntryIndex = i;
+            matchedKeyOid = keyOid;
+            matchedKeyXid = keyXid;
+            valueFlags = readLe32(node, valAbs + 0U);
+            valueSize = readLe32(node, valAbs + 4U);
+            valuePaddr = readLe64(node, valAbs + 8U);
+        }
+    }
+    return found;
+}
+
+bool aff4ApfsLoadNextLeafForProbe(const std::vector<unsigned char>& currentNode,
+                                  std::uint64_t currentNodeOid,
+                                  std::uint64_t blockSize,
+                                  const std::function<long long(std::uint64_t, std::uint64_t, std::vector<unsigned char>&, std::string&)>& readVirtual,
+                                  const std::function<bool(std::uint64_t, std::uint64_t&)>& safeNodeOffset,
+                                  std::vector<unsigned char>& nextNode,
+                                  std::uint64_t& nextNodeOid,
+                                  std::uint64_t& nextNodeOffset,
+                                  long long& nextNodeRead,
+                                  std::string& notes) {
+    const std::uint64_t candidateNextOid = apfsReadNextLeafOidFromBtreeInfoFooter(currentNode);
+    if (candidateNextOid == 0 || candidateNextOid == currentNodeOid) return false;
+    std::uint64_t candidateNextOffset = 0;
+    if (!safeNodeOffset(candidateNextOid, candidateNextOffset)) {
+        aff4ApfsAppendProbeNote(notes, "next_leaf_oid_offset_unsafe=" + std::to_string(candidateNextOid));
+        return false;
+    }
+    std::vector<unsigned char> candidateNode;
+    std::string nextErr;
+    const long long candidateRead = readVirtual(candidateNextOffset, blockSize, candidateNode, nextErr);
+    if (candidateRead <= 0 || candidateNode.size() < 64U) {
+        aff4ApfsAppendProbeNote(notes, nextErr.empty() ? ("next_leaf_read_failed_oid=" + std::to_string(candidateNextOid))
+                                                       : ("next_leaf_read_failed_oid=" + std::to_string(candidateNextOid) + ": " + nextErr));
+        return false;
+    }
+    const std::string label = apfsObjectTypeLabel(readLe32(candidateNode, 24U));
+    const std::uint16_t nextLevel = readLe16(candidateNode, 34U);
+    if ((label != "BTREE" && label != "BTREE_NODE") || nextLevel != 0U) {
+        aff4ApfsAppendProbeNote(notes, "next_leaf_unexpected_node_type_or_level=" + label + ":" + std::to_string(nextLevel));
+        return false;
+    }
+    nextNode.swap(candidateNode);
+    nextNodeOid = candidateNextOid;
+    nextNodeOffset = candidateNextOffset;
+    nextNodeRead = candidateRead;
+    return true;
+}
+
 bool aff4GenericBtreeKvAbsForProbe(const std::vector<unsigned char>& node,
                                    std::uint32_t entryIndex,
                                    std::size_t& tocAbs,
@@ -700,47 +890,71 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
             break;
         }
         if (btnLevel == 0) {
-            out.leafOid = nodeOid;
-            out.leafVirtualOffset = nodeOffset;
-            out.leafBytesRead = nodeRead;
-            out.leafBtnFlags = btnFlags;
-            out.leafBtnLevel = btnLevel;
-            out.leafBtnNkeys = nkeys;
-            out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
             bool found = false;
-            std::uint64_t bestXid = 0;
             std::string bestDetail;
-            const std::uint32_t limit = std::min<std::uint32_t>(nkeys, 65536U);
-            for (std::uint32_t i = 0; i < limit; ++i) {
-                std::size_t keyAbs = 0;
-                std::size_t valAbs = 0;
-                std::string detail;
-                if (!aff4ApfsFixedKvAbsForProbe(node, i, 16U, keyAbs, valAbs, detail)) {
-                    if (i == 0 && out.notes.empty()) out.notes = detail;
-                    continue;
+            std::set<std::uint64_t> visitedLeaves;
+            std::uint32_t nextLeafTransitions = 0;
+            constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+            while (true) {
+                if (!visitedLeaves.insert(nodeOid).second) {
+                    aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
+                    break;
                 }
-                const std::uint64_t keyOid = readLe64(node, keyAbs + 0U);
-                const std::uint64_t keyXid = readLe64(node, keyAbs + 8U);
-                if (keyOid != targetOid || keyXid > targetXid) continue;
-                if (!found || keyXid >= bestXid) {
-                    found = true;
-                    bestXid = keyXid;
-                    bestDetail = detail;
-                    out.matchedEntryIndex = i;
-                    out.matchedKeyOid = keyOid;
-                    out.matchedKeyXid = keyXid;
-                    out.valueFlags = readLe32(node, valAbs + 0U);
-                    out.valueSize = readLe32(node, valAbs + 4U);
-                    out.valuePaddr = readLe64(node, valAbs + 8U);
+                out.leafOid = nodeOid;
+                out.leafVirtualOffset = nodeOffset;
+                out.leafBytesRead = nodeRead;
+                out.leafBtnFlags = readLe16(node, 32U);
+                out.leafBtnLevel = readLe16(node, 34U);
+                out.leafBtnNkeys = readLe32(node, 36U);
+                out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
+                std::string firstDecodeNote;
+                bool cancelled = false;
+                found = aff4ApfsFindBestOmapLeafEntryForProbe(node,
+                                                              out.leafBtnNkeys,
+                                                              targetOid,
+                                                              targetXid,
+                                                              out.matchedEntryIndex,
+                                                              out.matchedKeyOid,
+                                                              out.matchedKeyXid,
+                                                              out.valueFlags,
+                                                              out.valueSize,
+                                                              out.valuePaddr,
+                                                              bestDetail,
+                                                              firstDecodeNote,
+                                                              cancelCheck,
+                                                              cancelled);
+                if (cancelled) {
+                    out.lookupStatus = "CANCELLED_BY_USER";
+                    out.interpretation = purpose + ": volume OMAP lookup cancelled by investigator request.";
+                    out.notes = "Cancelled while scanning volume OMAP leaf entries.";
+                    return out;
                 }
+                if (!firstDecodeNote.empty() && out.notes.empty()) out.notes = firstDecodeNote;
+                if (found) break;
+                if (nextLeafTransitions >= kMaxNextLeafTransitions) {
+                    aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
+                    break;
+                }
+                std::vector<unsigned char> nextNode;
+                std::uint64_t nextNodeOid = 0;
+                std::uint64_t nextNodeOffset = 0;
+                long long nextNodeRead = -1;
+                if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                ++nextLeafTransitions;
+                aff4ApfsAppendBranchPathForProbe(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
+                node.swap(nextNode);
+                nodeOid = nextNodeOid;
+                nodeOffset = nextNodeOffset;
+                nodeRead = nextNodeRead;
             }
             if (!found) {
-                out.lookupStatus = "OMAP_TARGET_LOOKUP_NO_MATCH_IN_LEAF";
-                out.interpretation = purpose + ": volume OMAP leaf was reached, but no key with xid <= target transaction was found.";
+                out.lookupStatus = nextLeafTransitions > 0 ? "OMAP_TARGET_LOOKUP_NO_MATCH_AFTER_NEXT_LEAF_SCAN" : "OMAP_TARGET_LOOKUP_NO_MATCH_IN_LEAF";
+                out.interpretation = purpose + ": volume OMAP leaf scan reached the end of the bounded horizontal leaf chain without finding a key with xid <= target transaction.";
                 break;
             }
-            out.lookupStatus = "OMAP_TARGET_LOOKUP_RESOLVED";
-            out.notes += out.notes.empty() ? bestDetail : ("; " + bestDetail);
+            out.lookupStatus = nextLeafTransitions > 0 ? "OMAP_TARGET_LOOKUP_RESOLVED_AFTER_NEXT_LEAF_SCAN" : "OMAP_TARGET_LOOKUP_RESOLVED";
+            aff4ApfsAppendProbeNote(out.notes, bestDetail);
+            if (nextLeafTransitions > 0) aff4ApfsAppendProbeNote(out.notes, "next_leaf_transitions=" + std::to_string(nextLeafTransitions));
             if ((out.valueFlags & 0x00000001U) != 0U) {
                 out.objectStatus = "OMAP_TARGET_VALUE_DELETED";
                 out.interpretation = purpose + ": matching OMAP value was marked deleted; object not read as active.";
@@ -2776,8 +2990,8 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                         std::error_code mkEc;
                         fs::create_directories(outPath.parent_path(), mkEc);
                         if (mkEc) { row.copyStatus = "COPY_FAILED_CREATE_DIRECTORY"; row.validationStatus = "OUTPUT_DIRECTORY_FAILED"; row.notes = mkEc.message(); directSpotlightFileCopyOutRows.push_back(row); continue; }
-                        std::ofstream outFile(outPath, std::ios::binary);
-                        if (!outFile) { row.copyStatus = "COPY_FAILED_OPEN_OUTPUT"; row.validationStatus = "OUTPUT_OPEN_FAILED"; row.notes = pathString(outPath); directSpotlightFileCopyOutRows.push_back(row); continue; }
+                        EvidenceBinaryWriter outFile(outPath);
+                        if (!outFile) { row.copyStatus = "COPY_FAILED_OPEN_OUTPUT"; row.validationStatus = "OUTPUT_OPEN_FAILED"; row.notes = outFile.error(); directSpotlightFileCopyOutRows.push_back(row); continue; }
                         std::vector<unsigned char> firstBytes;
                         std::uint64_t logicalCursor = 0;
                         std::uint64_t syntheticZeroBytes = 0;
@@ -2789,8 +3003,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                             while (left != 0) {
                                 const std::size_t chunk = static_cast<std::size_t>(std::min<std::uint64_t>(left, z.size()));
                                 if (firstBytes.empty()) firstBytes.assign(z.begin(), z.begin() + std::min<std::size_t>(chunk, 96U));
-                                outFile.write(reinterpret_cast<const char*>(z.data()), static_cast<std::streamsize>(chunk));
-                                if (!outFile) { copyNotes = "zero-fill write failed: " + reason; return false; }
+                                if (!outFile.write(z.data(), chunk)) { copyNotes = "zero-fill write failed: " + reason + "; " + outFile.error(); return false; }
                                 left -= chunk;
                             }
                             syntheticZeroBytes += count;
@@ -2817,15 +3030,14 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                             const long long got = directReadVirtual(er.physicalOffset, writableExtentBytes, extentBytes, readErr);
                             if (got < 0 || static_cast<std::uint64_t>(got) != writableExtentBytes || extentBytes.size() != writableExtentBytes) { copyOk = false; copyNotes = readErr.empty() ? "extent read failed or returned short data" : readErr; break; }
                             if (firstBytes.empty()) firstBytes.assign(extentBytes.begin(), extentBytes.begin() + std::min<std::size_t>(extentBytes.size(), 96U));
-                            outFile.write(reinterpret_cast<const char*>(extentBytes.data()), static_cast<std::streamsize>(extentBytes.size()));
-                            if (!outFile) { copyOk = false; copyNotes = "extent write failed"; break; }
+                            if (!outFile.write(extentBytes)) { copyOk = false; copyNotes = "extent write failed; " + outFile.error(); break; }
                             logicalCursor += writableExtentBytes;
                         }
                         if (copyOk && logicalCursor != directLogicalSize) {
                             copyOk = false;
                             copyNotes = "logical output short after bounded direct copy; wrote=" + std::to_string(logicalCursor) + "; expected=" + std::to_string(directLogicalSize);
                         }
-                        outFile.close();
+                        if (!outFile.close()) { copyOk = false; copyNotes = copyNotes.empty() ? outFile.error() : (copyNotes + "; " + outFile.error()); }
                         row.outputPath = pathString(outPath);
                         row.outputRelativePath = pathString(fs::relative(outPath, caseDir));
                         if (!firstBytes.empty()) { row.firstBytesStatus = directPreviewStatusForBytes(firstBytes); row.firstBytesHex = hexSampleBytes(firstBytes.data(), firstBytes.size()); }
@@ -4476,53 +4688,71 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     break;
                                 }
                                 if (btnLevel == 0) {
-                                    out.leafOid = nodeOid;
-                                    out.leafVirtualOffset = nodeOffset;
-                                    out.leafBytesRead = nodeRead;
-                                    out.leafBtnFlags = btnFlags;
-                                    out.leafBtnLevel = btnLevel;
-                                    out.leafBtnNkeys = nkeys;
-                                    out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
                                     bool found = false;
-                                    std::uint64_t bestXid = 0;
                                     std::string bestDetail;
-                                    const std::uint32_t limit = std::min<std::uint32_t>(nkeys, 65536U);
-                                    for (std::uint32_t i = 0; i < limit; ++i) {
-                                        if (dynamicProbeCancelled()) {
+                                    std::set<std::uint64_t> visitedLeaves;
+                                    std::uint32_t nextLeafTransitions = 0;
+                                    constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+                                    while (true) {
+                                        if (!visitedLeaves.insert(nodeOid).second) {
+                                            aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
+                                            break;
+                                        }
+                                        out.leafOid = nodeOid;
+                                        out.leafVirtualOffset = nodeOffset;
+                                        out.leafBytesRead = nodeRead;
+                                        out.leafBtnFlags = readLe16(node, 32U);
+                                        out.leafBtnLevel = readLe16(node, 34U);
+                                        out.leafBtnNkeys = readLe32(node, 36U);
+                                        out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
+                                        std::string firstDecodeNote;
+                                        bool cancelled = false;
+                                        found = aff4ApfsFindBestOmapLeafEntryForProbe(node,
+                                                                                      out.leafBtnNkeys,
+                                                                                      targetOid,
+                                                                                      targetXid,
+                                                                                      out.matchedEntryIndex,
+                                                                                      out.matchedKeyOid,
+                                                                                      out.matchedKeyXid,
+                                                                                      out.valueFlags,
+                                                                                      out.valueSize,
+                                                                                      out.valuePaddr,
+                                                                                      bestDetail,
+                                                                                      firstDecodeNote,
+                                                                                      dynamicProbeCancelled,
+                                                                                      cancelled);
+                                        if (cancelled) {
                                             out.lookupStatus = "CANCELLED_BY_USER";
                                             out.interpretation = purpose + ": volume OMAP lookup cancelled by investigator request.";
                                             out.notes = "Cancelled while scanning volume OMAP leaf entries.";
                                             return out;
                                         }
-                                        std::size_t keyAbs = 0;
-                                        std::size_t valAbs = 0;
-                                        std::string detail;
-                                        if (!fixedKvAbs(node, i, 16U, keyAbs, valAbs, detail)) {
-                                            if (i == 0 && out.notes.empty()) out.notes = detail;
-                                            continue;
+                                        if (!firstDecodeNote.empty() && out.notes.empty()) out.notes = firstDecodeNote;
+                                        if (found) break;
+                                        if (nextLeafTransitions >= kMaxNextLeafTransitions) {
+                                            aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
+                                            break;
                                         }
-                                        const std::uint64_t keyOid = readLe64(node, keyAbs + 0U);
-                                        const std::uint64_t keyXid = readLe64(node, keyAbs + 8U);
-                                        if (keyOid != targetOid || keyXid > targetXid) continue;
-                                        if (!found || keyXid >= bestXid) {
-                                            found = true;
-                                            bestXid = keyXid;
-                                            bestDetail = detail;
-                                            out.matchedEntryIndex = i;
-                                            out.matchedKeyOid = keyOid;
-                                            out.matchedKeyXid = keyXid;
-                                            out.valueFlags = readLe32(node, valAbs + 0U);
-                                            out.valueSize = readLe32(node, valAbs + 4U);
-                                            out.valuePaddr = readLe64(node, valAbs + 8U);
-                                        }
+                                        std::vector<unsigned char> nextNode;
+                                        std::uint64_t nextNodeOid = 0;
+                                        std::uint64_t nextNodeOffset = 0;
+                                        long long nextNodeRead = -1;
+                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                                        ++nextLeafTransitions;
+                                        appendBranchPath(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
+                                        node.swap(nextNode);
+                                        nodeOid = nextNodeOid;
+                                        nodeOffset = nextNodeOffset;
+                                        nodeRead = nextNodeRead;
                                     }
                                     if (!found) {
-                                        out.lookupStatus = "OMAP_TARGET_LOOKUP_NO_MATCH_IN_LEAF";
-                                        out.interpretation = purpose + ": volume OMAP leaf was reached, but no key with xid <= target transaction was found.";
+                                        out.lookupStatus = nextLeafTransitions > 0 ? "OMAP_TARGET_LOOKUP_NO_MATCH_AFTER_NEXT_LEAF_SCAN" : "OMAP_TARGET_LOOKUP_NO_MATCH_IN_LEAF";
+                                        out.interpretation = purpose + ": volume OMAP leaf scan reached the end of the bounded horizontal leaf chain without finding a key with xid <= target transaction.";
                                         break;
                                     }
-                                    out.lookupStatus = "OMAP_TARGET_LOOKUP_RESOLVED";
-                                    out.notes += out.notes.empty() ? bestDetail : ("; " + bestDetail);
+                                    out.lookupStatus = nextLeafTransitions > 0 ? "OMAP_TARGET_LOOKUP_RESOLVED_AFTER_NEXT_LEAF_SCAN" : "OMAP_TARGET_LOOKUP_RESOLVED";
+                                    aff4ApfsAppendProbeNote(out.notes, bestDetail);
+                                    if (nextLeafTransitions > 0) aff4ApfsAppendProbeNote(out.notes, "next_leaf_transitions=" + std::to_string(nextLeafTransitions));
                                     if ((out.valueFlags & 0x00000001U) != 0U) {
                                         out.objectStatus = "OMAP_TARGET_VALUE_DELETED";
                                         out.interpretation = purpose + ": matching OMAP value was marked deleted; object not read as active.";
@@ -4686,47 +4916,71 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     break;
                                 }
                                 if (btnLevel == 0) {
-                                    out.leafOid = nodeOid;
-                                    out.leafVirtualOffset = nodeOffset;
-                                    out.leafBytesRead = nodeRead;
-                                    out.leafBtnFlags = btnFlags;
-                                    out.leafBtnLevel = btnLevel;
-                                    out.leafBtnNkeys = nkeys;
-                                    out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
                                     bool found = false;
-                                    std::uint64_t bestXid = 0;
                                     std::string bestDetail;
-                                    const std::uint32_t limit = std::min<std::uint32_t>(nkeys, 65536U);
-                                    for (std::uint32_t i = 0; i < limit; ++i) {
-                                        std::size_t keyAbs = 0;
-                                        std::size_t valAbs = 0;
-                                        std::string detail;
-                                        if (!fixedKvAbs(node, i, 16U, keyAbs, valAbs, detail)) {
-                                            if (i == 0 && out.notes.empty()) out.notes = detail;
-                                            continue;
+                                    std::set<std::uint64_t> visitedLeaves;
+                                    std::uint32_t nextLeafTransitions = 0;
+                                    constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+                                    while (true) {
+                                        if (!visitedLeaves.insert(nodeOid).second) {
+                                            aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
+                                            break;
                                         }
-                                        const std::uint64_t keyOid = readLe64(node, keyAbs + 0U);
-                                        const std::uint64_t keyXid = readLe64(node, keyAbs + 8U);
-                                        if (keyOid != out.apfsRootTreeOid || keyXid > out.targetXid) continue;
-                                        if (!found || keyXid >= bestXid) {
-                                            found = true;
-                                            bestXid = keyXid;
-                                            bestDetail = detail;
-                                            out.matchedEntryIndex = i;
-                                            out.matchedKeyOid = keyOid;
-                                            out.matchedKeyXid = keyXid;
-                                            out.valueFlags = readLe32(node, valAbs + 0U);
-                                            out.valueSize = readLe32(node, valAbs + 4U);
-                                            out.valuePaddr = readLe64(node, valAbs + 8U);
+                                        out.leafOid = nodeOid;
+                                        out.leafVirtualOffset = nodeOffset;
+                                        out.leafBytesRead = nodeRead;
+                                        out.leafBtnFlags = readLe16(node, 32U);
+                                        out.leafBtnLevel = readLe16(node, 34U);
+                                        out.leafBtnNkeys = readLe32(node, 36U);
+                                        out.sampleHex = node.empty() ? std::string{} : hexSampleBytes(node.data(), node.size() < 96 ? node.size() : 96);
+                                        std::string firstDecodeNote;
+                                        bool cancelled = false;
+                                        found = aff4ApfsFindBestOmapLeafEntryForProbe(node,
+                                                                                      out.leafBtnNkeys,
+                                                                                      out.apfsRootTreeOid,
+                                                                                      out.targetXid,
+                                                                                      out.matchedEntryIndex,
+                                                                                      out.matchedKeyOid,
+                                                                                      out.matchedKeyXid,
+                                                                                      out.valueFlags,
+                                                                                      out.valueSize,
+                                                                                      out.valuePaddr,
+                                                                                      bestDetail,
+                                                                                      firstDecodeNote,
+                                                                                      dynamicProbeCancelled,
+                                                                                      cancelled);
+                                        if (cancelled) {
+                                            out.lookupStatus = "CANCELLED_BY_USER";
+                                            out.interpretation = "Volume root-tree lookup cancelled by investigator request.";
+                                            out.notes = "Cancelled while scanning volume OMAP leaf entries.";
+                                            break;
                                         }
+                                        if (!firstDecodeNote.empty() && out.notes.empty()) out.notes = firstDecodeNote;
+                                        if (found) break;
+                                        if (nextLeafTransitions >= kMaxNextLeafTransitions) {
+                                            aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
+                                            break;
+                                        }
+                                        std::vector<unsigned char> nextNode;
+                                        std::uint64_t nextNodeOid = 0;
+                                        std::uint64_t nextNodeOffset = 0;
+                                        long long nextNodeRead = -1;
+                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                                        ++nextLeafTransitions;
+                                        appendBranchPath(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
+                                        node.swap(nextNode);
+                                        nodeOid = nextNodeOid;
+                                        nodeOffset = nextNodeOffset;
+                                        nodeRead = nextNodeRead;
                                     }
                                     if (!found) {
-                                        out.lookupStatus = "VOLUME_ROOT_TREE_LOOKUP_NO_MATCH_IN_LEAF";
-                                        out.interpretation = "Volume OMAP leaf was reached, but no apfs_root_tree_oid key with xid <= APSB xid was found.";
+                                        if (out.lookupStatus.empty()) out.lookupStatus = nextLeafTransitions > 0 ? "VOLUME_ROOT_TREE_LOOKUP_NO_MATCH_AFTER_NEXT_LEAF_SCAN" : "VOLUME_ROOT_TREE_LOOKUP_NO_MATCH_IN_LEAF";
+                                        out.interpretation = "Volume OMAP leaf scan reached the end of the bounded horizontal leaf chain without finding apfs_root_tree_oid with xid <= APSB xid.";
                                         break;
                                     }
-                                    out.lookupStatus = "VOLUME_ROOT_TREE_LOOKUP_RESOLVED";
-                                    out.notes += out.notes.empty() ? bestDetail : ("; " + bestDetail);
+                                    out.lookupStatus = nextLeafTransitions > 0 ? "VOLUME_ROOT_TREE_LOOKUP_RESOLVED_AFTER_NEXT_LEAF_SCAN" : "VOLUME_ROOT_TREE_LOOKUP_RESOLVED";
+                                    aff4ApfsAppendProbeNote(out.notes, bestDetail);
+                                    if (nextLeafTransitions > 0) aff4ApfsAppendProbeNote(out.notes, "next_leaf_transitions=" + std::to_string(nextLeafTransitions));
                                     if ((out.valueFlags & 0x00000001U) != 0U) {
                                         out.rootTreeStatus = "ROOT_TREE_OMAP_VALUE_DELETED";
                                         out.interpretation = "Matching OMAP value was marked deleted; root-tree object not read as active.";
@@ -7054,8 +7308,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         fs::create_directories(volumeDir, mkEc);
                         if (mkEc) { appendCopyOutRow(cr, extentsForTarget, "COPY_FAILED_CREATE_DIRECTORY", "OUTPUT_DIRECTORY_FAILED", mkEc.message()); continue; }
                         fs::path outPath = volumeDir / safeExtractionFileName(cr.sequence, cr.childFileId, cr.targetName);
-                        std::ofstream outFile(outPath, std::ios::binary | std::ios::trunc);
-                        if (!outFile) { appendCopyOutRow(cr, extentsForTarget, "COPY_FAILED_OPEN_OUTPUT", "OUTPUT_OPEN_FAILED", pathString(outPath)); continue; }
+                        EvidenceBinaryWriter outFile(outPath);
+                        if (!outFile) { appendCopyOutRow(cr, extentsForTarget, "COPY_FAILED_OPEN_OUTPUT", "OUTPUT_OPEN_FAILED", outFile.error()); continue; }
 
                         bool copyOk = true;
                         std::string copyNotes;
@@ -7069,8 +7323,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             while (left != 0) {
                                 const std::size_t chunk = static_cast<std::size_t>(std::min<std::uint64_t>(left, zeros.size()));
                                 if (firstBytes.empty()) firstBytes.assign(zeros.begin(), zeros.begin() + std::min<std::size_t>(chunk, 96U));
-                                outFile.write(reinterpret_cast<const char*>(zeros.data()), static_cast<std::streamsize>(chunk));
-                                if (!outFile) { copyNotes = "write failed while zero-filling " + reason; return false; }
+                                if (!outFile.write(zeros.data(), chunk)) { copyNotes = "write failed while zero-filling " + reason + "; " + outFile.error(); return false; }
                                 left -= chunk;
                             }
                             syntheticZeroBytesWritten += count;
@@ -7101,13 +7354,12 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 break;
                             }
                             if (firstBytes.empty()) firstBytes.assign(extentBytes.begin(), extentBytes.begin() + std::min<std::size_t>(extentBytes.size(), 96U));
-                            outFile.write(reinterpret_cast<const char*>(extentBytes.data()), static_cast<std::streamsize>(extentBytes.size()));
-                            if (!outFile) { copyOk = false; copyNotes = "write failed while copying extent data"; break; }
+                            if (!outFile.write(extentBytes)) { copyOk = false; copyNotes = "write failed while copying extent data; " + outFile.error(); break; }
                             logicalCursor += bytesWanted;
                             remainingToWrite -= bytesWanted;
                         }
                         if (copyOk && remainingToWrite != 0) { copyOk = false; copyNotes = "logical file size was not fully written from available extents"; }
-                        outFile.close();
+                        if (!outFile.close()) { copyOk = false; copyNotes = copyNotes.empty() ? outFile.error() : (copyNotes + "; " + outFile.error()); }
                         ApfsSpotlightFileCopyOutRow row;
                         row.sequence = static_cast<std::uint32_t>(apfsSpotlightFileCopyOutRows.size());
                         row.targetSequence = cr.sequence;
@@ -7255,16 +7507,9 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 continue;
                             }
                             fs::path outPath = volumeDir / safeExtractionFileName(outRow.sequence, base.targetChildFileId, base.targetName + ".__DECOMPFS_RECONSTRUCTED");
-                            std::ofstream outFile(outPath, std::ios::binary | std::ios::trunc);
-                            if (!outFile) {
-                                outRow.notes = "reconstruction output open failed: " + pathString(outPath);
-                                apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
-                                continue;
-                            }
-                            outFile.write(reinterpret_cast<const char*>(recon.data.data()), static_cast<std::streamsize>(recon.data.size()));
-                            outFile.close();
-                            if (!outFile) {
-                                outRow.notes = "reconstruction output write failed: " + pathString(outPath);
+                            std::string writeErr;
+                            if (!writeBinaryFilePortable(outPath, recon.data.data(), recon.data.size(), &writeErr)) {
+                                outRow.notes = "reconstruction output write failed: " + writeErr;
                                 apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
                                 continue;
                             }
@@ -7367,16 +7612,9 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 continue;
                             }
                             fs::path outPath = volumeDir / safeExtractionFileName(outRow.sequence, crBase.childFileId, crBase.targetName + ".__DECOMPFS_RECONSTRUCTED");
-                            std::ofstream outFile(outPath, std::ios::binary | std::ios::trunc);
-                            if (!outFile) {
-                                outRow.notes = "synthetic_base=1; reconstruction output open failed: " + pathString(outPath);
-                                apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
-                                continue;
-                            }
-                            outFile.write(reinterpret_cast<const char*>(recon.data.data()), static_cast<std::streamsize>(recon.data.size()));
-                            outFile.close();
-                            if (!outFile) {
-                                outRow.notes = "synthetic_base=1; reconstruction output write failed: " + pathString(outPath);
+                            std::string writeErr;
+                            if (!writeBinaryFilePortable(outPath, recon.data.data(), recon.data.size(), &writeErr)) {
+                                outRow.notes = "synthetic_base=1; reconstruction output write failed: " + writeErr;
                                 apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
                                 continue;
                             }

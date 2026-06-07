@@ -1,3 +1,11 @@
+## V1_1_9
+
+- Promoted guarded live AFF4/APFS OMAP horizontal leaf traversal for APFS OMAP target lookups and volume root-tree lookups.
+- Added bounded next-leaf transition handling with cycle detection, cancellation checks, and transition limits.
+- Reviewed every `.md`, `.txt`, and `.ps1` source-package file and recorded decisions in `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.*`.
+- Removed obsolete root-level prior-version package manifests while preserving append-only version history under `docs/`.
+- No Store-V2 parser schema, iOS parser behavior, or GUI view semantics were intentionally changed.
+
 ## V1.1.5.1
 
 - Propagated ingest cancellation into guarded AFF4 dynamic/direct probe entry points and selected expensive bounded loops.
@@ -76,3 +84,12 @@ Local syntax/configuration checks passed for the modified source files. Windows/
 - Preserved both large AFF4/APFS probe bodies outside `app_runner.cpp`.
 - Cleaned active source package by removing obsolete version-specific scripts and root-level old package manifests.
 - Added append-only full version history baseline and new-chat continuation guide.
+
+## V1.1.8 Update
+
+- `BaselineVersionHistory.md` is now the append-only version-history baseline in `docs/FULL_VERSION_HISTORY.md` and `VERSION_HISTORY.md`.
+- Windows long-path evidence writes were added for APFS/AFF4 Store-V2 copy-out and decmpfs reconstruction output paths.
+- SQLite WAL checkpoint/truncate is requested before upload packaging.
+- Logger writes are mutex-protected for concurrent GUI/export/ingest paths.
+- APFS decmpfs reconstruction remains bounded; the expected-output safety cap is now 256 MiB.
+

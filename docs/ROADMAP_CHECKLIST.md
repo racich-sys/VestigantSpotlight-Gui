@@ -1,5 +1,13 @@
 # Spotlight2 Roadmap Checklist
 
+## V1.1.9 update
+
+- Current generated source package: V1.1.9.
+- Validated baseline reviewed before this version: V1.1.8 Windows/MSVC build and macOS AFF4/APFS thin output.
+- Main change: guarded live APFS OMAP horizontal leaf traversal with bounded next-leaf transitions.
+- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.md`.
+
+
 ## Current stability gate
 
 - [x] V1.0.24.1: Windows/MSVC build passed after GUI helper ambiguity hotfix.
@@ -187,3 +195,12 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - [x] New-chat continuation guide added.
 - [ ] V1.1.7.1 Windows/MSVC build validation pending.
 - [ ] V1.1.7.1 macOS AFF4/APFS thin validation pending.
+
+## V1.1.8 Update
+
+- `BaselineVersionHistory.md` is now the append-only version-history baseline in `docs/FULL_VERSION_HISTORY.md` and `VERSION_HISTORY.md`.
+- Windows long-path evidence writes were added for APFS/AFF4 Store-V2 copy-out and decmpfs reconstruction output paths.
+- SQLite WAL checkpoint/truncate is requested before upload packaging.
+- Logger writes are mutex-protected for concurrent GUI/export/ingest paths.
+- APFS decmpfs reconstruction remains bounded; the expected-output safety cap is now 256 MiB.
+

@@ -5,6 +5,20 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
+#include <system_error>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#endif
 
 namespace vestigant::spotlight {
 
@@ -46,6 +60,61 @@ std::string nowUtc() {
 }
 
 std::string pathString(const fs::path& p) { return p.generic_string(); }
+
+#if defined(_WIN32)
+std::wstring makeWin32LongPath(const fs::path& p) {
+    std::error_code ec;
+    fs::path abs = fs::absolute(p, ec);
+    if (ec) abs = p;
+    abs = abs.lexically_normal();
+    std::wstring w = abs.wstring();
+    std::replace(w.begin(), w.end(), L'/', L'\\');
+    if (w.rfind(L"\\\\?\\", 0) == 0) return w;
+    if (w.rfind(L"\\\\", 0) == 0) {
+        // UNC path: \\server\\share -> \\?\\UNC\\server\\share
+        return L"\\\\?\\UNC\\" + w.substr(2);
+    }
+    if (w.size() >= 2 && w[1] == L':') return L"\\\\?\\" + w;
+    return w;
+}
+#endif
+
+bool writeBinaryFilePortable(const fs::path& p, const unsigned char* data, std::size_t size, std::string* error) {
+#if defined(_WIN32)
+    const std::wstring wide = makeWin32LongPath(p);
+    HANDLE h = CreateFileW(wide.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        if (error) *error = "CreateFileW failed for " + pathString(p) + "; win32_error=" + std::to_string(GetLastError());
+        return false;
+    }
+    const unsigned char* cur = data;
+    std::size_t left = size;
+    while (left != 0) {
+        const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(left, 1U << 20));
+        DWORD written = 0;
+        if (!WriteFile(h, cur, chunk, &written, nullptr) || written != chunk) {
+            const DWORD err = GetLastError();
+            CloseHandle(h);
+            if (error) *error = "WriteFile failed for " + pathString(p) + "; win32_error=" + std::to_string(err);
+            return false;
+        }
+        cur += chunk;
+        left -= chunk;
+    }
+    if (!CloseHandle(h)) {
+        if (error) *error = "CloseHandle failed for " + pathString(p) + "; win32_error=" + std::to_string(GetLastError());
+        return false;
+    }
+    return true;
+#else
+    std::ofstream out(p, std::ios::binary | std::ios::trunc);
+    if (!out) { if (error) *error = "open failed for " + pathString(p); return false; }
+    if (size) out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
+    if (!out) { if (error) *error = "write failed for " + pathString(p); return false; }
+    return true;
+#endif
+}
+
 
 std::string safeRelativeString(const fs::path& root, const fs::path& p) {
     std::error_code ec;

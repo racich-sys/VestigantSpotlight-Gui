@@ -1,5 +1,13 @@
 # Vestigant Spotlight V0_9_60 Notes
 
+## V1.1.9 update
+
+- Current generated source package: V1.1.9.
+- Validated baseline reviewed before this version: V1.1.8 Windows/MSVC build and macOS AFF4/APFS thin output.
+- Main change: guarded live APFS OMAP horizontal leaf traversal with bounded next-leaf transitions.
+- Source-package `.md`, `.txt`, and `.ps1` file review completed; see `docs/SOURCE_DOCS_SCRIPTS_REVIEW_V1_1_9.md`.
+
+
 V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
 
 Key changes:
@@ -181,3 +189,12 @@ No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classif
 ## V0_9_60 - Staged AFF4/raw source restoration and MB telemetry
 
 V0_9_60 restores AFF4/APFS image and Raw IMG/DD image choices in the GUI source-type selector as staged image workflows. Folder and ZIP remain the production intake paths; AFF4/APFS is kept visible for macOS forensic images, and Raw IMG/DD is kept visible for raw/external media such as exFAT devices attached to Macs that may contain Spotlight indexes. Processing telemetry now displays throughput in decimal MB and MB/s rather than MiB/MiB/s for investigator readability. No parser interpretation logic was intentionally changed.
+
+## V1.1.8 Update
+
+- `BaselineVersionHistory.md` is now the append-only version-history baseline in `docs/FULL_VERSION_HISTORY.md` and `VERSION_HISTORY.md`.
+- Windows long-path evidence writes were added for APFS/AFF4 Store-V2 copy-out and decmpfs reconstruction output paths.
+- SQLite WAL checkpoint/truncate is requested before upload packaging.
+- Logger writes are mutex-protected for concurrent GUI/export/ingest paths.
+- APFS decmpfs reconstruction remains bounded; the expected-output safety cap is now 256 MiB.
+
