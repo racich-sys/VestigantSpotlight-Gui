@@ -1,4 +1,4 @@
-# V1.2.0 Removed/Consolidated Files Manifest
+# V1.2.1 Removed/Consolidated Files Manifest
 
 The following files were removed from the active source package after their content was consolidated into `docs/CONSOLIDATED_DEVELOPMENT_NOTES.md` or `validation/CONSOLIDATED_VALIDATION_LOGS_AND_NOTES.md`, or because they were stale prior-version package artifacts.
 

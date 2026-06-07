@@ -1,3 +1,30 @@
+# V1.2.1 Validation Note
+
+Input reviewed:
+- V1.2.0 build log.
+
+Observed:
+- V1.2.0 compiled common sources, CLI, tests, and GUI.
+- Compiled binary reported `Vestigant Spotlight v1.2.0`.
+- Build completed and produced GUI, CLI, and test executables.
+
+Local package validation:
+- Version metadata updated to 1.2.1.
+- Versioned scripts renamed to V1_2_1.
+- Stale V1_2_0 / 1.2.0 references checked and not found in text/code files.
+- Changed APFS worker code reviewed for scope-limited buffer reuse.
+
+Required next validation:
+- Windows/MSVC build.
+- AFF4/APFS thin run.
+
+Thin-create command:
+```powershell
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_2_1\scripts\Run-V1_2_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+```
+
+---
+
 ## Current package validation: V1_1_11
 
 # V1.1.11 Validation Notes

@@ -795,21 +795,21 @@ bool aff4ApfsLoadNextLeafForProbe(const std::vector<unsigned char>& currentNode,
         aff4ApfsAppendProbeNote(notes, "next_leaf_oid_offset_unsafe=" + std::to_string(candidateNextOid));
         return false;
     }
-    std::vector<unsigned char> candidateNode;
+    nextNode.clear();
     std::string nextErr;
-    const long long candidateRead = readVirtual(candidateNextOffset, blockSize, candidateNode, nextErr);
-    if (candidateRead <= 0 || candidateNode.size() < 64U) {
+    const long long candidateRead = readVirtual(candidateNextOffset, blockSize, nextNode, nextErr);
+    if (candidateRead <= 0 || nextNode.size() < 64U) {
         aff4ApfsAppendProbeNote(notes, nextErr.empty() ? ("next_leaf_read_failed_oid=" + std::to_string(candidateNextOid))
                                                        : ("next_leaf_read_failed_oid=" + std::to_string(candidateNextOid) + ": " + nextErr));
         return false;
     }
-    const std::string label = apfsObjectTypeLabel(readLe32(candidateNode, 24U));
-    const std::uint16_t nextLevel = readLe16(candidateNode, 34U);
+    const std::string label = apfsObjectTypeLabel(readLe32(nextNode, 24U));
+    const std::uint16_t nextLevel = readLe16(nextNode, 34U);
     if ((label != "BTREE" && label != "BTREE_NODE") || nextLevel != 0U) {
         aff4ApfsAppendProbeNote(notes, "next_leaf_unexpected_node_type_or_level=" + label + ":" + std::to_string(nextLevel));
+        nextNode.clear();
         return false;
     }
-    nextNode.swap(candidateNode);
     nextNodeOid = candidateNextOid;
     nextNodeOffset = candidateNextOffset;
     nextNodeRead = candidateRead;
@@ -6642,6 +6642,15 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         apfsSpotlightInodeProbeRows.push_back(ir);
                     };
 
+                    // V1.2.1: Reuse APFS B-tree node buffers across guided target lookups.
+                    // These guided lookups run in tight loops over staged Spotlight candidates; keeping the
+                    // backing storage alive avoids repeated heap allocation while preserving the existing
+                    // read and provenance semantics.
+                    std::vector<unsigned char> guidedInodeNodeBuffer;
+                    std::vector<unsigned char> guidedExtentNodeBuffer;
+                    guidedInodeNodeBuffer.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(nxSummary.blockSize ? nxSummary.blockSize : 65536ULL, 1048576ULL)));
+                    guidedExtentNodeBuffer.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(nxSummary.blockSize ? nxSummary.blockSize : 65536ULL, 1048576ULL)));
+
                     auto lookupGuidedTargetInode = [&](const ApfsSpotlightCopyAttemptRow& cr,
                                                          std::uint64_t candidateObjectId,
                                                          const std::string& candidateLabel) -> bool {
@@ -6663,7 +6672,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             appendGuidedNoMatchInodeRow(cr, "GUIDED_INODE_LOOKUP_VOLUME_OMAP_UNAVAILABLE", "candidate=" + candidateLabel + "; volume OMAP root buffer unavailable");
                             return false;
                         }
-                        std::vector<unsigned char> node;
+                        auto& node = guidedInodeNodeBuffer;
+                        node.clear();
                         std::string readErr;
                         long long nodeRead = readVirtual(lookupPtr->resolvedVirtualOffset, nxSummary.blockSize, node, readErr);
                         std::uint64_t nodeOid = lookupPtr->resolvedObjectOid ? lookupPtr->resolvedObjectOid : lookupPtr->apfsRootTreeOid;
@@ -6810,7 +6820,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 appendGuidedNoMatchInodeRow(cr, "GUIDED_INODE_LOOKUP_CHILD_READ_FAILED", "candidate=" + candidateLabel + "; selected_entry=" + std::to_string(selectedEntry) + "; child_oid=" + std::to_string(selectedChildOid) + "; lookup_status=" + resolved.lookupStatus + "; object_status=" + resolved.objectStatus + "; path=" + branchPath);
                                 return false;
                             }
-                            node = resolved.resolvedBuffer;
+                            node.swap(resolved.resolvedBuffer);
                             nodeOid = resolved.resolvedObjectOid ? resolved.resolvedObjectOid : selectedChildOid;
                             nodeOffset = resolved.resolvedVirtualOffset;
                         }
@@ -6841,7 +6851,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             return false;
                         }
 
-                        std::vector<unsigned char> node;
+                        auto& node = guidedExtentNodeBuffer;
+                        node.clear();
                         std::string readErr;
                         long long nodeRead = readVirtual(lookupPtr->resolvedVirtualOffset, nxSummary.blockSize, node, readErr);
                         std::uint64_t nodeOid = lookupPtr->resolvedObjectOid ? lookupPtr->resolvedObjectOid : lookupPtr->apfsRootTreeOid;
@@ -6969,7 +6980,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 appendGuidedNoMatchExtentRow(cr, candidateObjectId, "GUIDED_FILE_EXTENT_LOOKUP_CHILD_READ_FAILED", "candidate=" + candidateLabel + "; selected_entry=" + std::to_string(selectedEntry) + "; child_oid=" + std::to_string(selectedChildOid) + "; lookup_status=" + resolved.lookupStatus + "; object_status=" + resolved.objectStatus + "; path=" + branchPath);
                                 return anyHit;
                             }
-                            node = resolved.resolvedBuffer;
+                            node.swap(resolved.resolvedBuffer);
                             nodeOid = resolved.resolvedObjectOid ? resolved.resolvedObjectOid : selectedChildOid;
                             nodeOffset = resolved.resolvedVirtualOffset;
                         }
