@@ -83,6 +83,8 @@ int gContextRow = -1;
 std::set<long long> gCheckedArtifactIds;
 bool gBulkCheckUpdate = false;
 std::vector<std::string> gCurrentRowArtifactIds;
+std::vector<std::vector<std::wstring>> gCurrentReviewRowsW;
+std::vector<std::wstring> gCurrentVisibleTagCellsW;
 std::mutex gReviewStateMutex;
 std::atomic<unsigned long long> gReviewRequestSeq{0};
 std::atomic_bool gShuttingDown{false};
@@ -1006,7 +1008,11 @@ void openLogsFolderAction(HWND owner) {
 }
 
 void clearListColumns() {
+    if (!gList) return;
+    ListView_SetItemCountEx(gList, 0, LVSICF_NOSCROLL);
     ListView_DeleteAllItems(gList);
+    gCurrentReviewRowsW.clear();
+    gCurrentVisibleTagCellsW.clear();
     while (ListView_DeleteColumn(gList, 0)) {}
 }
 void setReviewSummary(const std::wstring& s) { SetWindowTextW(gReviewSummary, s.c_str()); }
@@ -1208,8 +1214,12 @@ void setReviewRowCheckedState(int row, bool checked) {
     if (checked) gCheckedArtifactIds.insert(aid);
     else gCheckedArtifactIds.erase(aid);
     if (!gBulkCheckUpdate) persistCheckedArtifactNoThrow(aid, checked);
-    std::wstring mark = checkMarkForState(checked);
-    ListView_SetItemText(gList, row, 0, const_cast<LPWSTR>(mark.c_str()));
+    if (row >= 0 && row < static_cast<int>(gList ? ListView_GetItemCount(gList) : 0)) {
+        if (gList) {
+            ListView_RedrawItems(gList, row, row);
+            InvalidateRect(gList, nullptr, FALSE);
+        }
+    }
 }
 void toggleReviewRowChecked(int row) {
     if (row < 0 || row >= static_cast<int>(gCurrentRowArtifactIds.size())) return;
@@ -1284,9 +1294,15 @@ std::vector<std::string> selectedArtifactIdsFromReview(bool preferChecked) {
     return ids;
 }
 void refreshVisibleTagCells(sqlite3* db) {
+    if (gCurrentVisibleTagCellsW.size() < gCurrentRowArtifactIds.size()) {
+        gCurrentVisibleTagCellsW.resize(gCurrentRowArtifactIds.size());
+    }
     for (int row = 0; row < static_cast<int>(gCurrentRowArtifactIds.size()); ++row) {
-        std::wstring tags = tagsForArtifact(db, gCurrentRowArtifactIds[static_cast<size_t>(row)]);
-        ListView_SetItemText(gList, row, 1, const_cast<LPWSTR>(tags.c_str()));
+        gCurrentVisibleTagCellsW[static_cast<std::size_t>(row)] = tagsForArtifact(db, gCurrentRowArtifactIds[static_cast<size_t>(row)]);
+    }
+    if (gList && !gCurrentRowArtifactIds.empty()) {
+        ListView_RedrawItems(gList, 0, static_cast<int>(gCurrentRowArtifactIds.size()) - 1);
+        InvalidateRect(gList, nullptr, FALSE);
     }
 }
 
@@ -1639,9 +1655,24 @@ void populateReviewListFromResult(const ReviewPageResult& result) {
     gCurrentPage = result.page;
     gCurrentHasNext = result.hasNext;
 
+    gCurrentReviewRowsW.clear();
+    gCurrentVisibleTagCellsW.clear();
+    gCurrentReviewRowsW.reserve(result.rows.size());
+    gCurrentVisibleTagCellsW.reserve(result.rows.size());
+    for (std::size_t row = 0; row < result.rows.size(); ++row) {
+        std::vector<std::wstring> wideRow;
+        wideRow.reserve(result.rows[row].size());
+        for (const auto& cell : result.rows[row]) wideRow.push_back(widen(cell));
+        gCurrentReviewRowsW.push_back(std::move(wideRow));
+        const std::string artifactId = row < result.artifactIds.size() ? result.artifactIds[row] : std::string();
+        auto tagIt = result.visibleTags.find(artifactId);
+        gCurrentVisibleTagCellsW.push_back(tagIt == result.visibleTags.end() ? L"" : tagIt->second);
+    }
+
     const bool redrawSuspended = (gList != nullptr);
     if (redrawSuspended) {
         SendMessageW(gList, WM_SETREDRAW, FALSE, 0);
+        ListView_SetItemCountEx(gList, 0, LVSICF_NOSCROLL);
     }
 
     const wchar_t* fixedCols[] = {L"\u2713", L"Tags"};
@@ -1664,24 +1695,8 @@ void populateReviewListFromResult(const ReviewPageResult& result) {
         ListView_InsertColumn(gList, static_cast<int>(c + 2), &col);
     }
 
-    for (int row = 0; row < static_cast<int>(result.rows.size()); ++row) {
-        const std::string artifactId = row < static_cast<int>(result.artifactIds.size()) ? result.artifactIds[static_cast<size_t>(row)] : std::string();
-        const bool checked = !artifactId.empty() && gCheckedArtifactIds.find(std::strtoll(artifactId.c_str(), nullptr, 10)) != gCheckedArtifactIds.end();
-        std::wstring mark = checkMarkForState(checked);
-        LVITEMW item{};
-        item.mask = LVIF_TEXT;
-        item.iItem = row;
-        item.iSubItem = 0;
-        item.pszText = const_cast<LPWSTR>(mark.c_str());
-        ListView_InsertItem(gList, &item);
-        auto tagIt = result.visibleTags.find(artifactId);
-        const std::wstring tagText = tagIt == result.visibleTags.end() ? L"" : tagIt->second;
-        ListView_SetItemText(gList, row, 1, const_cast<LPWSTR>(tagText.c_str()));
-        const auto& cells = result.rows[static_cast<size_t>(row)];
-        for (int c = 0; c < static_cast<int>(cells.size()); ++c) {
-            std::wstring cell = widen(cells[static_cast<size_t>(c)]);
-            ListView_SetItemText(gList, row, c + 2, const_cast<LPWSTR>(cell.c_str()));
-        }
+    if (gList) {
+        ListView_SetItemCountEx(gList, static_cast<int>(gCurrentReviewRowsW.size()), LVSICF_NOSCROLL);
     }
 
     if (redrawSuspended) {
@@ -1954,8 +1969,28 @@ void exportTaggedArtifacts(HWND owner) {
 
 
 
+std::wstring reviewCellText(int row, int col) {
+    if (row < 0 || col < 0) return L"";
+    if (col == 0) {
+        if (row >= static_cast<int>(gCurrentRowArtifactIds.size())) return L"";
+        const std::string& id = gCurrentRowArtifactIds[static_cast<std::size_t>(row)];
+        if (id.empty()) return L"";
+        const long long aid = std::strtoll(id.c_str(), nullptr, 10);
+        return checkMarkForState(gCheckedArtifactIds.find(aid) != gCheckedArtifactIds.end());
+    }
+    if (col == 1) {
+        return row < static_cast<int>(gCurrentVisibleTagCellsW.size()) ? gCurrentVisibleTagCellsW[static_cast<std::size_t>(row)] : L"";
+    }
+    const int dataCol = col - 2;
+    if (row < static_cast<int>(gCurrentReviewRowsW.size()) && dataCol >= 0 && dataCol < static_cast<int>(gCurrentReviewRowsW[static_cast<std::size_t>(row)].size())) {
+        return gCurrentReviewRowsW[static_cast<std::size_t>(row)][static_cast<std::size_t>(dataCol)];
+    }
+    return L"";
+}
+
 std::wstring listViewText(HWND list, int row, int col) {
     if (!list || row < 0 || col < 0) return L"";
+    if (list == gList) return reviewCellText(row, col);
     std::vector<wchar_t> buf(65536);
     ListView_GetItemText(list, row, col, buf.data(), static_cast<int>(buf.size()));
     return std::wstring(buf.data());
@@ -2752,7 +2787,7 @@ void createReviewControls(HWND hwnd) {
     gReviewSummary = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"No case opened. Open a database from the Case Information tab.", WS_CHILD | WS_VISIBLE | SS_LEFT, 262, y0 + 136, 720, 58, hwnd, nullptr, gInst, nullptr));
     gReviewBusy = addReview(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | PBS_MARQUEE, 262, y0 + 198, 720, 6, hwnd, nullptr, gInst, nullptr));
     if (gReviewBusy) ShowWindow(gReviewBusy, SW_HIDE);
-    gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
+    gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     SetWindowSubclass(gList, ReviewListSubclassProc, 1, 0);
     gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"", WS_CHILD | SS_ETCHEDHORZ | SS_NOTIFY, 262, y0 + 666, 720, 8, hwnd, nullptr, gInst, nullptr));
@@ -2998,6 +3033,14 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_NOTIFY: {
         LPNMHDR hdr = reinterpret_cast<LPNMHDR>(lp);
+        if (hdr && hdr->hwndFrom == gList && hdr->code == LVN_GETDISPINFOW) {
+            auto* di = reinterpret_cast<NMLVDISPINFOW*>(lp);
+            if (di && (di->item.mask & LVIF_TEXT) && di->item.pszText && di->item.cchTextMax > 0) {
+                const std::wstring text = reviewCellText(di->item.iItem, di->item.iSubItem);
+                lstrcpynW(di->item.pszText, text.c_str(), di->item.cchTextMax);
+            }
+            return 0;
+        }
         if (hdr && hdr->hwndFrom == gList && hdr->code == LVN_ITEMCHANGED) {
             auto* pnmv = reinterpret_cast<LPNMLISTVIEW>(lp);
             if ((pnmv->uChanged & LVIF_STATE) && ((pnmv->uNewState ^ pnmv->uOldState) & (LVIS_SELECTED | LVIS_FOCUSED))) {

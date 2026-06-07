@@ -1,3 +1,48 @@
+## V1_2_0
+
+- Scope: coordinated Win32 GUI runtime hardening release after V1.1.11 validation.
+- Reviewed uploaded `V1_1_11_build.log`: Windows/MSVC build completed successfully, CLI/tests/GUI linked, and `Vestigant Spotlight v1.1.11` was reported.
+- Reviewed uploaded `Upload_Thin_MacOS_AFF4_V1_1_11.zip`: AFF4/APFS run completed with 25,000 artifacts, 8,986 staged files, 4,123 external reference files, and 486 remaining relative-path size mismatches.
+- Implemented owner-data/virtual rendering for the main Win32 investigation `WC_LISTVIEWW` grid using `LVS_OWNERDATA` plus an `LVN_GETDISPINFOW` callback backed by the current page cache.
+- Updated checked-row and visible-tag refresh behavior to redraw cached owner-data rows instead of pushing per-cell strings into the ListView control.
+- Updated the selected-row details pane to read from the same current-page cache so details remain populated under virtual ListView rendering.
+- Preserved previously implemented Windows hardening already present in V1.1.11: long-path portable binary writes, SQLite busy timeout/WAL checkpointing, ingest thread guard, GUI GDI cleanup, logger mutex protection, and bounded LZFSE/LZVN decode behavior.
+- Did not change AFF4/APFS extraction, APFS traversal, Store-V2 parsing, iOS parsing, evidence interpretation, or SQLite schema behavior.
+
+## TEST SCOPE DECISION
+
+- AFF4/APFS: thin only after Windows build.
+- iOS: not required.
+- Reason: V1.2.0 changes Win32 GUI review-grid rendering and current-package documentation/scripts only. V1.1.11 AFF4/APFS thin output was reviewed before the change, and no extraction/traversal/copy-out/decompression/parser code was intentionally changed.
+- Trigger for escalating AFF4/APFS to full test: any next change to live APFS traversal, copy-out, decompression, extent handling, path reconstruction, external compare logic, or Store-V2 staging behavior.
+- Trigger for iOS testing: any next change to iOS ZIP staging, CoreSpotlight parsing, FFS lookup, app DB parsing, bplist/NSKeyedArchiver handling, iOS schema, or iOS GUI views.
+- Required next uploaded artifacts: `V1_2_0_build.log` and `Upload_Thin_MacOS_AFF4_V1_2_0.zip`.
+
+## V1_1_11
+
+- Scope: documentation/package hygiene release.
+- Consolidated standalone development notes into `docs/CONSOLIDATED_DEVELOPMENT_NOTES.md`.
+- Consolidated standalone validation logs/notes into `validation/CONSOLIDATED_VALIDATION_LOGS_AND_NOTES.md`.
+- Removed the now-consolidated standalone note/log files from the active package.
+- Added `docs/SUPPORT_DIAGNOSTIC_TOOLS_REGISTER.md` to track retained support/diagnostic tools and their retention rationale.
+- No support/diagnostic tools were deleted in this version because each remains tied to active AFF4/APFS validation, iOS support, general packaging/staging, or on-demand troubleshooting.
+- No AFF4/APFS extraction, iOS parsing, GUI behavior, Store-V2 parser behavior, or SQLite schema behavior was intentionally changed.
+
+- Reviewed uploaded `V1_1_10_1_build.log`: Windows/MSVC build completed successfully, CLI/tests/GUI linked, and `Vestigant Spotlight v1.1.10.1` was reported.
+- Reviewed uploaded `Upload_Thin_MacOS_AFF4_V1_1_10_1.zip`: AFF4/APFS run completed source-probe workflow; staged Store-V2 parse/enrichment produced 25,000 artifacts.
+- External compare summary remained stable against the prior V1.1.9/V1.1.10.1 class: 4,123 external files, 8,986 Vestigant staged files, 2,213 file matches, 1,424 external-only rows, 6,710 Vestigant-only rows, and 486 relative-path size mismatches.
+- Remaining mismatch diagnostics stayed at 486 rows: 4 `DATA_FORK_SIZE_DISAGREES_WITH_EXTERNAL` and 482 `NO_EXACT_COPYOUT_CANDIDATE`.
+
+## TEST SCOPE DECISION
+
+- AFF4/APFS: thin only after Windows build.
+- iOS: not required.
+- Reason: V1.1.11 changes documentation/package hygiene only. The V1.1.10.1 build and AFF4/APFS thin output were reviewed before this version; no extraction/traversal/copy-out/decompression/parser code changed.
+- Trigger for escalating AFF4/APFS to full test: any next change to live APFS traversal, copy-out, decompression, extent handling, path reconstruction, external compare logic, or Store-V2 staging behavior.
+- Trigger for iOS testing: any next change to iOS ZIP staging, CoreSpotlight parsing, FFS lookup, app DB parsing, bplist/NSKeyedArchiver handling, iOS schema, or iOS GUI views.
+- Required next uploaded artifacts: `V1_1_11_build.log` and `Upload_Thin_MacOS_AFF4_V1_1_11.zip`.
+
+
 ## V1_1_10_1
 
 - Documentation/script-command hotfix on V1.1.10.
