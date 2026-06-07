@@ -83,6 +83,7 @@ int gContextRow = -1;
 std::set<long long> gCheckedArtifactIds;
 bool gBulkCheckUpdate = false;
 std::vector<std::string> gCurrentRowArtifactIds;
+std::mutex gReviewStateMutex;
 std::atomic<unsigned long long> gReviewRequestSeq{0};
 std::atomic_bool gShuttingDown{false};
 std::atomic_bool gExportPageActive{false};
@@ -801,10 +802,29 @@ void bindSearch(sqlite3_stmt* st, const ViewSpec& v, const std::string& search, 
     vestigant::spotlight::bindViewSearch(st, v, search, gFilterColumn, gFilterValue, index);
 }
 
+std::set<long long> checkedArtifactIdsSnapshotNoThrow() {
+    try {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        return gCheckedArtifactIds;
+    } catch (...) {
+        return {};
+    }
+}
+
+std::size_t checkedArtifactCountSnapshotNoThrow() {
+    try {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        return gCheckedArtifactIds.size();
+    } catch (...) {
+        return 0;
+    }
+}
+
 std::string checkedIdListSql() {
-    if (gCheckedArtifactIds.empty()) return "";
+    const auto snapshot = checkedArtifactIdsSnapshotNoThrow();
+    if (snapshot.empty()) return "";
     std::string ids;
-    for (long long id : gCheckedArtifactIds) {
+    for (long long id : snapshot) {
         if (!ids.empty()) ids += ",";
         ids += std::to_string(id);
     }
@@ -1549,10 +1569,10 @@ void joinIngestThreadNoThrow() {
 bool startIngestThreadNoThrow(HWND owner) {
     try {
         std::lock_guard<std::mutex> lock(gIngestThreadMutex);
-        if (gIngestActive.load()) return false;
+        bool expected = false;
+        if (!gIngestActive.compare_exchange_strong(expected, true)) return false;
         if (gIngestThread.joinable()) gIngestThread.join();
         gCancelIngestRequested.store(false);
-        gIngestActive.store(true);
         gIngestThread = std::thread([owner]() {
             try {
                 worker();
@@ -1729,7 +1749,7 @@ void loadReviewPage() {
     const std::string where = vestigant::spotlight::buildWhere(v, search, capturedFilterColumn, capturedFilterValue);
     const std::string orderBy = reviewOrderByForPage(v, search, (capturedFilterColumn >= 0 && !capturedFilterValue.empty()));
     const std::string sql = "SELECT " + sqlColumns(v) + " FROM " + v.tableName + where + " ORDER BY " + orderBy + " LIMIT ? OFFSET ?";
-    const size_t checkedCountAtRequest = gCheckedArtifactIds.size();
+    const size_t checkedCountAtRequest = checkedArtifactCountSnapshotNoThrow();
 
     std::vector<std::string> bindPatterns;
     if (!search.empty()) {
@@ -1832,7 +1852,7 @@ void exportCurrentPage(HWND owner) {
     request.orderBy = reviewOrderByForPage(v, request.search, (gFilterColumn >= 0 && !gFilterValue.empty()));
     request.page = gCurrentPage;
     request.pageSize = pageSize();
-    request.checkedArtifactIds = gCheckedArtifactIds;
+    request.checkedArtifactIds = checkedArtifactIdsSnapshotNoThrow();
     request.outPath = out;
     request.shouldCancel = []() { return gShuttingDown.load(); };
 
@@ -1873,7 +1893,7 @@ void exportFilteredView(HWND owner) {
     request.filterColumn = gFilterColumn;
     request.filterValue = gFilterValue;
     request.orderBy = reviewOrderBy(v);
-    request.checkedArtifactIds = gCheckedArtifactIds;
+    request.checkedArtifactIds = checkedArtifactIdsSnapshotNoThrow();
     request.outPath = out;
     request.shouldCancel = []() { return gShuttingDown.load(); };
 
@@ -1889,7 +1909,7 @@ void exportFilteredView(HWND owner) {
 
 void exportCheckedArtifacts(HWND owner) {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting checked artifacts."); return; }
-    if (gCheckedArtifactIds.empty()) { setReviewSummary(L"No checked artifacts to export."); return; }
+    if (checkedArtifactCountSnapshotNoThrow() == 0) { setReviewSummary(L"No checked artifacts to export."); return; }
     bool expected = false;
     if (!gExportCheckedActive.compare_exchange_strong(expected, true)) {
         setReviewSummary(L"Export Checked is already running. Wait for the current export to finish.");
@@ -1899,7 +1919,8 @@ void exportCheckedArtifacts(HWND owner) {
     if (out.empty()) { gExportCheckedActive.store(false); return; }
 
     const std::wstring dbPath = gOpenedCaseDb;
-    const std::vector<long long> idsToExport(gCheckedArtifactIds.begin(), gCheckedArtifactIds.end());
+    const auto checkedSnapshot = checkedArtifactIdsSnapshotNoThrow();
+    const std::vector<long long> idsToExport(checkedSnapshot.begin(), checkedSnapshot.end());
     setReviewSummary(L"Export Checked in progress... GUI remains active.");
     if (gExportChecked) EnableWindow(gExportChecked, FALSE);
 

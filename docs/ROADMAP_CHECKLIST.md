@@ -118,3 +118,14 @@
 - [x] V1.1.2: Hardened dependent DLL search for AFF4 dynamic-load probing.
 - [x] V1.1.2: Applied temporary bulk SQLite PRAGMAs around native Store-V2 parsing and restored safe settings after completion/error.
 - [x] V1.1.2: Added bounded bplist trailer validation metadata to existing bplist/NSKeyedArchiver context output.
+
+## V1.1.4 repeat-cycle checklist
+
+- [x] Reviewed V1.1.3 build and macOS AFF4/APFS thin output before editing.
+- [x] Preserved live APFS/AFF4 extraction behavior.
+- [x] Strengthened bounded bplist metadata reporting without claiming full object-graph decode.
+- [x] Added safer GUI checked-state snapshots for export/page requests.
+- [x] Strengthened GUI ingest launch gate against repeated start requests.
+- [ ] Extract dynamic AFF4/APFS probe monolith to `aff4_probe_worker.cpp`.
+- [ ] Implement APFS live absolute-path reconstruction only after comparator validation.
+- [ ] Implement full NSKeyedArchiver UID graph decode.

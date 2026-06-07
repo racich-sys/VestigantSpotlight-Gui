@@ -6,11 +6,11 @@ This ledger is the first file to review during every `repeat` cycle. It records 
 
 ## Current cycle
 
-- Active package under development: `VestigantSpotlightInv_V1_1_3.zip`
-- Baseline source reviewed: `VestigantSpotlightInv_V1_1_2.zip`
-- Baseline Windows/MSVC build reviewed: `V1_1_2_build.log`
-- Baseline macOS AFF4/APFS thin ZIP reviewed: `Upload_Thin_MacOS_AFF4_V1_1_2.zip`
-- Baseline status: V1.1.2 built successfully and generated a thin ZIP with denied raw upload files absent.
+- Active package under development: `VestigantSpotlightInv_V1_1_4.zip`
+- Baseline source reviewed: `VestigantSpotlightInv_V1_1_3.zip`
+- Baseline Windows/MSVC build reviewed: `V1_1_3_build.log`
+- Baseline macOS AFF4/APFS thin ZIP reviewed: `Upload_Thin_MacOS_AFF4_V1_1_3.zip`
+- Baseline status: V1.1.3 built successfully and generated a thin ZIP with denied raw upload files absent.
 
 ## Repeat workflow checklist
 
@@ -57,3 +57,19 @@ Deferred in this cycle:
 - Extract `writeAff4CppLiteDynamicLoadProbe(...)` by first moving state structs and callback interfaces, then behavior unchanged.
 - Add APFS B-tree/absolute-path comparator CSVs before live staging changes.
 - Extend bplist parser from trailer/object-string discovery toward a bounded UID graph model.
+
+## V1.1.4 implementation notes
+
+Implemented in this cycle:
+
+- Added bplist offset-table validation metadata to the existing bounded CoreSpotlight bplist context output, including offset-table byte count and top-object relative offset where valid.
+- Added GUI checked-artifact snapshot helpers used by page load/export request construction to avoid direct long-lived references to mutable checked-state containers.
+- Strengthened the GUI ingest launch gate with `compare_exchange_strong` so repeated/double-click `Build / Process Case` requests are dropped before a second worker can be created.
+- Preserved V1.1.3 live APFS extraction behavior; APFS reverse-path and live horizontal-leaf substitution remain deferred until comparator evidence exists.
+
+Deferred in this cycle:
+
+- Full `writeAff4CppLiteDynamicLoadProbe` extraction to `aff4_probe_worker.cpp`.
+- Full `stageZipEvidenceSource(...)` relocation.
+- Live APFS absolute path reconstruction and live B-tree next-leaf traversal replacement.
+- Full NSKeyedArchiver UID graph decoding.

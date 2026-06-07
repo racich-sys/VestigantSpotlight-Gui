@@ -1,3 +1,12 @@
+
+## V1.1.4
+
+- Repeat-cycle hardening release after V1.1.3 validation.
+- Added bplist offset-table/top-object-offset metadata to existing bounded bplist context summaries without claiming full NSKeyedArchiver graph decoding.
+- Added safer GUI checked-artifact snapshot helpers for export/page-load requests.
+- Strengthened GUI ingest double-click protection with an atomic compare/exchange gate.
+- Updated workflow ledger, roadmap, and suggestions tracker for the next AFF4/APFS monolith and comparator work.
+
 ## V1.1.3
 
 - Added GUI export-worker cancellation callbacks for shutdown-aware long CSV exports.

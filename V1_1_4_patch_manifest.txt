@@ -1,0 +1,26 @@
+V1.1.4 patch manifest
+
+Primary changed files:
+- VERSION
+- VERSION.txt
+- CMakeLists.txt
+- src/core/app_info.cpp
+- src/parsers/native_storedb_parser.cpp
+- src/gui/win32_gui.cpp
+- scripts/Build-V1_1_4.ps1
+- scripts/Launch-V1_1_4-GUI.ps1
+- scripts/Package-V1_1_4-macOS-AFF4-ThinFromExistingCase.ps1
+- scripts/Run-V1_1_4-macOS-AFF4-Probe-AndZip.ps1
+- docs/WORKFLOW_LEDGER.md
+- docs/CONTINUATION_HANDOFF.md
+- docs/ROADMAP_CHECKLIST.md
+- docs/SUGGESTIONS_AND_FIXES_TRACKER.md
+- docs/V1_1_4_BPLIST_AND_GUI_STATE_HARDENING.md
+- validation/V1_1_4_validation_notes.md
+- validation/V1_1_4_local_validation.log
+- V1_1_4_DELETED_FILES_MANIFEST.md
+- VERSION_HISTORY.md
+- CONSOLIDATED_VERSION_HISTORY.md
+- RELEASE_NOTES.md
+
+No source files were deleted.

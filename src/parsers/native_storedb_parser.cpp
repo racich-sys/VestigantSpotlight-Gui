@@ -1303,13 +1303,24 @@ std::string summarizeBplistTrailerAt(const std::string& value, std::size_t bplis
     const std::size_t offsetTableBytes = static_cast<std::size_t>(numObjects) * offsetIntSize;
     if (offsetTable < bplistOff || offsetTable > value.size() || offsetTableBytes > value.size() - offsetTable) return "bplist_trailer=offset_table_out_of_range";
 
+    std::uint64_t topObjectOffsetRel = 0;
+    bool topObjectOffsetOk = false;
+    if (topObject < numObjects) {
+        const std::size_t topOffsetPos = offsetTable + static_cast<std::size_t>(topObject) * offsetIntSize;
+        topObjectOffsetRel = readBplistBigEndianInt(value, topOffsetPos, offsetIntSize, &topObjectOffsetOk);
+        if (topObjectOffsetOk && topObjectOffsetRel >= bplistSize) topObjectOffsetOk = false;
+    }
+
     std::ostringstream os;
     os << "bplist_trailer=valid"
        << ";objects=" << numObjects
        << ";top_object=" << topObject
        << ";offset_int_size=" << static_cast<unsigned int>(offsetIntSize)
        << ";object_ref_size=" << static_cast<unsigned int>(objectRefSize)
-       << ";offset_table_rel=" << offsetTableOffsetRel;
+       << ";offset_table_rel=" << offsetTableOffsetRel
+       << ";offset_table_bytes=" << offsetTableBytes
+       << ";offset_table_status=parsed"
+       << ";top_object_offset_rel=" << (topObjectOffsetOk ? std::to_string(topObjectOffsetRel) : std::string("invalid"));
     return os.str();
 }
 

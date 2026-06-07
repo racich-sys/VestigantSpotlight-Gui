@@ -86,3 +86,7 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_1_2\scripts
 - Implemented: GUI export cancellation callbacks, orphan-source purge transaction, secure RichEdit load/cleanup, non-live APFS next-leaf helper strengthening, workflow ledger update.
 - Not changed: live AFF4/APFS extraction, Store-V2 parser semantics, iOS NSKeyedArchiver interpretation, SQLite schema.
 - Next validation required: Windows/MSVC V1.1.3 build and macOS AFF4/APFS thin run.
+
+## V1.1.4 handoff update
+
+Baseline reviewed: V1.1.3 Windows/MSVC build and macOS AFF4/APFS thin ZIP. V1.1.4 is a repeat-cycle hardening package. It does not change live APFS extraction. It adds bplist offset-table/top-object-offset metadata, safer GUI checked-artifact snapshots, and a stricter atomic ingest launch gate. The next large target remains `writeAff4CppLiteDynamicLoadProbe` extraction to an `aff4_probe_worker` boundary, but this should be done as a dedicated version because it is the highest-risk remaining refactor.
