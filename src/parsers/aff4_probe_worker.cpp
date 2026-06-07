@@ -778,6 +778,8 @@ bool aff4ApfsFindBestOmapLeafEntryForProbe(const std::vector<unsigned char>& nod
     return found;
 }
 
+// Centralized APFS horizontal leaf loader used by direct-map and dynamic/libaff4 probe paths.
+// Keep next-leaf footer parsing here rather than duplicating btn_flags/footer math at call sites.
 bool aff4ApfsLoadNextLeafForProbe(const std::vector<unsigned char>& currentNode,
                                   std::uint64_t currentNodeOid,
                                   std::uint64_t blockSize,
@@ -895,6 +897,8 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
             std::set<std::uint64_t> visitedLeaves;
             std::uint32_t nextLeafTransitions = 0;
             constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+            std::vector<unsigned char> nextLeafNodeBuffer;
+            nextLeafNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
             while (true) {
                 if (!visitedLeaves.insert(nodeOid).second) {
                     aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -935,14 +939,14 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
                     aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
                     break;
                 }
-                std::vector<unsigned char> nextNode;
+                nextLeafNodeBuffer.clear();
                 std::uint64_t nextNodeOid = 0;
                 std::uint64_t nextNodeOffset = 0;
                 long long nextNodeRead = -1;
-                if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, blockSize, readVirtual, safeNodeOffset, nextLeafNodeBuffer, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
                 ++nextLeafTransitions;
                 aff4ApfsAppendBranchPathForProbe(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
-                node.swap(nextNode);
+                node.swap(nextLeafNodeBuffer);
                 nodeOid = nextNodeOid;
                 nodeOffset = nextNodeOffset;
                 nodeRead = nextNodeRead;
@@ -2473,9 +2477,12 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                 }
 
                 constexpr std::size_t kDirectSpotlightDiagnosticNameSampleLimit = 200000U;
+                std::vector<unsigned char> directFsNodeBuffer;
+                directFsNodeBuffer.reserve(static_cast<std::size_t>(directBestNx.blockSize));
                 for (std::size_t qi = 0; qi < directPending.size(); ++qi) {
                     const DirectFsPendingNode pending = directPending[qi];
-                    std::vector<unsigned char> node;
+                    std::vector<unsigned char>& node = directFsNodeBuffer;
+                    node.clear();
                     std::string nodeErr;
                     std::uint64_t nodeOffset = pending.nodeVirtualOffset;
                     std::uint64_t nodeOid = pending.nodeOid;
@@ -4693,6 +4700,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     std::set<std::uint64_t> visitedLeaves;
                                     std::uint32_t nextLeafTransitions = 0;
                                     constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+                                    std::vector<unsigned char> nextLeafNodeBuffer;
+                                    nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                                     while (true) {
                                         if (!visitedLeaves.insert(nodeOid).second) {
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -4733,14 +4742,14 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
                                             break;
                                         }
-                                        std::vector<unsigned char> nextNode;
+                                        nextLeafNodeBuffer.clear();
                                         std::uint64_t nextNodeOid = 0;
                                         std::uint64_t nextNodeOffset = 0;
                                         long long nextNodeRead = -1;
-                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextLeafNodeBuffer, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
                                         ++nextLeafTransitions;
                                         appendBranchPath(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
-                                        node.swap(nextNode);
+                                        node.swap(nextLeafNodeBuffer);
                                         nodeOid = nextNodeOid;
                                         nodeOffset = nextNodeOffset;
                                         nodeRead = nextNodeRead;
@@ -4921,6 +4930,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     std::set<std::uint64_t> visitedLeaves;
                                     std::uint32_t nextLeafTransitions = 0;
                                     constexpr std::uint32_t kMaxNextLeafTransitions = 256U;
+                                    std::vector<unsigned char> nextLeafNodeBuffer;
+                                    nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                                     while (true) {
                                         if (!visitedLeaves.insert(nodeOid).second) {
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_cycle_detected_oid=" + std::to_string(nodeOid));
@@ -4961,14 +4972,14 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                             aff4ApfsAppendProbeNote(out.notes, "next_leaf_transition_limit_reached=" + std::to_string(kMaxNextLeafTransitions));
                                             break;
                                         }
-                                        std::vector<unsigned char> nextNode;
+                                        nextLeafNodeBuffer.clear();
                                         std::uint64_t nextNodeOid = 0;
                                         std::uint64_t nextNodeOffset = 0;
                                         long long nextNodeRead = -1;
-                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextNode, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
+                                        if (!aff4ApfsLoadNextLeafForProbe(node, nodeOid, nxSummary.blockSize, readVirtual, safeNodeOffset, nextLeafNodeBuffer, nextNodeOid, nextNodeOffset, nextNodeRead, out.notes)) break;
                                         ++nextLeafTransitions;
                                         appendBranchPath(out.branchPath, "next_leaf_oid=" + std::to_string(nextNodeOid) + ";transition=" + std::to_string(nextLeafTransitions));
-                                        node.swap(nextNode);
+                                        node.swap(nextLeafNodeBuffer);
                                         nodeOid = nextNodeOid;
                                         nodeOffset = nextNodeOffset;
                                         nodeRead = nextNodeRead;
@@ -5289,6 +5300,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         }
 
                         constexpr std::uint32_t kMaxRootTreeRecordSamplesPerVolume = 32;
+                        std::vector<unsigned char> rootTreeProbeNodeBuffer;
+                        rootTreeProbeNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                         for (const auto& lookup : apfsVolumeRootTreeLookupRows) {
                             ApfsRootTreeNodeProbeRow nr;
                             nr.sequence = static_cast<std::uint32_t>(apfsRootTreeNodeProbeRows.size());
@@ -5308,7 +5321,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 apfsRootTreeNodeProbeRows.push_back(nr);
                                 continue;
                             }
-                            std::vector<unsigned char> node;
+                            std::vector<unsigned char>& node = rootTreeProbeNodeBuffer;
+                            node.clear();
                             std::string readErr;
                             const long long rc = readVirtual(lookup.resolvedVirtualOffset, nxSummary.blockSize, node, readErr);
                             nr.bytesRead = rc;
@@ -6642,7 +6656,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         apfsSpotlightInodeProbeRows.push_back(ir);
                     };
 
-                    // V1.2.1: Reuse APFS B-tree node buffers across guided target lookups.
+                    // V1.3.0: Reuse APFS B-tree node buffers across guided target lookups.
                     // These guided lookups run in tight loops over staged Spotlight candidates; keeping the
                     // backing storage alive avoids repeated heap allocation while preserving the existing
                     // read and provenance semantics.

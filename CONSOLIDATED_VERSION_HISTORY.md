@@ -1,4 +1,4 @@
-## V1_2_1
+## V1_3_0
 
 - Scope: coordinated Win32 GUI runtime hardening release after V1.1.11 validation.
 - Reviewed uploaded `V1_1_11_build.log`: Windows/MSVC build completed successfully, CLI/tests/GUI linked, and `Vestigant Spotlight v1.1.11` was reported.
@@ -13,10 +13,10 @@
 
 - AFF4/APFS: thin only after Windows build.
 - iOS: not required.
-- Reason: V1.2.1 changes Win32 GUI review-grid rendering and current-package documentation/scripts only. V1.1.11 AFF4/APFS thin output was reviewed before the change, and no extraction/traversal/copy-out/decompression/parser code was intentionally changed.
+- Reason: V1.3.0 changes Win32 GUI review-grid rendering and current-package documentation/scripts only. V1.1.11 AFF4/APFS thin output was reviewed before the change, and no extraction/traversal/copy-out/decompression/parser code was intentionally changed.
 - Trigger for escalating AFF4/APFS to full test: any next change to live APFS traversal, copy-out, decompression, extent handling, path reconstruction, external compare logic, or Store-V2 staging behavior.
 - Trigger for iOS testing: any next change to iOS ZIP staging, CoreSpotlight parsing, FFS lookup, app DB parsing, bplist/NSKeyedArchiver handling, iOS schema, or iOS GUI views.
-- Required next uploaded artifacts: `V1_2_1_build.log` and `Upload_Thin_MacOS_AFF4_V1_2_1.zip`.
+- Required next uploaded artifacts: `V1_3_0_build.log` and `Upload_Thin_MacOS_AFF4_V1_3_0.zip`.
 
 ## V1_1_11
 

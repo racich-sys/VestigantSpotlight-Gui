@@ -1,3 +1,26 @@
+# V1.3.0 Standard Commands
+
+## Build
+
+```powershell
+Set-Location D:\Downloads
+
+Get-FileHash .\VestigantSpotlightInv_V1_3_0.zip -Algorithm SHA256
+
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_0" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_0.zip -DestinationPath T:\ -Force
+
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Build-V1_3_0.ps1
+```
+
+## AFF4/APFS thin-create
+
+```powershell
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Run-V1_3_0-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+```
+
+---
+
 # Vestigant Spotlight V1.0.0 Notes
 
 V1.0.0 starts the post-0.9.x V1 line. It keeps the stable V0_9_60 GUI/iOS baseline and moves the next work back toward macOS Spotlight investigation from AFF4/APFS forensic images.

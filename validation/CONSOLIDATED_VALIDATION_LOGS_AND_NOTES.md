@@ -1,4 +1,4 @@
-# V1.2.1 Validation Note
+# V1.3.0 Validation Note
 
 Input reviewed:
 - V1.2.0 build log.
@@ -9,8 +9,8 @@ Observed:
 - Build completed and produced GUI, CLI, and test executables.
 
 Local package validation:
-- Version metadata updated to 1.2.1.
-- Versioned scripts renamed to V1_2_1.
+- Version metadata updated to 1.3.0.
+- Versioned scripts renamed to V1_3_0.
 - Stale V1_2_0 / 1.2.0 references checked and not found in text/code files.
 - Changed APFS worker code reviewed for scope-limited buffer reuse.
 
@@ -20,7 +20,7 @@ Required next validation:
 
 Thin-create command:
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_2_1\scripts\Run-V1_2_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_0\scripts\Run-V1_3_0-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
 ---
