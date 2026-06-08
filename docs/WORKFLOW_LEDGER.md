@@ -352,3 +352,9 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Added bounded sample exports for heavy iOS review surfaces when not in support/full/diagnostics export mode.
 - Heavy full iOS exports remain available only when explicitly requested.
 - Test scope: iOS thin required; AFF4/APFS not required for this export-profile hotfix.
+
+## V1.3.4 Update
+- Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
+- Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
+- Local validation: Linux CMake build PASS; CLI version reports v1.3.4; self-test PASS.
+- Next required upload: V1.3.4 Windows build log and iOS thin output.

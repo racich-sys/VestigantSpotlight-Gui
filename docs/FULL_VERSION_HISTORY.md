@@ -1,3 +1,28 @@
+## V1_3_5
+
+- Prioritized iOS communication identity and KnowledgeC expansion before broader roadmap items.
+- Added WEB_DOWNLOADS to the iOS app database target parse categories so Safari/Chrome/WebKit download tables are parsed rather than only inventoried.
+- Expanded KnowledgeC communication-intent parsing to promote bounded serialized interaction target hints into contact/participant context when personHandle/emailAddress/name indicators are present.
+- Added iOS protected-data decryption candidate view/export that correlates parsed app databases with available keychain/keybag/keychain-plist material without claiming decryption.
+- Added sibling/decrypted keychain plist filenames to keychain material inventory logic where present in the FFS inventory.
+- Preserved cautious interpretation wording: no automatic exfiltration or destruction conclusions are asserted.
+- Linux CMake build, CLI version check, and self-test passed locally; Windows/MSVC build and iOS thin validation are required.
+
+## V1_3_4
+
+- Stability: retained V1.3.2.3 CSV cancellation/progress and GUI SQLite pooled read connection behavior after review.
+- APFS: added cautious WhereFroms XATTR surfacing as download-origin metadata without asserting exfiltration.
+- iOS: added bounded binary plist / NSKeyedArchiver top-object graph sample reconstruction in the existing bplist context output.
+- iOS: added safe provenance markers for device-owner contact indicators, Trash path components, Quarantine metadata references, and Spotlight deleted/expired references.
+- GUI: improved deleted/tombstone review-view routing keywords for macOS views without adding unsupported intent conclusions.
+- Not implemented: automatic exfiltration/destruction conclusions; full NSKeyedArchiver semantic decoder; full APFS parser unification.
+- Validation: Linux CMake build, CLI version check, and self-test passed. Windows/MSVC build and iOS thin validation are required.
+
+TEST SCOPE DECISION
+- AFF4/APFS: thin only if validating WhereFroms/APFS XATTR output; otherwise not required for iOS-only validation.
+- iOS: thin required because bplist/NSKeyedArchiver context output and iOS parsed-record provenance changed.
+- Full test trigger: full AFF4/APFS only if APFS traversal/copy-out behavior is changed later; full iOS only if keychain-assisted decryption or full NSKeyedArchiver semantic decoding is added.
+
 ## V1_3_3
 
 - iOS thin/export stability release after V1.3.2.2 completed but showed expensive sample exports could appear stalled.

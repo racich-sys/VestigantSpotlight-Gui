@@ -194,7 +194,7 @@ bool iosAppDbIsTargetRecordCategory(const std::string& category) {
     static const std::set<std::string> target = {
         "MESSAGE_RECORDS", "MESSAGE_ATTACHMENTS", "MESSAGE_PARTICIPANTS", "MESSAGE_DELETED_OR_RECOVERABLE",
         "CALL_RECORDS", "CALL_PARTICIPANTS",
-        "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE",
+        "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE", "WEB_DOWNLOADS",
         "MAIL_RECORDS", "CALENDAR_RECORDS", "CONTACT_RECORDS",
         "CHAT_RECORDS", "KNOWLEDGEC_EVENTS"
     };
@@ -409,7 +409,22 @@ void bindIosParsedRecord(SqlStatement& parsedIns,
                          const std::string& textSnippet,
                          const std::string& parseStatus,
                          const std::string& provenance) {
-    const auto derived = deriveIosCommunicationFields(recordCategory, contactOrParticipant, itemIdentifier, title, textSnippet, parseStatus, provenance);
+    std::string augmentedProvenance = provenance;
+    auto addAugmentedProvenance = [&](const std::string& token) {
+        if (augmentedProvenance.find(token) == std::string::npos) {
+            augmentedProvenance += (augmentedProvenance.empty() ? "" : "; ") + token;
+        }
+    };
+    if (filePath.find("/.Trash/") != std::string::npos || filePath.find("/.Trashes/") != std::string::npos) {
+        addAugmentedProvenance("TRASH_PATH_COMPONENT_PRESENT=True");
+    }
+    if (textSnippet.find("LSQuarantine") != std::string::npos || textSnippet.find("com.apple.quarantine") != std::string::npos) {
+        addAugmentedProvenance("QUARANTINE_METADATA_REFERENCE_PRESENT=True");
+    }
+    if (textSnippet.find("kMDItemExpirationDate") != std::string::npos || textSnippet.find("_kMDItemIsDeleted") != std::string::npos) {
+        addAugmentedProvenance("SPOTLIGHT_DELETED_OR_EXPIRED_REFERENCE_PRESENT=True");
+    }
+    const auto derived = deriveIosCommunicationFields(recordCategory, contactOrParticipant, itemIdentifier, title, textSnippet, parseStatus, augmentedProvenance);
     int i = 1;
     parsedIns.bind(i++, sourceId);
     parsedIns.bind(i++, inv.id);
@@ -854,6 +869,11 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
         if (!intentVerb.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("intent_verb=") + intentVerb;
         if (!docTitle.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("document_title=") + docTitle;
         if (!serialized.empty()) snippet += (snippet.empty() ? "" : "; ") + std::string("serialized_interaction_preview=") + serialized;
+        std::string contactHint;
+        const std::string serializedLower = lowerCopy(serialized);
+        if (serializedLower.find("personhandle") != std::string::npos || serializedLower.find("emailaddress") != std::string::npos || serializedLower.find("name") != std::string::npos) {
+            contactHint = "KnowledgeC target hint: " + firstMetadataWindow(serialized, {"personHandle", "emailAddress", "name"}, 128);
+        }
         std::string parseStatus = "parsed_knowledgec_zobject_interaction_joined_metadata";
         std::string provenance = hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v1_3_2" : "read_only_sqlite_coreduet_knowledgec table=" + table;
         if (intentClass == "INSendMessageIntent" || bundleId == "com.apple.sharingd" || stream == "/item/interactions" || stream == "/app/activity") {
@@ -869,7 +889,7 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
                             columnValue(st, rowidCol, 256),
                             !startTs.first.empty() ? startTs.first : creationTs.first,
                             !startTs.second.empty() ? startTs.second : creationTs.second,
-                            bundleId,
+                            contactHint.empty() ? bundleId : contactHint,
                             "",
                             title,
                             "",
@@ -964,6 +984,10 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         }
         if (genericText.find("LSQuarantine") != std::string::npos || genericFilePath.find("LSQuarantine") != std::string::npos) {
             genericProvenance += "; quarantine_metadata_reference=LSQuarantine_string_detected";
+        }
+        if (recordCategory == "WEB_DOWNLOADS") {
+            genericProvenance += "; web_download_table_record=True";
+            if (genericTitle.empty()) genericTitle = "Browser download record";
         }
         bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                             columnValue(st, pkCol, 256), ts.first, ts.second,

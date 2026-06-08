@@ -6298,6 +6298,15 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 xr.entryIndex = rr.entryIndex;
                                 xr.xattrStatus = isApfsCompressionOrResourceXattrName(xname) ? "COMPRESSION_OR_RSRC_XATTR_SEEN" : "XATTR_SEEN";
                                 xr.interpretation = "APFS XATTR record decoded during the bounded Store-V2 filesystem traversal. com.apple.decmpfs and com.apple.ResourceFork rows are used to triage compressed/resource-fork reconstruction needs.";
+                                const std::string xnameLower = asciiLower(xname);
+                                if (xnameLower == "com.apple.metadata:kmditemwherefroms") {
+                                    xr.xattrStatus = "DOWNLOAD_ORIGIN_METADATA_XATTR_SEEN";
+                                    xr.interpretation = "APFS WhereFroms metadata XATTR decoded during bounded Store-V2 filesystem traversal. This records source/origin metadata when present; investigator interpretation requires corroboration.";
+                                    if (xr.xdataPreviewStatus != "XATTR_EMBEDDED_EMPTY" && !xr.xdataPreviewHex.empty()) {
+                                        xr.notes += (xr.notes.empty() ? "" : "; ");
+                                        xr.notes += "wherefroms_preview_hex=" + xr.xdataPreviewHex;
+                                    }
+                                }
                                 xr.notes = detail + "; scan_depth=" + std::to_string(pending.depth) + "; key_object_id_is_file_id";
                                 apfsSpotlightXattrProbeRows.push_back(std::move(xr));
                             }

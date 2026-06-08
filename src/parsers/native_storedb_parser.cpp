@@ -1420,6 +1420,169 @@ std::vector<std::string> extractBplistObjectStringTokensAt(const std::string& va
     return tokens;
 }
 
+
+std::string jsonEscapeBplistSample(const std::string& s) {
+    std::string out;
+    out.reserve(std::min<std::size_t>(s.size() + 8, 512));
+    for (unsigned char c : s) {
+        if (out.size() >= 512) { out += "...[truncated]"; break; }
+        switch (c) {
+        case '\\': out += "\\\\"; break;
+        case '"': out += "\\\""; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (c >= 0x20 && c < 0x7f) out.push_back(static_cast<char>(c));
+            else out.push_back(' ');
+        }
+    }
+    return out;
+}
+
+bool readBplistObjectLengthBounded(const std::string& value, std::size_t& payloadOff, std::uint64_t inlineCount, std::uint64_t& countOut) {
+    countOut = inlineCount;
+    if (inlineCount != 0x0Fu) return true;
+    if (payloadOff >= value.size()) return false;
+    const auto intMarker = static_cast<unsigned char>(value[payloadOff++]);
+    if ((intMarker & 0xF0u) != 0x10u) return false;
+    const std::size_t intBytes = std::size_t{1} << (intMarker & 0x0Fu);
+    if (intBytes == 0 || intBytes > 8 || payloadOff > value.size() || intBytes > value.size() - payloadOff) return false;
+    bool ok = false;
+    countOut = readBplistBigEndianInt(value, payloadOff, intBytes, &ok);
+    payloadOff += intBytes;
+    return ok;
+}
+
+std::string resolveBplistUidGraphSample(const std::string& value,
+                                        std::size_t bplistOff,
+                                        const std::vector<std::size_t>& objOffsets,
+                                        std::uint8_t objectRefSize,
+                                        std::uint64_t uid,
+                                        int depth,
+                                        std::set<std::uint64_t>& stack,
+                                        std::size_t& budget) {
+    if (budget == 0) return "\"<budget_exhausted>\"";
+    if (depth > 10) return "\"<recursion_limit>\"";
+    if (uid >= objOffsets.size()) return "\"<invalid_uid>\"";
+    if (!stack.insert(uid).second) return "\"<cycle>\"";
+    auto finish = [&](std::string out) {
+        stack.erase(uid);
+        if (out.size() > budget) {
+            out.resize(budget);
+            out += "...[truncated]";
+            budget = 0;
+        } else {
+            budget -= out.size();
+        }
+        return out;
+    };
+    const std::size_t objOff = objOffsets[static_cast<std::size_t>(uid)];
+    if (objOff < bplistOff || objOff >= value.size()) return finish("\"<object_out_of_range>\"");
+    const auto marker = static_cast<unsigned char>(value[objOff]);
+    const std::uint8_t type = marker & 0xF0u;
+    std::uint64_t count = marker & 0x0Fu;
+    std::size_t payloadOff = objOff + 1;
+    if (!readBplistObjectLengthBounded(value, payloadOff, count, count)) return finish("\"<bad_length>\"");
+    if (type == 0x00u) {
+        if (marker == 0x00u) return finish("null");
+        if (marker == 0x08u) return finish("false");
+        if (marker == 0x09u) return finish("true");
+        return finish("\"<simple>\"");
+    }
+    if (type == 0x10u) {
+        const std::size_t bytes = std::size_t{1} << (marker & 0x0Fu);
+        if (bytes == 0 || bytes > 8 || payloadOff > value.size() || bytes > value.size() - payloadOff) return finish("\"<bad_int>\"");
+        bool ok = false;
+        const std::uint64_t v = readBplistBigEndianInt(value, payloadOff, bytes, &ok);
+        return finish(ok ? std::to_string(v) : "\"<bad_int>\"");
+    }
+    if (type == 0x50u) {
+        if (count > 2048 || payloadOff > value.size() || count > value.size() - payloadOff) return finish("\"<bad_ascii>\"");
+        return finish("\"" + jsonEscapeBplistSample(std::string(value.data() + static_cast<std::ptrdiff_t>(payloadOff), static_cast<std::size_t>(count))) + "\"");
+    }
+    if (type == 0x60u) {
+        if (count > 1024) return finish("\"<utf16_too_large>\"");
+        const std::size_t byteLen = static_cast<std::size_t>(count) * 2;
+        if (payloadOff > value.size() || byteLen > value.size() - payloadOff) return finish("\"<bad_utf16>\"");
+        return finish("\"" + jsonEscapeBplistSample(utf16beToUtf8BplistString(value, payloadOff, byteLen)) + "\"");
+    }
+    if (type == 0x80u) { // UID object; treat as a pointer into $objects when possible.
+        const std::size_t bytes = static_cast<std::size_t>(count) + 1U;
+        if (bytes == 0 || bytes > 8 || payloadOff > value.size() || bytes > value.size() - payloadOff) return finish("\"<bad_uid>\"");
+        bool ok = false;
+        const std::uint64_t ref = readBplistBigEndianInt(value, payloadOff, bytes, &ok);
+        if (!ok) return finish("\"<bad_uid>\"");
+        stack.erase(uid);
+        return resolveBplistUidGraphSample(value, bplistOff, objOffsets, objectRefSize, ref, depth + 1, stack, budget);
+    }
+    if (type == 0xA0u) { // Array
+        if (count > 32 || payloadOff > value.size() || static_cast<std::size_t>(count) > (value.size() - payloadOff) / objectRefSize) return finish("\"<array_too_large_or_bad>\"");
+        std::string out = "[";
+        for (std::uint64_t i = 0; i < count && budget > 0; ++i) {
+            bool ok = false;
+            const std::uint64_t ref = readBplistBigEndianInt(value, payloadOff + static_cast<std::size_t>(i) * objectRefSize, objectRefSize, &ok);
+            if (i) out += ",";
+            out += ok ? resolveBplistUidGraphSample(value, bplistOff, objOffsets, objectRefSize, ref, depth + 1, stack, budget) : "\"<bad_ref>\"";
+            if (out.size() > 4096) { out += ",\"...[truncated]\""; break; }
+        }
+        out += "]";
+        return finish(out);
+    }
+    if (type == 0xD0u) { // Dictionary
+        if (count > 32 || payloadOff > value.size() || static_cast<std::size_t>(count) > (value.size() - payloadOff) / (objectRefSize * 2U)) return finish("\"<dict_too_large_or_bad>\"");
+        std::string out = "{";
+        for (std::uint64_t i = 0; i < count && budget > 0; ++i) {
+            bool ok1 = false, ok2 = false;
+            const std::uint64_t keyRef = readBplistBigEndianInt(value, payloadOff + static_cast<std::size_t>(i) * objectRefSize, objectRefSize, &ok1);
+            const std::uint64_t valRef = readBplistBigEndianInt(value, payloadOff + static_cast<std::size_t>(count + i) * objectRefSize, objectRefSize, &ok2);
+            if (i) out += ",";
+            out += ok1 ? resolveBplistUidGraphSample(value, bplistOff, objOffsets, objectRefSize, keyRef, depth + 1, stack, budget) : "\"<bad_key>\"";
+            out += ":";
+            out += ok2 ? resolveBplistUidGraphSample(value, bplistOff, objOffsets, objectRefSize, valRef, depth + 1, stack, budget) : "\"<bad_value>\"";
+            if (out.size() > 4096) { out += ",\"...[truncated]\":true"; break; }
+        }
+        out += "}";
+        return finish(out);
+    }
+    return finish("\"<unparsed_type_" + std::to_string(type) + ">\"");
+}
+
+std::string reconstructBplistTopObjectGraphSampleAt(const std::string& value, std::size_t bplistOff) {
+    constexpr std::size_t MaxBplistBytes = 1024ull * 1024ull;
+    constexpr std::uint64_t MaxBplistObjects = 50000ull;
+    if (bplistOff == std::string::npos || bplistOff > value.size() || value.size() - bplistOff < 40) return {};
+    const std::size_t bplistSize = value.size() - bplistOff;
+    if (bplistSize > MaxBplistBytes) return "graph_decode_status=skipped_too_large";
+    if (std::memcmp(value.data() + static_cast<std::ptrdiff_t>(bplistOff), "bplist00", 8) != 0) return {};
+    const std::size_t trailer = value.size() - 32;
+    const auto offsetIntSize = static_cast<unsigned char>(value[trailer + 6]);
+    const auto objectRefSize = static_cast<unsigned char>(value[trailer + 7]);
+    bool ok = false;
+    const std::uint64_t numObjects = readBplistBigEndianInt(value, trailer + 8, 8, &ok);
+    if (!ok) return "graph_decode_status=invalid_num_objects";
+    const std::uint64_t topObject = readBplistBigEndianInt(value, trailer + 16, 8, &ok);
+    if (!ok) return "graph_decode_status=invalid_top_object";
+    const std::uint64_t offsetTableOffsetRel = readBplistBigEndianInt(value, trailer + 24, 8, &ok);
+    if (!ok || offsetIntSize == 0 || offsetIntSize > 8 || objectRefSize == 0 || objectRefSize > 8 || numObjects == 0 || numObjects > MaxBplistObjects || topObject >= numObjects) return "graph_decode_status=invalid_trailer";
+    if (offsetTableOffsetRel >= bplistSize || numObjects > (std::numeric_limits<std::size_t>::max)() / offsetIntSize) return "graph_decode_status=invalid_offset_table";
+    const std::size_t offsetTable = bplistOff + static_cast<std::size_t>(offsetTableOffsetRel);
+    const std::size_t offsetTableBytes = static_cast<std::size_t>(numObjects) * offsetIntSize;
+    if (offsetTable < bplistOff || offsetTable > value.size() || offsetTableBytes > value.size() - offsetTable) return "graph_decode_status=offset_table_out_of_range";
+    std::vector<std::size_t> objOffsets;
+    objOffsets.reserve(static_cast<std::size_t>(numObjects));
+    for (std::uint64_t i = 0; i < numObjects; ++i) {
+        const std::uint64_t rel = readBplistBigEndianInt(value, offsetTable + static_cast<std::size_t>(i) * offsetIntSize, offsetIntSize, &ok);
+        if (!ok || rel >= bplistSize) return "graph_decode_status=object_offset_out_of_range";
+        objOffsets.push_back(bplistOff + static_cast<std::size_t>(rel));
+    }
+    std::set<std::uint64_t> stack;
+    std::size_t budget = 4096;
+    std::string sample = resolveBplistUidGraphSample(value, bplistOff, objOffsets, static_cast<std::uint8_t>(objectRefSize), topObject, 0, stack, budget);
+    if (sample.empty()) return "graph_decode_status=no_sample";
+    return "graph_decode_status=bounded_top_object_sample; graph_sample=" + sample;
+}
+
 std::vector<std::string> extractPrintableBplistTokens(const std::string& value) {
     constexpr std::size_t MaxInputScanBytes = 16384;
     constexpr std::size_t MaxTokens = 48;
@@ -1478,18 +1641,21 @@ std::string buildIosBplistNsKeyedArchiverContext(const std::map<std::string, std
             tokenText = std::move(candidate);
         }
         if (tokenText.empty()) tokenText = "no_printable_tokens_recovered";
+        const std::size_t graphBplistOff = kv.second.find("bplist00");
+        const std::string graphSample = reconstructBplistTopObjectGraphSampleAt(kv.second, graphBplistOff);
         std::ostringstream os;
         os << kv.first << "[format=" << (containsBinaryPlistMarker(kv.second) ? "bplist00" : "unknown")
            << ";nskeyed=" << (containsNsKeyedArchiverMarker(kv.second) ? "1" : "0")
            << ";raw_bytes=" << kv.second.size()
-           << ";" << summarizeBplistTrailer(kv.second)
-           << ";tokens=" << tokenText << "]";
+           << ";" << summarizeBplistTrailer(kv.second);
+        if (!graphSample.empty()) os << ";" << graphSample;
+        os << ";tokens=" << tokenText << "]";
         pieces.push_back(os.str());
     }
     if (fieldsSeen == 0) return {};
     std::ostringstream out;
     out << "bplist_field_count=" << fieldsSeen << "; nskeyedarchiver_field_count=" << keyedFields
-        << "; decode_status=bounded_bplist_object_string_discovery_only; note=not_full_NSKeyedArchiver_graph_decode";
+        << "; decode_status=bounded_bplist_object_string_and_top_object_graph_discovery; note=bounded_NSKeyedArchiver_graph_sample_not_full_app_semantics";
     for (const auto& p : pieces) {
         const std::string add = " | " + p;
         if (out.str().size() + add.size() > MaxContextBytes) { out << " | ...[truncated]"; break; }

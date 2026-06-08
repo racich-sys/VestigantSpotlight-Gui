@@ -603,6 +603,7 @@ int macReviewViewSortRank(const ViewSpec& v) {
         if (name == kV1PriorityNames[i]) return i;
     }
     const std::wstring n = lowerW(name);
+    if (containsAnyW(n, {L"deleted", L"tombstone"})) return 100;
     if (containsAnyW(n, {L"timeline", L"usage", L"date"})) return 300;
     if (containsAnyW(n, {L"path", L"wherefrom", L"download"})) return 400;
     if (containsAnyW(n, {L"summary", L"dashboard"})) return 500;
@@ -616,7 +617,7 @@ bool reviewViewMatchesProfile(const ViewSpec& v) {
     const std::wstring n = lowerW(name);
     switch (gReviewViewProfileMode) {
     case 1: // Timeline / Activity
-        return containsAnyW(n, {L"timeline", L"date", L"time", L"usage", L"used", L"knowledgec", L"interaction", L"anomal"});
+        return containsAnyW(n, {L"timeline", L"date", L"time", L"usage", L"used", L"knowledgec", L"interaction", L"anomal", L"deleted", L"tombstone"});
     case 2: // Text / Content
         return containsAnyW(n, {L"text", L"message", L"content", L"keyword", L"entity", L"human", L"bplist", L"url", L"contact"});
     case 3: // App DB / KnowledgeC

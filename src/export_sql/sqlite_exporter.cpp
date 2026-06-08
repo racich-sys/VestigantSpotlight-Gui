@@ -445,6 +445,7 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_whatsapp_parsed_summary.csv", "Summary counts for parsed iOS WhatsApp records.");
     row("exports/ios_keychain_material_inventory.csv", "Inventory-only listing of core keychain/keybag files in the iOS FFS ZIP root.");
     row("exports/ios_keychain_support_reference_inventory.csv", "Lower-priority keychain-named framework/code references outside core keychain/keybag locations.");
+    row("exports/ios_protected_data_decryption_candidates.csv", "Candidate correlation between parsed app databases and available keychain/keybag plist/database material; no decryption is claimed.");
     out << "</table>";
     out << "<h2>Full local database</h2><table><tr><th>File</th><th>Purpose</th></tr>";
     row("VestigantSpotlight.case.sqlite", "Primary SQLite case database. Local case folder only; usually too large for upload.");
@@ -1178,6 +1179,7 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_whatsapp_parsed_summary.csv", "SELECT * FROM vw_ios_whatsapp_parsed_summary ORDER BY record_category, parse_status", log);
         exportQuery(db, exportDir / "ios_keychain_material_inventory.csv", "SELECT * FROM vw_ios_keychain_material_inventory ORDER BY keychain_material_type, normalized_path", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_keychain_support_reference_inventory.csv", "SELECT * FROM vw_ios_keychain_support_reference_inventory ORDER BY normalized_path", log);
+        exportQuery(db, exportDir / "ios_protected_data_decryption_candidates.csv", "SELECT * FROM vw_ios_protected_data_decryption_candidates ORDER BY candidate_status DESC, database_category, normalized_path", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_referenced_paths.csv", "SELECT * FROM vw_ios_spotlight_referenced_paths ORDER BY reference_type, normalized_ios_path, reference_id", log);
         exportQuery(db, exportDir / "ios_spotlight_decode_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_decode_coverage_summary ORDER BY raw_record_count DESC, store_guid", log);
         exportQuery(db, exportDir / "ios_spotlight_bplist_nskeyedarchiver_summary.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary ORDER BY spotlight_record_count DESC, store_guid, source_db, bplist_detection_status", log);

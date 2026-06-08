@@ -41,3 +41,9 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts
 - `V1_3_3_build.log`
 - `Upload_Thin_MacOS_AFF4_V1_3_3.zip`
 - iOS thin output if iOS communication-frequency validation is run.
+
+## V1.3.5 Update
+- Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
+- Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
+- Local validation: Linux CMake build PASS; CLI version reports v1.3.5; self-test PASS.
+- Next required upload: V1.3.5 Windows build log and iOS thin output.

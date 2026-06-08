@@ -43,3 +43,9 @@ Remaining:
 - Add early/partial JSON summary generation during long runs.
 - Add more granular cancellation handling inside the most expensive SQLite view exports.
 - Add iOS keychain plist intake after V1.3.2.x thin stability is validated.
+
+## V1.3.5 Update
+- Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
+- Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
+- Local validation: Linux CMake build PASS; CLI version reports v1.3.5; self-test PASS.
+- Next required upload: V1.3.5 Windows build log and iOS thin output.

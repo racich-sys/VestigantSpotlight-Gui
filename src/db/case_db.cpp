@@ -3672,6 +3672,7 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
        CASE
          WHEN lower(file_name) IN ('keychain-2.db','keychain-2-debug.db') THEN 'KEYCHAIN_DATABASE'
          WHEN lower(normalized_path) LIKE '%/private/var/keychains/%' THEN 'KEYCHAIN_DIRECTORY_ARTIFACT'
+         WHEN lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist' THEN 'EXTERNAL_OR_DECRYPTED_KEYCHAIN_PLIST'
          WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
          ELSE 'KEYCHAIN_CORE_MATERIAL'
        END AS keychain_material_type,
@@ -3680,6 +3681,7 @@ FROM ios_ffs_file_inventory
 WHERE lower(normalized_path) LIKE '%/private/var/keychains/%'
    OR lower(file_name) IN ('keychain-2.db','keychain-2-debug.db')
    OR lower(normalized_path) LIKE '%keybag%'
+   OR lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist'
 ORDER BY keychain_material_type, normalized_path;
 
 DROP VIEW IF EXISTS vw_ios_keychain_support_reference_inventory;
@@ -3691,9 +3693,43 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
 FROM ios_ffs_file_inventory
 WHERE lower(normalized_path) LIKE '%keychain%'
   AND lower(normalized_path) NOT LIKE '%/private/var/keychains/%'
-  AND lower(file_name) NOT IN ('keychain-2.db','keychain-2-debug.db')
+  AND lower(file_name) NOT IN ('keychain-2.db','keychain-2-debug.db','keychain_decrypted.plist')
+  AND lower(file_name) NOT LIKE '%_keychain.plist'
   AND lower(normalized_path) NOT LIKE '%keybag%'
 ORDER BY normalized_path;
+
+DROP VIEW IF EXISTS vw_ios_protected_data_decryption_candidates;
+CREATE VIEW vw_ios_protected_data_decryption_candidates AS
+WITH keychain_presence AS (
+  SELECT source_id, COUNT(*) AS keychain_material_count,
+         GROUP_CONCAT(DISTINCT keychain_material_type) AS keychain_material_types
+  FROM vw_ios_keychain_material_inventory
+  GROUP BY source_id
+)
+SELECT d.source_id,
+       d.ios_db_id,
+       d.normalized_path,
+       d.database_name,
+       d.database_category,
+       d.app_hint,
+       d.protection_class_hint,
+       d.parse_status,
+       d.record_inventory_status,
+       COALESCE(k.keychain_material_count,0) AS keychain_material_count,
+       COALESCE(k.keychain_material_types,'') AS keychain_material_types,
+       CASE
+         WHEN COALESCE(k.keychain_material_count,0)>0 AND (lower(d.protection_class_hint) LIKE '%complete%' OR lower(d.notes) LIKE '%encrypted%' OR lower(d.parse_status) LIKE '%encrypted%' OR lower(d.parse_status) LIKE '%failed%') THEN 'KEYCHAIN_MATERIAL_PRESENT_AND_DATABASE_MAY_BE_PROTECTED'
+         WHEN COALESCE(k.keychain_material_count,0)>0 THEN 'KEYCHAIN_MATERIAL_PRESENT_FOR_CASE'
+         ELSE 'NO_KEYCHAIN_MATERIAL_IN_INVENTORY'
+       END AS candidate_status,
+       'Candidate correlation only. This does not decrypt data or prove that a keychain item unlocks this database. Use for prioritizing future validated decryption workflows.' AS interpretation_note
+FROM ios_app_database_inventory d
+LEFT JOIN keychain_presence k ON k.source_id=d.source_id
+WHERE d.database_category IN ('APPLE_MESSAGES','WHATSAPP','SIGNAL','TELEGRAM','SAFARI_WEB','CHROME_WEB','WEBKIT','MAIL','CALENDAR','CONTACTS','KNOWLEDGEC_COREDUET','KEYCHAIN')
+   OR lower(d.normalized_path) LIKE '%nsfileprotection%'
+   OR lower(d.parse_status) LIKE '%encrypted%'
+   OR lower(d.notes) LIKE '%encrypted%'
+ORDER BY candidate_status DESC, d.database_category, d.normalized_path;
 
 DROP VIEW IF EXISTS vw_ios_communications_review_records;
 CREATE VIEW vw_ios_communications_review_records AS
@@ -8394,6 +8430,7 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
        CASE
          WHEN lower(file_name) IN ('keychain-2.db','keychain-2-debug.db') THEN 'KEYCHAIN_DATABASE'
          WHEN lower(normalized_path) LIKE '%/private/var/keychains/%' THEN 'KEYCHAIN_DIRECTORY_ARTIFACT'
+         WHEN lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist' THEN 'EXTERNAL_OR_DECRYPTED_KEYCHAIN_PLIST'
          WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
          ELSE 'KEYCHAIN_CORE_MATERIAL'
        END AS keychain_material_type,
@@ -8402,6 +8439,7 @@ FROM ios_ffs_file_inventory
 WHERE lower(normalized_path) LIKE '%/private/var/keychains/%'
    OR lower(file_name) IN ('keychain-2.db','keychain-2-debug.db')
    OR lower(normalized_path) LIKE '%keybag%'
+   OR lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist'
 ORDER BY keychain_material_type, normalized_path;
 
 DROP VIEW IF EXISTS vw_ios_keychain_support_reference_inventory;
@@ -8413,9 +8451,43 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
 FROM ios_ffs_file_inventory
 WHERE lower(normalized_path) LIKE '%keychain%'
   AND lower(normalized_path) NOT LIKE '%/private/var/keychains/%'
-  AND lower(file_name) NOT IN ('keychain-2.db','keychain-2-debug.db')
+  AND lower(file_name) NOT IN ('keychain-2.db','keychain-2-debug.db','keychain_decrypted.plist')
+  AND lower(file_name) NOT LIKE '%_keychain.plist'
   AND lower(normalized_path) NOT LIKE '%keybag%'
 ORDER BY normalized_path;
+
+DROP VIEW IF EXISTS vw_ios_protected_data_decryption_candidates;
+CREATE VIEW vw_ios_protected_data_decryption_candidates AS
+WITH keychain_presence AS (
+  SELECT source_id, COUNT(*) AS keychain_material_count,
+         GROUP_CONCAT(DISTINCT keychain_material_type) AS keychain_material_types
+  FROM vw_ios_keychain_material_inventory
+  GROUP BY source_id
+)
+SELECT d.source_id,
+       d.ios_db_id,
+       d.normalized_path,
+       d.database_name,
+       d.database_category,
+       d.app_hint,
+       d.protection_class_hint,
+       d.parse_status,
+       d.record_inventory_status,
+       COALESCE(k.keychain_material_count,0) AS keychain_material_count,
+       COALESCE(k.keychain_material_types,'') AS keychain_material_types,
+       CASE
+         WHEN COALESCE(k.keychain_material_count,0)>0 AND (lower(d.protection_class_hint) LIKE '%complete%' OR lower(d.notes) LIKE '%encrypted%' OR lower(d.parse_status) LIKE '%encrypted%' OR lower(d.parse_status) LIKE '%failed%') THEN 'KEYCHAIN_MATERIAL_PRESENT_AND_DATABASE_MAY_BE_PROTECTED'
+         WHEN COALESCE(k.keychain_material_count,0)>0 THEN 'KEYCHAIN_MATERIAL_PRESENT_FOR_CASE'
+         ELSE 'NO_KEYCHAIN_MATERIAL_IN_INVENTORY'
+       END AS candidate_status,
+       'Candidate correlation only. This does not decrypt data or prove that a keychain item unlocks this database. Use for prioritizing future validated decryption workflows.' AS interpretation_note
+FROM ios_app_database_inventory d
+LEFT JOIN keychain_presence k ON k.source_id=d.source_id
+WHERE d.database_category IN ('APPLE_MESSAGES','WHATSAPP','SIGNAL','TELEGRAM','SAFARI_WEB','CHROME_WEB','WEBKIT','MAIL','CALENDAR','CONTACTS','KNOWLEDGEC_COREDUET','KEYCHAIN')
+   OR lower(d.normalized_path) LIKE '%nsfileprotection%'
+   OR lower(d.parse_status) LIKE '%encrypted%'
+   OR lower(d.notes) LIKE '%encrypted%'
+ORDER BY candidate_status DESC, d.database_category, d.normalized_path;
 
 DROP VIEW IF EXISTS vw_ios_communications_review_records;
 )VSGUI",

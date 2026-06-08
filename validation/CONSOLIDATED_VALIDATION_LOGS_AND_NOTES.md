@@ -2684,3 +2684,9 @@ Not verified here:
 - Win32 GUI runtime.
 - Live AFF4/APFS V1.0.11 run.
 ```
+
+## V1.3.4 Update
+- Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
+- Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
+- Local validation: Linux CMake build PASS; CLI version reports v1.3.4; self-test PASS.
+- Next required upload: V1.3.4 Windows build log and iOS thin output.
