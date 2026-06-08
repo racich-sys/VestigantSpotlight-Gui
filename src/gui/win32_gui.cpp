@@ -348,7 +348,8 @@ void configureGuiSqliteConnection(sqlite3* db) {
 
 class ReadOnlyDb {
 public:
-    explicit ReadOnlyDb(const std::wstring& path) : lock_(poolMutex_) {
+    explicit ReadOnlyDb(const std::wstring& path) {
+        std::lock_guard<std::mutex> lock(poolMutex_);
         if (sharedDb_ && currentPath_ == path) {
             db_ = sharedDb_;
             return;
@@ -367,7 +368,10 @@ public:
             return;
         }
         std::string writeMsg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : "unknown";
-        if (sharedDb_) { sqlite3_close_v2(sharedDb_); sharedDb_ = nullptr; }
+        if (sharedDb_) {
+            sqlite3_close_v2(sharedDb_);
+            sharedDb_ = nullptr;
+        }
         if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
             std::string msg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : writeMsg;
             if (sharedDb_) sqlite3_close_v2(sharedDb_);
@@ -383,12 +387,14 @@ public:
     sqlite3* get() const { return db_; }
     static void closePoolNoThrow() {
         std::lock_guard<std::mutex> lock(poolMutex_);
-        if (sharedDb_) { sqlite3_close_v2(sharedDb_); sharedDb_ = nullptr; }
+        if (sharedDb_) {
+            sqlite3_close_v2(sharedDb_);
+            sharedDb_ = nullptr;
+        }
         currentPath_.clear();
     }
 private:
     sqlite3* db_ = nullptr;
-    std::unique_lock<std::mutex> lock_;
     static inline sqlite3* sharedDb_ = nullptr;
     static inline std::wstring currentPath_;
     static inline std::mutex poolMutex_;

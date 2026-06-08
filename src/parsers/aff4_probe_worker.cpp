@@ -6759,9 +6759,14 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
 
                         constexpr std::uint8_t kTargetTypeInode = 3U;
                         constexpr std::uint32_t kMaxGuidedDepth = 16U;
+                        std::set<std::uint64_t> visitedGuidedNodes;
                         std::string branchPath;
                         for (std::uint32_t depth = 0; depth < kMaxGuidedDepth; ++depth) {
                             if (node.size() < 64) break;
+                            if (!visitedGuidedNodes.insert(nodeOid).second) {
+                                appendGuidedNoMatchInodeRow(cr, "GUIDED_INODE_LOOKUP_CYCLE_DETECTED", "candidate=" + candidateLabel + "; path=" + branchPath);
+                                return false;
+                            }
                             const std::uint32_t rawType = readLe32(node, 24);
                             const std::string objectLabel = apfsObjectTypeLabel(rawType);
                             const std::uint16_t level = readLe16(node, 34);
@@ -6939,10 +6944,15 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         constexpr std::uint8_t kTargetTypeFileExtent = 8U;
                         const std::uint64_t kTargetLogicalOffset = requestedLogicalOffset;
                         constexpr std::uint32_t kMaxGuidedDepth = 16U;
+                        std::set<std::uint64_t> visitedGuidedNodes;
                         bool anyHit = false;
                         std::string branchPath;
                         for (std::uint32_t depth = 0; depth < kMaxGuidedDepth; ++depth) {
                             if (node.size() < 64) break;
+                            if (!visitedGuidedNodes.insert(nodeOid).second) {
+                                appendGuidedNoMatchExtentRow(cr, candidateObjectId, "GUIDED_FILE_EXTENT_LOOKUP_CYCLE_DETECTED", "candidate=" + candidateLabel + "; path=" + branchPath);
+                                return anyHit;
+                            }
                             const std::uint32_t rawType = readLe32(node, 24);
                             const std::string objectLabel = apfsObjectTypeLabel(rawType);
                             const std::uint16_t level = readLe16(node, 34);

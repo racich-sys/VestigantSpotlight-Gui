@@ -114,6 +114,32 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
     return out;
 }
 
+
+std::string ripBplistStrings(const std::string& raw) {
+    if (raw.size() < 8 || raw.rfind("bplist", 0) != 0) return raw;
+    std::string out = "[Extracted BPLIST Strings]: ";
+    std::string cur;
+    std::size_t appended = 0;
+    for (std::size_t i = 8; i < raw.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(raw[i]);
+        if (c >= 32 && c < 127) {
+            cur.push_back(static_cast<char>(c));
+        } else {
+            if (cur.size() >= 4) {
+                if (appended++ > 0) out += " | ";
+                out += cur;
+                if (out.size() > 12000) break;
+            }
+            cur.clear();
+        }
+    }
+    if (cur.size() >= 4 && out.size() <= 12000) {
+        if (appended++ > 0) out += " | ";
+        out += cur;
+    }
+    return appended == 0 ? std::string("[BPLIST detected; no printable string run >=4 bytes]") : out;
+}
+
 std::string sqlIdentLocal(const std::string& name) {
     std::string out = "\"";
     for (char c : name) out += (c == '"') ? "\"\"" : std::string(1, c);
@@ -187,6 +213,8 @@ std::string iosAppDbRecordCategory(const std::string& databaseCategory,
         if (contains(t, "person") || contains(t, "contact") || contains(t, "address")) return "CONTACT_RECORDS";
         return "CONTACT_SUPPORT_TABLE";
     }
+    if (contains(c, "notes") || contains(t, "znote") || contains(t, "note")) return "NOTES_RECORDS";
+    if (contains(c, "location") || contains(c, "maps") || contains(t, "location") || contains(t, "place") || contains(t, "map")) return "LOCATION_RECORDS";
     return "DATABASE_SUPPORT_TABLE";
 }
 
@@ -196,7 +224,8 @@ bool iosAppDbIsTargetRecordCategory(const std::string& category) {
         "CALL_RECORDS", "CALL_PARTICIPANTS",
         "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE", "WEB_DOWNLOADS",
         "MAIL_RECORDS", "CALENDAR_RECORDS", "CONTACT_RECORDS",
-        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS"
+        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS",
+        "NOTES_RECORDS", "LOCATION_RECORDS"
     };
     return target.find(category) != target.end();
 }
@@ -931,9 +960,9 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
     const int contactCol = findColumnIndex(cols, {"handle_id", "handle", "address", "phone", "email", "sender", "recipient", "destination", "caller", "callee", "zaddress", "zdisplayname"}, true);
     const int urlCol = findColumnIndex(cols, {"url", "url_string", "request_url", "redirect_source", "zurl", "webpageurl"}, true);
     const int titleCol = findColumnIndex(cols, {"title", "subject", "summary", "display_name", "name", "ztitle", "zsummary"}, true);
-    const int pathCol = findColumnIndex(cols, {"path", "filename", "file_name", "transfer_name", "uti", "mime_type", "zfilename", "zpath"}, true);
+    const int pathCol = findColumnIndex(cols, {"path", "filename", "file_name", "transfer_name", "uti", "mime_type", "zfilename", "zpath", "zlocalpath"}, true);
     const int itemCol = findColumnIndex(cols, {"guid", "uuid", "identifier", "message_id", "chat_id", "handle_id", "persistent_id", "zidentifier"}, true);
-    const int textCol = findColumnIndex(cols, {"text", "body", "message", "snippet", "preview", "comment", "notes", "ztext", "zbody"}, true);
+    const int textCol = findColumnIndex(cols, {"text", "body", "message", "snippet", "preview", "comment", "notes", "ztext", "zbody", "zcontent", "zsummary", "data", "payload"}, true);
     std::size_t rows = 0;
     while (sqlite3_step(st) == SQLITE_ROW) {
         const std::string dateRaw = columnValue(st, dateCol, 128);
@@ -969,7 +998,11 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         }
         std::string genericTitle = columnValue(st, titleCol, 1000);
         std::string genericFilePath = columnValue(st, pathCol, 1000);
-        std::string genericText = columnValue(st, textCol, 2000);
+        std::string genericText = columnValue(st, textCol, 50000);
+        if (genericText.size() >= 6 && genericText.rfind("bplist", 0) == 0) {
+            genericText = ripBplistStrings(genericText);
+        }
+        if (genericText.size() > 2000) genericText.resize(2000);
         std::string genericProvenance = "read_only_sqlite_dynamic_schema table=" + table;
         if (recordCategory == "CONTACT_RECORDS") {
             const int isMeCol = findColumnIndex(cols, {"zismecontact", "is_me", "isme"}, true);
@@ -985,10 +1018,14 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         if (genericText.find("LSQuarantine") != std::string::npos || genericFilePath.find("LSQuarantine") != std::string::npos) {
             genericProvenance += "; quarantine_metadata_reference=LSQuarantine_string_detected";
         }
+        if (genericText.find("kMDItemDomainIdentifier") != std::string::npos) genericProvenance += "; THREAD_VOLUME_TRACKING_ENABLED=True";
+        if (genericText.find("kMDItemAuthor") != std::string::npos || genericText.find("kMDItemRecipient") != std::string::npos) genericProvenance += "; IDENTITY_BOUND_COMMUNICATION=True";
         if (recordCategory == "WEB_DOWNLOADS") {
             genericProvenance += "; web_download_table_record=True";
             if (genericTitle.empty()) genericTitle = "Browser download record";
         }
+        if (recordCategory == "NOTES_RECORDS" && genericTitle.empty()) genericTitle = "Notes record";
+        if (recordCategory == "LOCATION_RECORDS" && genericTitle.empty()) genericTitle = "Location/Maps record";
         bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                             columnValue(st, pkCol, 256), ts.first, ts.second,
                             columnValue(st, contactCol, 512),
