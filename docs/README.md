@@ -5,18 +5,18 @@
 ```powershell
 Set-Location D:\Downloads
 
-Get-FileHash .\VestigantSpotlightInv_V1_3_2_2.zip -Algorithm SHA256
+Get-FileHash .\VestigantSpotlightInv_V1_3_3.zip -Algorithm SHA256
 
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_2_2" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_2_2.zip -DestinationPath T:\ -Force
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_3" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_3.zip -DestinationPath T:\ -Force
 
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Build-V1_3_2_2.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Build-V1_3_3.ps1
 ```
 
 ## AFF4/APFS thin-create
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Run-V1_3_2_2-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Run-V1_3_3-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
 ---

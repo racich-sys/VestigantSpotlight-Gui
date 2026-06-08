@@ -292,7 +292,7 @@ function Restore-Aff4CppLiteNuGetPackages {
     }
 
     $required = @(
-        (Join-Path $packagesDir "lz4.1.3.2.2\build\native\lz4.targets")
+        (Join-Path $packagesDir "lz4.1.3.2.3\build\native\lz4.targets")
     )
     foreach ($item in $required) {
         if (!(Test-Path -LiteralPath $item)) {

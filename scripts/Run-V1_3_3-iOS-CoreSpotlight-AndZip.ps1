@@ -1,8 +1,8 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_3_2_2",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_3_3",
   [string]$InputZipOrFolder = "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip",
-  [string]$CaseRoot = "Q:\SpotlightCase\TestIOS_CoreSpotlight_V1_3_2_2",
-  [string]$ZipPath = "D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_3_2_2.zip",
+  [string]$CaseRoot = "Q:\SpotlightCase\TestIOS_CoreSpotlight_V1_3_3",
+  [string]$ZipPath = "D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_3_3.zip",
   [switch]$CleanOut,
   [switch]$NoClipboardOrExplorer,
   [switch]$FullDiagnostics
@@ -29,6 +29,6 @@ if ($LASTEXITCODE -ne 0) {
     Move-Item -LiteralPath $ZipPath -Destination $failedZip -Force
     Write-Warning "iOS CoreSpotlight run failed; upload ZIP renamed to: $failedZip"
   }
-  throw "iOS CoreSpotlight V1.3.2.2 wrapper failed with exit code $LASTEXITCODE"
+  throw "iOS CoreSpotlight V1.3.3 wrapper failed with exit code $LASTEXITCODE"
 }
 Write-Host "iOS CoreSpotlight thin upload ZIP: $ZipPath"

@@ -8,6 +8,7 @@
 #include <vector>
 #include <stdexcept>
 #include <chrono>
+#include <atomic>
 
 namespace vestigant::spotlight {
 namespace {
@@ -994,7 +995,9 @@ void writeExportIndexFile
 
 } // namespace
 
-void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& exportDir, Logger& log, const std::string& exportProfile) const {
+void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& exportDir, Logger& log, const std::string& exportProfile, const std::atomic_bool* cancelToken) const {
+    struct CancelScope { const SqliteExporter* self; const std::atomic_bool* old; ~CancelScope(){ self->cancelToken_ = old; } } cancelScope{this, cancelToken_};
+    cancelToken_ = cancelToken;
     fs::create_directories(exportDir);
     const std::string profile = exportProfile.empty() ? std::string("minimal") : exportProfile;
     const bool fullExport = (profile == "full");
@@ -1216,13 +1219,108 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_spotlight_object_inode_diagnostic_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_diagnostic_summary ORDER BY raw_record_count DESC, object_count DESC, source_id, store_guid, object_record_bucket", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_object_inode_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_summary ORDER BY raw_record_count DESC, raw_key_value_rows DESC, latest_last_updated_utc DESC, source_id, store_guid, spotlight_inode_or_object_id, spotlight_store_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_record_review.csv", "SELECT * FROM vw_ios_spotlight_record_review ORDER BY spotlight_review_priority, spotlight_date_utc DESC, raw_record_id", log);
-        else exportQuery(db, exportDir / "ios_spotlight_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_record_review ORDER BY spotlight_review_priority, spotlight_date_utc DESC, raw_record_id LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_record_review_sample.csv", R"SQL(
+SELECT r.raw_record_id,
+       r.source_id,
+       r.store_guid,
+       r.source_db,
+       r.inode_num AS spotlight_inode_or_object_id,
+       r.store_id AS spotlight_store_id,
+       COALESCE(NULLIF(r.full_path,''), NULLIF(a.best_path,''), NULLIF(r.file_name,''), '') AS review_path_or_name,
+       r.file_name,
+       r.display_name,
+       r.content_type,
+       r.last_updated_utc AS spotlight_date_utc,
+       r.record_state,
+       r.where_froms,
+       a.artifact_id,
+       a.path_status,
+       a.confidence,
+       'LIGHTWEIGHT_SAMPLE_NO_HEAVY_VIEW_JOIN' AS sample_note
+FROM raw_records r
+LEFT JOIN artifacts a
+  ON a.source_id=r.source_id
+ AND a.store_guid=r.store_guid
+ AND a.inode_num=r.inode_num
+WHERE COALESCE(r.file_name,'')<>''
+   OR COALESCE(r.full_path,'')<>''
+   OR COALESCE(r.display_name,'')<>''
+   OR COALESCE(r.content_type,'')<>''
+ORDER BY r.raw_record_id
+LIMIT 5000
+)SQL", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_date_provenance.csv", "SELECT * FROM vw_ios_spotlight_date_provenance ORDER BY spotlight_date_utc DESC, store_guid, CAST(spotlight_inode_or_object_id AS INTEGER), raw_record_id", log);
-        else exportQuery(db, exportDir / "ios_spotlight_date_provenance_sample.csv", "SELECT * FROM vw_ios_spotlight_date_provenance ORDER BY spotlight_date_utc DESC, store_guid, CAST(spotlight_inode_or_object_id AS INTEGER), raw_record_id LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_date_provenance_sample.csv", R"SQL(
+SELECT r.raw_record_id,
+       r.source_id,
+       r.store_guid,
+       r.source_db,
+       r.inode_num AS spotlight_inode_or_object_id,
+       r.store_id AS spotlight_store_id,
+       r.last_updated_raw,
+       r.last_updated_utc AS spotlight_date_utc,
+       'raw_records.last_updated_utc' AS date_source,
+       r.file_name,
+       r.full_path,
+       r.content_type,
+       r.record_state
+FROM raw_records r
+WHERE COALESCE(r.last_updated_utc,'')<>''
+ORDER BY r.raw_record_id
+LIMIT 5000
+)SQL", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_investigative_items_with_dates.csv", "SELECT * FROM vw_ios_spotlight_investigative_items_with_dates ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id", log);
-        else exportQuery(db, exportDir / "ios_spotlight_investigative_items_with_dates_sample.csv", "SELECT * FROM vw_ios_spotlight_investigative_items_with_dates ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_investigative_items_with_dates_sample.csv", R"SQL(
+SELECT k.raw_kv_id,
+       k.source_id,
+       k.store_guid,
+       k.source_db,
+       k.inode_num AS spotlight_inode_or_object_id,
+       k.store_id AS spotlight_store_id,
+       k.field_name,
+       substr(k.field_value,1,600) AS field_value_sample,
+       r.last_updated_utc AS spotlight_date_utc,
+       r.file_name,
+       COALESCE(NULLIF(k.full_path,''), NULLIF(r.full_path,''), NULLIF(r.file_name,''), '') AS review_path_or_name,
+       r.content_type,
+       r.record_state
+FROM raw_key_values k
+LEFT JOIN raw_records r
+  ON r.source_id=k.source_id
+ AND r.store_guid=k.store_guid
+ AND r.source_db=k.source_db
+ AND r.inode_num=k.inode_num
+ AND COALESCE(r.store_id,'')=COALESCE(k.store_id,'')
+WHERE COALESCE(k.field_value,'')<>''
+ORDER BY k.raw_kv_id
+LIMIT 5000
+)SQL", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_investigative_item_date_evidence.csv", "SELECT * FROM vw_ios_spotlight_investigative_item_date_evidence ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id, raw_date_id", log);
-        else exportQuery(db, exportDir / "ios_spotlight_investigative_item_date_evidence_sample.csv", "SELECT * FROM vw_ios_spotlight_investigative_item_date_evidence ORDER BY review_priority, spotlight_date_utc DESC, raw_kv_id, raw_date_id LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_investigative_item_date_evidence_sample.csv", R"SQL(
+SELECT k.raw_kv_id,
+       k.source_id,
+       k.store_guid,
+       k.source_db,
+       k.inode_num AS spotlight_inode_or_object_id,
+       k.store_id AS spotlight_store_id,
+       k.field_name,
+       substr(k.field_value,1,600) AS field_value_sample,
+       r.last_updated_utc AS spotlight_date_utc,
+       'raw_records.last_updated_utc' AS date_source,
+       r.file_name,
+       COALESCE(NULLIF(k.full_path,''), NULLIF(r.full_path,''), NULLIF(r.file_name,''), '') AS review_path_or_name,
+       r.record_state
+FROM raw_key_values k
+LEFT JOIN raw_records r
+  ON r.source_id=k.source_id
+ AND r.store_guid=k.store_guid
+ AND r.source_db=k.source_db
+ AND r.inode_num=k.inode_num
+ AND COALESCE(r.store_id,'')=COALESCE(k.store_id,'')
+WHERE COALESCE(k.field_value,'')<>''
+ORDER BY k.raw_kv_id
+LIMIT 5000
+)SQL", log);
         exportQuery(db, exportDir / "ios_spotlight_date_field_summary.csv", "SELECT * FROM vw_ios_spotlight_date_field_summary ORDER BY date_candidate_count DESC, store_guid, spotlight_date_source_field", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_high_value_timeline.csv", "SELECT * FROM vw_ios_spotlight_high_value_timeline ORDER BY review_priority, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_file_reference_review.csv", "SELECT * FROM vw_ios_spotlight_file_reference_review ORDER BY file_reference_status, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);
@@ -2216,12 +2314,18 @@ LIMIT 5000
 }
 
 void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const std::string& sql, Logger& log) const {
+    if (cancelToken_ && cancelToken_->load()) {
+        appendExportRunStatus(file, 91, "export_query_skipped_cancelled", file.filename().string());
+        log.warn("CSV export skipped because cancellation was already requested: " + pathString(file));
+        return;
+    }
     appendExportRunStatus(file, 91, "export_query_prepare", file.filename().string());
     struct ExportProgressContext {
         fs::path file;
         std::chrono::steady_clock::time_point last;
         long long ticks = 0;
-    } progressCtx{file, std::chrono::steady_clock::now(), 0};
+        const std::atomic_bool* cancelToken = nullptr;
+    } progressCtx{file, std::chrono::steady_clock::now(), 0, cancelToken_};
     sqlite3_progress_handler(db.raw(), 500000, [](void* ptr) -> int {
         auto* ctx = static_cast<ExportProgressContext*>(ptr);
         ++ctx->ticks;
@@ -2229,6 +2333,10 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
         if (std::chrono::duration_cast<std::chrono::seconds>(now - ctx->last).count() >= 15) {
             ctx->last = now;
             appendExportRunStatus(ctx->file, 92, "export_query_sql_progress", ctx->file.filename().string() + " sqlite_progress_ticks=" + std::to_string(ctx->ticks));
+        }
+        if (ctx->cancelToken && ctx->cancelToken->load()) {
+            appendExportRunStatus(ctx->file, 92, "export_query_cancel_requested", ctx->file.filename().string());
+            return 1;
         }
         return 0;
     }, &progressCtx);
@@ -2257,7 +2365,15 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
         manifestRows.push_back(currentPath.filename().string() + "," + std::to_string(part) + "," + std::to_string(rowsInPart));
     };
 
+    bool exportCancelled = false;
+    try {
     while (stmt.stepRow()) {
+        if (cancelToken_ && cancelToken_->load()) {
+            exportCancelled = true;
+            appendExportRunStatus(file, 92, "export_query_cancelled", file.filename().string() + " rows=" + std::to_string(totalRows));
+            log.warn("CSV export cancelled by investigator during query execution: " + pathString(file));
+            break;
+        }
         if (rowsInPart >= DefaultExportChunkRows) {
             if (!multipleParts) {
                 out.flush(); out.close();
@@ -2288,6 +2404,16 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
             appendExportRunStatus(file, 92, "export_query_rows", file.filename().string() + " rows=" + std::to_string(totalRows));
         }
     }
+    } catch (const std::exception& ex) {
+        if (cancelToken_ && cancelToken_->load()) {
+            exportCancelled = true;
+            appendExportRunStatus(file, 92, "export_query_cancelled", file.filename().string() + " rows=" + std::to_string(totalRows));
+            log.warn("CSV export interrupted after cancellation: " + pathString(file) + ": " + ex.what());
+        } else {
+            sqlite3_progress_handler(db.raw(), 0, nullptr, nullptr);
+            throw;
+        }
+    }
     if (!multipleParts) {
         out.flush();
         out.close();
@@ -2300,8 +2426,8 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
     std::ofstream mf(ioPath(manifest), std::ios::binary);
     mf << "file_name,part_index,row_count\n";
     for (const auto& r : manifestRows) mf << r << "\n";
-    log.info("Export written: " + pathString(file) + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
-    appendExportRunStatus(file, 94, "export_query_complete", file.filename().string() + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
+    log.info(std::string(exportCancelled ? "Export cancelled: " : "Export written: ") + pathString(file) + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
+    appendExportRunStatus(file, exportCancelled ? 93 : 94, exportCancelled ? "export_query_cancelled_complete" : "export_query_complete", file.filename().string() + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
     sqlite3_progress_handler(db.raw(), 0, nullptr, nullptr);
 }
 

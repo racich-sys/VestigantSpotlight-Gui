@@ -1,3 +1,10 @@
+## V1.3.3 - iOS thin lightweight sample exports and cautious provenance
+
+- Implemented lightweight base-table sample SQL for previously heavy iOS thin sample exports.
+- Full investigator views remain available for explicit full/support diagnostics.
+- Added cautious provenance markers for device-owner contact, Trash path components, and LSQuarantine string references.
+- Deferred NSKeyedArchiver graph decoding, APFS tombstone GUI surfacing, and WhereFroms decoding to later milestone releases.
+
 # Suggestions and Fixes Tracker - V1.3.2
 
 ## Completed in V1.3.2
@@ -25,7 +32,7 @@
 - Safe Live Ingest Preview panel.
 - GUI SQLite connection pooling, pending measured need.
 
-## V1.3.2.2 - iOS thin profile and export responsiveness
+## V1.3.2.3 - iOS thin profile and export responsiveness
 
 Completed:
 - Default iOS thin runs no longer request diagnostic/support full-case exports.

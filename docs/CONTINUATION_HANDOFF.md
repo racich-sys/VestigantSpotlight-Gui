@@ -1,24 +1,24 @@
 # Current Continuation Handoff - V1.3.2
 
-Current package: `VestigantSpotlightInv_V1_3_2_2.zip`
+Current package: `VestigantSpotlightInv_V1_3_3.zip`
 
 ## Build command
 
 ```powershell
 Set-Location D:\Downloads
 
-Get-FileHash .\VestigantSpotlightInv_V1_3_2_2.zip -Algorithm SHA256
+Get-FileHash .\VestigantSpotlightInv_V1_3_3.zip -Algorithm SHA256
 
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_2_2" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_2_2.zip -DestinationPath T:\ -Force
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_3" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_3.zip -DestinationPath T:\ -Force
 
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Build-V1_3_2_2.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Build-V1_3_3.ps1
 ```
 
 ## AFF4/APFS thin-create command
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scripts\Run-V1_3_2_2-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Run-V1_3_3-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 ```
 
 ## Completed/worked sections
@@ -38,6 +38,6 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_2_2\scrip
 
 ## Next uploads requested
 
-- `V1_3_2_2_build.log`
-- `Upload_Thin_MacOS_AFF4_V1_3_2_2.zip`
+- `V1_3_3_build.log`
+- `Upload_Thin_MacOS_AFF4_V1_3_3.zip`
 - iOS thin output if iOS communication-frequency validation is run.

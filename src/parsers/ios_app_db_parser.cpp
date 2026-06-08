@@ -947,16 +947,34 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             ++rows;
             continue;
         }
+        std::string genericTitle = columnValue(st, titleCol, 1000);
+        std::string genericFilePath = columnValue(st, pathCol, 1000);
+        std::string genericText = columnValue(st, textCol, 2000);
+        std::string genericProvenance = "read_only_sqlite_dynamic_schema table=" + table;
+        if (recordCategory == "CONTACT_RECORDS") {
+            const int isMeCol = findColumnIndex(cols, {"zismecontact", "is_me", "isme"}, true);
+            if (isMeCol >= 0 && columnValue(st, isMeCol, 16) == "1") {
+                genericProvenance += "; primary_identity_attribution=device_owner_me_contact";
+                if (genericTitle.empty()) genericTitle = "Device owner identity contact";
+                else genericTitle = "Device owner identity contact: " + genericTitle;
+            }
+        }
+        if (genericFilePath.find("/.Trash/") != std::string::npos || genericFilePath.find("/.Trashes/") != std::string::npos) {
+            genericProvenance += "; trash_path_activity=file_path_contains_trash_component";
+        }
+        if (genericText.find("LSQuarantine") != std::string::npos || genericFilePath.find("LSQuarantine") != std::string::npos) {
+            genericProvenance += "; quarantine_metadata_reference=LSQuarantine_string_detected";
+        }
         bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
                             columnValue(st, pkCol, 256), ts.first, ts.second,
                             columnValue(st, contactCol, 512),
                             columnValue(st, urlCol, 1000),
-                            columnValue(st, titleCol, 1000),
-                            columnValue(st, pathCol, 1000),
+                            genericTitle,
+                            genericFilePath,
                             columnValue(st, itemCol, 512),
-                            columnValue(st, textCol, 2000),
+                            genericText,
                             "parsed_generic_app_db_row",
-                            "read_only_sqlite_dynamic_schema table=" + table);
+                            genericProvenance);
         ++rows;
     }
     sqlite3_finalize(st);

@@ -5616,7 +5616,8 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         purgeOrphanSourceRows(db, caseDir, log);
         appendRunStatus(caseDir, "export_start");
         SqliteExporter exporter;
-        exporter.exportReviewPackage(db, caseDir / "exports", log, opt.exportProfile);
+        exporter.exportReviewPackage(db, caseDir / "exports", log, opt.exportProfile, cancelToken);
+        if (cancelRequested()) return returnCancelled("during_export");
         writeUiAndIosPlanningFiles(caseDir);
         result.artifactCount = counts.artifacts;
         result.usageCount = counts.usage;

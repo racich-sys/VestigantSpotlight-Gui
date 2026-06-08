@@ -1,4 +1,19 @@
-## V1_3_2_2
+## V1_3_3
+
+- iOS thin/export stability release after V1.3.2.2 completed but showed expensive sample exports could appear stalled.
+- Replaced thin-mode `ios_spotlight_record_review_sample.csv`, date provenance sample, and investigative-item samples with lightweight base-table SQL instead of querying heavy investigator views with `LIMIT`.
+- Preserved full heavy exports for explicit support/full diagnostic profiles.
+- Added cautious iOS parsed-record provenance markers for device-owner contact rows, Trash path components, and LSQuarantine string references without asserting exfiltration/destruction intent.
+- Confirmed prior V1.3.2.3 export cancellation and GUI read-connection pooling remain present.
+
+TEST SCOPE DECISION
+- AFF4/APFS: not required.
+- iOS: thin required.
+- Reason: changes affect iOS thin export SQL and generic iOS app database parsed-record provenance only.
+- Trigger for escalating to full iOS test: iOS thin still stalls, crashes, or missing expected communication/app DB outputs.
+- Required next uploaded artifacts: `V1_3_3_build.log` and `Upload_Thin_iOS_CoreSpotlight_V1_3_3.zip` or stopped-state logs if interrupted.
+
+## V1_3_2_3
 
 - iOS stack-overflow hotfix after V1.3.2 iOS thin crashed with Windows structured exception `0xc00000fd` immediately after native 7-Zip inventory parsing.
 - Increased Windows/MSVC executable stack reserve for CLI, tests, and GUI to reduce stack exhaustion risk during very large iOS ZIP/app-database processing.
@@ -9,9 +24,9 @@
 TEST SCOPE DECISION
 - AFF4/APFS: not required for this hotfix.
 - iOS: thin required.
-- Reason: V1.3.2.2 targets the iOS ZIP/app-database stack-overflow failure and failed-upload labeling behavior only.
+- Reason: V1.3.2.3 targets the iOS ZIP/app-database stack-overflow failure and failed-upload labeling behavior only.
 - Trigger for escalating iOS to full test: repeat `0xc00000fd`, zero parsed records after successful inventory import, malformed communication-frequency view, or severe slowdown after database inventory.
-- Required next uploaded artifacts: `V1_3_2_2_build.log` and `Upload_Thin_iOS_CoreSpotlight_V1_3_2_2.zip` or `_FAILED.zip` with logs if it fails.
+- Required next uploaded artifacts: `V1_3_2_3_build.log` and `Upload_Thin_iOS_CoreSpotlight_V1_3_2_3.zip` or `_FAILED.zip` with logs if it fails.
 
 ## V1_3_2
 
@@ -1421,7 +1436,7 @@ TEST SCOPE DECISION
 
 - Build-helper hotfix for aff4-cpp-lite under VS2022.
 - Preserves retargeting from Windows SDK 8.1/v140 to installed Windows 10/11 SDK/v143.
-- Restores the legacy native `lz4.1.3.2.2` package required by `libaff4.vcxproj` before MSBuild.
+- Restores the legacy native `lz4.1.3.2.3` package required by `libaff4.vcxproj` before MSBuild.
 - No intended parser, GUI, source-probe, APFS/HFS, or database behavior changes.
 
 ## V0_8_13_1

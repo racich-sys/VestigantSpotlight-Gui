@@ -348,27 +348,55 @@ void configureGuiSqliteConnection(sqlite3* db) {
 
 class ReadOnlyDb {
 public:
-    explicit ReadOnlyDb(const std::wstring& path) {
-        const std::string p = narrow(path);
-        if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
-            configureGuiSqliteConnection(db_);
-            ensureInvestigatorUiSchemaNoThrow(db_);
+    explicit ReadOnlyDb(const std::wstring& path) : lock_(poolMutex_) {
+        if (sharedDb_ && currentPath_ == path) {
+            db_ = sharedDb_;
             return;
         }
-        if (db_) { sqlite3_close_v2(db_); db_ = nullptr; }
-        if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
-            std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown";
-            if (db_) sqlite3_close_v2(db_);
-            db_ = nullptr;
+        if (sharedDb_) {
+            sqlite3_close_v2(sharedDb_);
+            sharedDb_ = nullptr;
+            currentPath_.clear();
+        }
+        const std::string p = narrow(path);
+        if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
+            configureGuiSqliteConnection(sharedDb_);
+            ensureInvestigatorUiSchemaNoThrow(sharedDb_);
+            currentPath_ = path;
+            db_ = sharedDb_;
+            return;
+        }
+        std::string writeMsg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : "unknown";
+        if (sharedDb_) { sqlite3_close_v2(sharedDb_); sharedDb_ = nullptr; }
+        if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            std::string msg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : writeMsg;
+            if (sharedDb_) sqlite3_close_v2(sharedDb_);
+            sharedDb_ = nullptr;
+            currentPath_.clear();
             throw std::runtime_error("Unable to open case database: " + msg);
         }
-        configureGuiSqliteConnection(db_);
+        configureGuiSqliteConnection(sharedDb_);
+        currentPath_ = path;
+        db_ = sharedDb_;
     }
-    ~ReadOnlyDb() { if (db_) sqlite3_close_v2(db_); }
+    ~ReadOnlyDb() = default;
     sqlite3* get() const { return db_; }
+    static void closePoolNoThrow() {
+        std::lock_guard<std::mutex> lock(poolMutex_);
+        if (sharedDb_) { sqlite3_close_v2(sharedDb_); sharedDb_ = nullptr; }
+        currentPath_.clear();
+    }
 private:
     sqlite3* db_ = nullptr;
+    std::unique_lock<std::mutex> lock_;
+    static inline sqlite3* sharedDb_ = nullptr;
+    static inline std::wstring currentPath_;
+    static inline std::mutex poolMutex_;
 };
+
+void closeReadOnlyDbPoolNoThrow() {
+    try { ReadOnlyDb::closePoolNoThrow(); } catch (...) {}
+}
 
 bool sqliteObjectExists(sqlite3* db, const char* name) {
     sqlite3_stmt* st = nullptr;
@@ -3385,7 +3413,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } if (gRichEditModule) { FreeLibrary(gRichEditModule); gRichEditModule = nullptr; gRichEditAvailable = false; gRichEditClassName = L"EDIT"; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); closeReadOnlyDbPoolNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } if (gRichEditModule) { FreeLibrary(gRichEditModule); gRichEditModule = nullptr; gRichEditAvailable = false; gRichEditClassName = L"EDIT"; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

@@ -887,6 +887,8 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
     long long nodeRead = omRow.treeBytesRead;
     std::vector<unsigned char> nextLeafNodeBuffer;
     nextLeafNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
+    std::vector<unsigned char> reusableChildNodeBuffer;
+    reusableChildNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
     constexpr std::uint32_t kMaxDepth = 8;
     for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
         if (cancelCheck && cancelCheck()) {
@@ -1068,16 +1070,16 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
             out.interpretation = purpose + ": selected branch child OID could not be converted to a safe read offset.";
             break;
         }
-        std::vector<unsigned char> child;
+        reusableChildNodeBuffer.clear();
         std::string childErr;
-        const long long childRead = readVirtual(childOffset, blockSize, child, childErr);
-        if (childRead <= 0 || child.size() < 64) {
+        const long long childRead = readVirtual(childOffset, blockSize, reusableChildNodeBuffer, childErr);
+        if (childRead <= 0 || reusableChildNodeBuffer.size() < 64) {
             out.lookupStatus = "VOLUME_OMAP_BRANCH_CHILD_READ_FAILED";
             out.interpretation = purpose + ": selected branch child could not be read as a B-tree node.";
             out.notes += out.notes.empty() ? childErr : ("; " + childErr);
             break;
         }
-        node.swap(child);
+        node.swap(reusableChildNodeBuffer);
         nodeOid = childOid;
         nodeOffset = childOffset;
         nodeRead = childRead;
@@ -4715,6 +4717,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             long long nodeRead = omRow.treeBytesRead;
                             std::vector<unsigned char> nextLeafNodeBuffer;
                             nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
+                            std::vector<unsigned char> reusableChildNodeBuffer;
+                            reusableChildNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
                                 out.branchDepth = depth;
@@ -4890,16 +4894,16 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     out.interpretation = purpose + ": selected OMAP branch child OID could not be converted to a safe read offset.";
                                     break;
                                 }
-                                std::vector<unsigned char> child;
+                                reusableChildNodeBuffer.clear();
                                 std::string childErr;
-                                const long long childRead = readVirtual(childOffset, nxSummary.blockSize, child, childErr);
-                                if (childRead <= 0 || child.size() < 64) {
+                                const long long childRead = readVirtual(childOffset, nxSummary.blockSize, reusableChildNodeBuffer, childErr);
+                                if (childRead <= 0 || reusableChildNodeBuffer.size() < 64) {
                                     out.lookupStatus = "VOLUME_OMAP_BRANCH_CHILD_READ_FAILED";
                                     out.interpretation = purpose + ": selected OMAP branch child could not be read as a B-tree node.";
                                     out.notes += out.notes.empty() ? childErr : ("; " + childErr);
                                     break;
                                 }
-                                node.swap(child);
+                                node.swap(reusableChildNodeBuffer);
                                 nodeOid = childOid;
                                 nodeOffset = childOffset;
                                 nodeRead = childRead;
@@ -4945,6 +4949,8 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             long long nodeRead = omRow.treeBytesRead;
                             std::vector<unsigned char> nextLeafNodeBuffer;
                             nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
+                            std::vector<unsigned char> reusableChildNodeBuffer;
+                            reusableChildNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
                                 out.branchDepth = depth;
@@ -5119,16 +5125,16 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     out.interpretation = "Selected branch child OID could not be converted to a safe read offset.";
                                     break;
                                 }
-                                std::vector<unsigned char> child;
+                                reusableChildNodeBuffer.clear();
                                 std::string childErr;
-                                const long long childRead = readVirtual(childOffset, nxSummary.blockSize, child, childErr);
-                                if (childRead <= 0 || child.size() < 64) {
+                                const long long childRead = readVirtual(childOffset, nxSummary.blockSize, reusableChildNodeBuffer, childErr);
+                                if (childRead <= 0 || reusableChildNodeBuffer.size() < 64) {
                                     out.lookupStatus = "VOLUME_OMAP_BRANCH_CHILD_READ_FAILED";
                                     out.interpretation = "Selected branch child could not be read as a B-tree node.";
                                     out.notes += out.notes.empty() ? childErr : ("; " + childErr);
                                     break;
                                 }
-                                node.swap(child);
+                                node.swap(reusableChildNodeBuffer);
                                 nodeOid = childOid;
                                 nodeOffset = childOffset;
                                 nodeRead = childRead;
