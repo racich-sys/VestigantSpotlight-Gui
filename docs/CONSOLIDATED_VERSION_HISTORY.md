@@ -1,4 +1,4 @@
-## V1_3_6
+## V1_3_7
 
 - Prioritized iOS communication identity and KnowledgeC expansion before broader roadmap items.
 - Added WEB_DOWNLOADS to the iOS app database target parse categories so Safari/Chrome/WebKit download tables are parsed rather than only inventoried.

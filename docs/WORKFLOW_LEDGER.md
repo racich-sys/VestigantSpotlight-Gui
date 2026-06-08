@@ -358,3 +358,17 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
 - Local validation: Linux CMake build PASS; CLI version reports v1.3.4; self-test PASS.
 - Next required upload: V1.3.4 Windows build log and iOS thin output.
+
+## V1.3.7
+
+- Reviewed V1.3.6 build log and failed iOS thin package before changes.
+- Failure class: iOS thin used diagnostics mode and unexpectedly materialized full FFS inventory into SQLite, hitting database/disk limits around 600,000 rows.
+- Corrective action: diagnostics mode alone no longer triggers full iOS materialization when export profile is minimal; explicit materialization/support/full flags are still honored.
+- Test decision: iOS thin required; AFF4/APFS not required.
+
+
+## V1.3.7 requested-fixes verification
+
+- Verified and retained the requested GUI database pool deadlock fix, APFS guided traversal cycle detection, iOS bplist string extraction, Notes/Location routing, and widened table-column catchers.
+- Added `tools/Verify-V1_3_7-RequestedFixes.ps1` for repeatable source-presence validation.
+- Standard iOS thin should be run; AFF4/APFS thin is not required unless APFS cycle-guard behavior is specifically tested.

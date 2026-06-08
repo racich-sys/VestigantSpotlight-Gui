@@ -5457,12 +5457,12 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash);
             if (profile == SourceProfileKind::IOS) {
                 const auto epLowerForIos = toLower(opt.exportProfile);
-                const bool supportMaterializationRequested = diagnosticsMode || opt.diagnosticFullNativeDb || epLowerForIos == "diagnostics" || epLowerForIos == "support" || epLowerForIos == "full";
+                const bool supportMaterializationRequested = opt.diagnosticFullNativeDb || epLowerForIos == "diagnostics" || epLowerForIos == "support" || epLowerForIos == "full";
                 const bool materializeFfsInventory = opt.materializeIosFfsInventory || supportMaterializationRequested;
                 const bool materializeAppDbRecords = opt.materializeIosAppDbRecords || supportMaterializationRequested;
                 if (!materializeFfsInventory) {
-                    appendRunStatus(caseDir, "ios_ffs_inventory_materialization_skipped", "Spotlight-first normal mode references/counts cached FFS inventory instead of inserting millions of file rows; use --materialize-ios-ffs-inventory for support correlation runs");
-                    log.info("Normal iOS Spotlight-first mode will not materialize full FFS inventory rows into the active case DB.");
+                    appendRunStatus(caseDir, "ios_ffs_inventory_materialization_skipped", "Spotlight-first normal/minimal mode uses slim FFS path lookup instead of inserting millions of file rows; use --materialize-ios-ffs-inventory or --export-profile diagnostics/support/full for support correlation runs");
+                    log.info("Normal/minimal iOS Spotlight-first mode will not materialize full FFS inventory rows into the active case DB.");
                 }
                 EvidenceIntake::importIosInventoryCsvs(db, caseDir, source.sourceId, log, opt.reuseIosCache, materializeFfsInventory,
                     [](const fs::path& statusCaseDir, const std::string& stage, const std::string& message) {

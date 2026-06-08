@@ -1,9 +1,9 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_3_6",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_3_7",
   [string]$Aff4Input = "O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4",
-  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_AFF4_V1_3_6",
+  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_AFF4_V1_3_7",
   [string]$ReaderToolsRoot = "T:\VestigantReaderTools\aff4-cpp-lite",
-  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_3_6.zip",
+  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_3_7.zip",
   [string]$ExternalSpotlightRoot = "T:\ExternalExtractedSpotlight\.Spotlight-V100\Store-V2",
   [switch]$SkipExternalCompare,
   [switch]$CleanOut,
@@ -30,11 +30,11 @@ if ($NoClipboardOrExplorer) { $args.NoClipboardOrExplorer = $true }
 if ($DiagnosticOutputs) { $args.DiagnosticOutputs = $true }
 if (!$SkipExternalCompare -and (Test-Path -LiteralPath $ExternalSpotlightRoot)) {
   $args.ExternalSpotlightRoot = $ExternalSpotlightRoot
-  $args.ExternalCompareOutRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_3_6_ExternalCompare"
+  $args.ExternalCompareOutRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_3_7_ExternalCompare"
 } elseif (!$SkipExternalCompare) {
   Write-Warning "External Spotlight reference was not found, so the AFF4 probe will run without external comparison: $ExternalSpotlightRoot"
 }
 
 & $runner @args
-if ($LASTEXITCODE -ne 0) { throw "AFF4/APFS V1.3.6 probe wrapper failed with exit code $LASTEXITCODE" }
+if ($LASTEXITCODE -ne 0) { throw "AFF4/APFS V1.3.7 probe wrapper failed with exit code $LASTEXITCODE" }
 Write-Host "AFF4/APFS thin upload ZIP: $ZipPath"
