@@ -475,6 +475,112 @@ WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESS
   AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
 GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
 ORDER BY total_records_in_thread DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_existence_evidence;
+CREATE VIEW vw_ios_communication_existence_evidence AS
+SELECT
+  ios_app_record_id,
+  source_id,
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  source_primary_key,
+  record_timestamp_utc,
+  timestamp_source,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+  contact_or_participant AS identity_hint,
+  url,
+  title,
+  file_path,
+  substr(text_snippet,1,500) AS text_snippet_sample,
+  parse_status,
+  provenance,
+  CASE
+    WHEN record_category='MESSAGE_DELETED_OR_RECOVERABLE' THEN 'deleted_or_recoverable_message_table_or_spotlight_marker'
+    WHEN provenance LIKE '%COMMUNICATION_INTENT_STREAM%' OR provenance LIKE '%INTENT_TARGET%' THEN 'knowledgec_or_intent_communication_marker'
+    WHEN provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%' THEN 'domain_identifier_or_thread_marker'
+    WHEN provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%' THEN 'author_recipient_or_identity_marker'
+    WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS') THEN 'parsed_communication_app_database_record'
+    ELSE 'communication_related_parsed_record'
+  END AS existence_basis,
+  'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+   OR provenance LIKE '%INTENT_TARGET%';
+
+DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
+CREATE VIEW vw_ios_communication_identity_frequency AS
+SELECT
+  COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)') AS identity_or_thread_hint,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS related_record_count,
+  COUNT(DISTINCT COALESCE(NULLIF(item_identifier,''), source_primary_key)) AS distinct_thread_or_record_keys,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+  'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)'), database_category, app_hint, record_category
+ORDER BY related_record_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_temporal_frequency;
+CREATE VIEW vw_ios_communication_temporal_frequency AS
+SELECT
+  substr(record_timestamp_utc,1,10) AS communication_date_utc,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)') AS communication_thread_or_identity,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS records_on_date,
+  COUNT(DISTINCT contact_or_participant) AS distinct_identity_hints,
+  MIN(record_timestamp_utc) AS first_record_utc,
+  MAX(record_timestamp_utc) AS last_record_utc,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
+FROM ios_app_parsed_records
+WHERE COALESCE(record_timestamp_utc,'')<>''
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+GROUP BY substr(record_timestamp_utc,1,10), COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)'), database_category, app_hint, record_category
+ORDER BY communication_date_utc DESC, records_on_date DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_source_coverage;
+CREATE VIEW vw_ios_communication_source_coverage AS
+SELECT
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  parse_status,
+  COUNT(*) AS parsed_record_count,
+  SUM(CASE WHEN COALESCE(record_timestamp_utc,'')<>'' THEN 1 ELSE 0 END) AS records_with_timestamp,
+  SUM(CASE WHEN COALESCE(contact_or_participant,'')<>'' THEN 1 ELSE 0 END) AS records_with_identity_hint,
+  SUM(CASE WHEN COALESCE(item_identifier,'')<>'' THEN 1 ELSE 0 END) AS records_with_thread_or_item_id,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY database_category, app_hint, database_name, table_name, record_category, parse_status
+ORDER BY parsed_record_count DESC, records_with_timestamp DESC;
+
 )SQL";
     char* err = nullptr;
     if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
@@ -2758,8 +2864,8 @@ void createProcessControls(HWND hwnd) {
     for (const wchar_t* s : {L"Auto", L"Standard macOS", L"iOS/CoreSpotlight"}) SendMessageW(gProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gProfile, CB_SETCURSEL, 0, 0);
     labelP(hwnd, L"Mode", 300, y0 + 464, 56, 22); gMode = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 356, y0 + 460, 270, 140, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Process Raw Spotlight Evidence", L"Diagnostics / Bounded Native Parse", L"Discover Stores Only"}) SendMessageW(gMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gMode, CB_SETCURSEL, 0, 0);
-    gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 740, y0 + 456, 150, 36);
-    gCancelIngestButton = buttonP(hwnd, L"Cancel Ingest", ID_CANCEL_INGEST, 900, y0 + 456, 82, 36);
+    gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 650, y0 + 456, 190, 36);
+    gCancelIngestButton = buttonP(hwnd, L"Cancel Ingest", ID_CANCEL_INGEST, 852, y0 + 456, 130, 36);
     EnableWindow(gCancelIngestButton, FALSE);
     addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 420, y0 + 500, 540, 24, hwnd, nullptr, gInst, nullptr));
     gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 106, y0 + 530, 120, 24, hwnd, nullptr, gInst, nullptr));
@@ -3014,7 +3120,10 @@ void layoutControls(HWND hwnd) {
     moveIf(gCaseDbPath, 140, y0 + 220, std::max(250, right - 350), 26);
     moveIf(gCaseAutosaveStatus, 292, y0 + 258, right - 308, 22);
 
-    moveIf(gRun, right - 240, y0 + 456, 240, 36);
+    // Keep Build and Cancel in a dedicated right-aligned action row so the
+    // buttons do not overlap at standard 100%/125% Windows scaling.
+    moveIf(gCancelIngestButton, right - 130, y0 + 456, 130, 36);
+    moveIf(gRun, right - 332, y0 + 456, 190, 36);
     moveIf(gBrowseInput, rightBrowseX, y0 + 324, browseW, 28);
     moveIf(gInput, 492, y0 + 324, std::max(220, rightBrowseX - 502), 26);
     moveIf(gBrowseRoot, rightBrowseX, y0 + 360, browseW, 28);

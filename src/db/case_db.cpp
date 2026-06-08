@@ -3799,6 +3799,154 @@ WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESS
 GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
 ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
 
+DROP VIEW IF EXISTS vw_ios_communication_existence_evidence;
+CREATE VIEW vw_ios_communication_existence_evidence AS
+SELECT
+  ios_app_record_id,
+  source_id,
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  source_primary_key,
+  record_timestamp_utc,
+  timestamp_source,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+  contact_or_participant AS identity_hint,
+  url,
+  title,
+  file_path,
+  substr(text_snippet,1,500) AS text_snippet_sample,
+  parse_status,
+  provenance,
+  CASE
+    WHEN record_category='MESSAGE_DELETED_OR_RECOVERABLE' THEN 'deleted_or_recoverable_message_table_or_spotlight_marker'
+    WHEN provenance LIKE '%COMMUNICATION_INTENT_STREAM%' OR provenance LIKE '%INTENT_TARGET%' THEN 'knowledgec_or_intent_communication_marker'
+    WHEN provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%' THEN 'domain_identifier_or_thread_marker'
+    WHEN provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%' THEN 'author_recipient_or_identity_marker'
+    WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS') THEN 'parsed_communication_app_database_record'
+    ELSE 'communication_related_parsed_record'
+  END AS existence_basis,
+  'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+   OR provenance LIKE '%INTENT_TARGET%';
+
+DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
+CREATE VIEW vw_ios_communication_identity_frequency AS
+SELECT
+  COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)') AS identity_or_thread_hint,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS related_record_count,
+  COUNT(DISTINCT COALESCE(NULLIF(item_identifier,''), source_primary_key)) AS distinct_thread_or_record_keys,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+  'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)'), database_category, app_hint, record_category
+ORDER BY related_record_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_temporal_frequency;
+CREATE VIEW vw_ios_communication_temporal_frequency AS
+SELECT
+  substr(record_timestamp_utc,1,10) AS communication_date_utc,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)') AS communication_thread_or_identity,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS records_on_date,
+  COUNT(DISTINCT contact_or_participant) AS distinct_identity_hints,
+  MIN(record_timestamp_utc) AS first_record_utc,
+  MAX(record_timestamp_utc) AS last_record_utc,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
+FROM ios_app_parsed_records
+WHERE COALESCE(record_timestamp_utc,'')<>''
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+GROUP BY substr(record_timestamp_utc,1,10), COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)'), database_category, app_hint, record_category
+ORDER BY communication_date_utc DESC, records_on_date DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_source_coverage;
+CREATE VIEW vw_ios_communication_source_coverage AS
+SELECT
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  parse_status,
+  COUNT(*) AS parsed_record_count,
+  SUM(CASE WHEN COALESCE(record_timestamp_utc,'')<>'' THEN 1 ELSE 0 END) AS records_with_timestamp,
+  SUM(CASE WHEN COALESCE(contact_or_participant,'')<>'' THEN 1 ELSE 0 END) AS records_with_identity_hint,
+  SUM(CASE WHEN COALESCE(item_identifier,'')<>'' THEN 1 ELSE 0 END) AS records_with_thread_or_item_id,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY database_category, app_hint, database_name, table_name, record_category, parse_status
+ORDER BY parsed_record_count DESC, records_with_timestamp DESC;
+
+
+DROP VIEW IF EXISTS vw_ios_url_frequency;
+CREATE VIEW vw_ios_url_frequency AS
+SELECT
+  lower(COALESCE(NULLIF(url,''), NULLIF(file_path,''))) AS url_or_reference,
+  COUNT(*) AS related_record_count,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT database_category) AS database_categories,
+  GROUP_CONCAT(DISTINCT app_hint) AS apps,
+  GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  'URL/reference frequency from parsed iOS app DB records; review source rows before final conclusions.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(NULLIF(url,''), NULLIF(file_path,'')) IS NOT NULL
+  AND (lower(COALESCE(url,'')) LIKE 'http%' OR lower(COALESCE(file_path,'')) LIKE 'http%' OR record_category IN ('WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS'))
+GROUP BY lower(COALESCE(NULLIF(url,''), NULLIF(file_path,'')))
+ORDER BY related_record_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_attachment_reference_frequency;
+CREATE VIEW vw_ios_attachment_reference_frequency AS
+SELECT
+  COALESCE(NULLIF(file_path,''), NULLIF(title,''), NULLIF(item_identifier,''), source_primary_key) AS attachment_or_file_reference,
+  COUNT(*) AS related_record_count,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT database_category) AS database_categories,
+  GROUP_CONCAT(DISTINCT app_hint) AS apps,
+  GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  'Attachment/file reference frequency from parsed iOS app DB records; review source rows before final conclusions.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(NULLIF(file_path,''), NULLIF(title,''), NULLIF(item_identifier,''), source_primary_key) IS NOT NULL
+  AND (record_category IN ('MESSAGE_ATTACHMENTS','MAIL_RECORDS','WEB_DOWNLOADS','NOTES_RECORDS')
+       OR lower(COALESCE(file_path,'')) LIKE '%attach%'
+       OR lower(COALESCE(file_path,'')) LIKE '%.pdf%'
+       OR lower(COALESCE(file_path,'')) LIKE '%.doc%'
+       OR lower(COALESCE(file_path,'')) LIKE '%.xls%'
+       OR lower(COALESCE(file_path,'')) LIKE '%.jpg%'
+       OR lower(COALESCE(file_path,'')) LIKE '%.png%')
+GROUP BY COALESCE(NULLIF(file_path,''), NULLIF(title,''), NULLIF(item_identifier,''), source_primary_key)
+ORDER BY related_record_count DESC, last_seen_utc DESC;
+
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS
 WITH probe AS (
@@ -8556,6 +8704,111 @@ WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESS
   AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
 GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
 ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_existence_evidence;
+CREATE VIEW vw_ios_communication_existence_evidence AS
+SELECT
+  ios_app_record_id,
+  source_id,
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  source_primary_key,
+  record_timestamp_utc,
+  timestamp_source,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) AS communication_thread_id,
+  contact_or_participant AS identity_hint,
+  url,
+  title,
+  file_path,
+  substr(text_snippet,1,500) AS text_snippet_sample,
+  parse_status,
+  provenance,
+  CASE
+    WHEN record_category='MESSAGE_DELETED_OR_RECOVERABLE' THEN 'deleted_or_recoverable_message_table_or_spotlight_marker'
+    WHEN provenance LIKE '%COMMUNICATION_INTENT_STREAM%' OR provenance LIKE '%INTENT_TARGET%' THEN 'knowledgec_or_intent_communication_marker'
+    WHEN provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%' THEN 'domain_identifier_or_thread_marker'
+    WHEN provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%' THEN 'author_recipient_or_identity_marker'
+    WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS') THEN 'parsed_communication_app_database_record'
+    ELSE 'communication_related_parsed_record'
+  END AS existence_basis,
+  'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+   OR provenance LIKE '%INTENT_TARGET%';
+
+DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
+CREATE VIEW vw_ios_communication_identity_frequency AS
+SELECT
+  COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)') AS identity_or_thread_hint,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS related_record_count,
+  COUNT(DISTINCT COALESCE(NULLIF(item_identifier,''), source_primary_key)) AS distinct_thread_or_record_keys,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+  'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)'), database_category, app_hint, record_category
+ORDER BY related_record_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_temporal_frequency;
+CREATE VIEW vw_ios_communication_temporal_frequency AS
+SELECT
+  substr(record_timestamp_utc,1,10) AS communication_date_utc,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)') AS communication_thread_or_identity,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS records_on_date,
+  COUNT(DISTINCT contact_or_participant) AS distinct_identity_hints,
+  MIN(record_timestamp_utc) AS first_record_utc,
+  MAX(record_timestamp_utc) AS last_record_utc,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
+FROM ios_app_parsed_records
+WHERE COALESCE(record_timestamp_utc,'')<>''
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+GROUP BY substr(record_timestamp_utc,1,10), COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), '(no explicit thread)'), database_category, app_hint, record_category
+ORDER BY communication_date_utc DESC, records_on_date DESC;
+
+DROP VIEW IF EXISTS vw_ios_communication_source_coverage;
+CREATE VIEW vw_ios_communication_source_coverage AS
+SELECT
+  database_category,
+  app_hint,
+  database_name,
+  table_name,
+  record_category,
+  parse_status,
+  COUNT(*) AS parsed_record_count,
+  SUM(CASE WHEN COALESCE(record_timestamp_utc,'')<>'' THEN 1 ELSE 0 END) AS records_with_timestamp,
+  SUM(CASE WHEN COALESCE(contact_or_participant,'')<>'' THEN 1 ELSE 0 END) AS records_with_identity_hint,
+  SUM(CASE WHEN COALESCE(item_identifier,'')<>'' THEN 1 ELSE 0 END) AS records_with_thread_or_item_id,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+   OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+   OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+GROUP BY database_category, app_hint, database_name, table_name, record_category, parse_status
+ORDER BY parsed_record_count DESC, records_with_timestamp DESC;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS

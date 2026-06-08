@@ -36,6 +36,16 @@ bool contains(const std::string& s, const char* needle) {
     return s.find(needle ? needle : "") != std::string::npos;
 }
 
+std::string sqlLiteralLocal(const std::string& value) {
+    std::string out = "'";
+    for (char c : value) {
+        if (c == '\'') out += "''";
+        else out.push_back(c);
+    }
+    out += "'";
+    return out;
+}
+
 
 std::string printableWindow(const std::string& s, std::size_t pos, std::size_t width) {
     if (pos >= s.size()) return {};
@@ -1238,6 +1248,31 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
             recordStatus = "tables_counted=" + std::to_string(tableCount);
             upd.bind(1, parseStatus); upd.bind(2, recordStatus); upd.bind(3, inv.id); upd.stepDone(); upd.reset();
         }
+        writeStatus("ios_app_db_timeline_promotion_start", "promote dated parsed app records into timeline/usage evidence");
+        const std::string sourceSql = sqlLiteralLocal(sourceId);
+        db.exec("DELETE FROM timeline_events WHERE source_id=" + sourceSql + " AND event_source_field LIKE 'ios_app_parsed_records.%'");
+        db.exec("DELETE FROM usage_evidence WHERE source_id=" + sourceSql + " AND field_name LIKE 'ios_app_parsed_records.%'");
+        db.exec("INSERT INTO timeline_events(artifact_id,source_id,store_guid,inode_num,event_timestamp_utc,event_type,event_source_field,file_name,path,existence_status,deleted_or_orphaned_candidate) "
+                "SELECT NULL,source_id,'ios_app_db',COALESCE(NULLIF(source_primary_key,''),CAST(ios_app_record_id AS TEXT)),record_timestamp_utc, "
+                "CASE WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE') THEN 'IOS_COMMUNICATION_RECORD' "
+                "WHEN record_category='KNOWLEDGEC_EVENTS' THEN 'IOS_KNOWLEDGEC_EVENT' "
+                "WHEN record_category IN ('CALL_RECORDS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','CALENDAR_RECORDS','NOTES_RECORDS','LOCATION_RECORDS') THEN 'IOS_APP_ACTIVITY_RECORD' "
+                "ELSE 'IOS_APP_DATABASE_RECORD' END, "
+                "'ios_app_parsed_records.' || COALESCE(record_category,''), "
+                "COALESCE(NULLIF(title,''),NULLIF(contact_or_participant,''),database_name), "
+                "COALESCE(NULLIF(file_path,''),NULLIF(url,''),database_normalized_path), "
+                "'APP_DB_RECORD_PRESENT', "
+                "CASE WHEN record_category='MESSAGE_DELETED_OR_RECOVERABLE' OR provenance LIKE '%DELETED%' OR provenance LIKE '%EXPIRED%' THEN 1 ELSE 0 END "
+                "FROM ios_app_parsed_records WHERE source_id=" + sourceSql + " AND COALESCE(record_timestamp_utc,'')<>''");
+        db.exec("INSERT INTO usage_evidence(artifact_id,source_id,store_guid,inode_num,field_name,field_value,parsed_utc) "
+                "SELECT NULL,source_id,'ios_app_db',COALESCE(NULLIF(source_primary_key,''),CAST(ios_app_record_id AS TEXT)), "
+                "'ios_app_parsed_records.' || COALESCE(record_category,''), "
+                "substr(COALESCE(NULLIF(title,''),NULLIF(text_snippet,''),NULLIF(url,''),NULLIF(file_path,''),NULLIF(contact_or_participant,''),database_name),1,2000), "
+                "record_timestamp_utc "
+                "FROM ios_app_parsed_records WHERE source_id=" + sourceSql + " AND COALESCE(record_timestamp_utc,'')<>'' "
+                "AND (record_category IN ('KNOWLEDGEC_EVENTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','CALL_RECORDS','MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','NOTES_RECORDS','LOCATION_RECORDS') "
+                "OR provenance LIKE '%COMMUNICATION_INTENT%' OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%')");
+        writeStatus("ios_app_db_timeline_promotion_complete", "timeline/usage promotion complete from parsed app records");
         db.commit();
         log.info("iOS app database record inventory: extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
         writeStatus("ios_app_db_record_inventory", "extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
@@ -1245,6 +1280,58 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
         db.rollbackNoThrow();
         log.warn(std::string("Unable to parse iOS app database record inventory: ") + ex.what());
         writeStatus("ios_app_db_record_inventory_warning", ex.what());
+    }
+}
+
+
+void IosAppDbParser::promoteParsedRecordsToTimelineUsage(CaseDatabase& db,
+                                                         const std::filesystem::path& caseDir,
+                                                         const std::string& sourceId,
+                                                         Logger& log,
+                                                         const IosAppDbStatusWriter& statusWriter) {
+    auto writeStatus = [&](const std::string& stage, const std::string& message) {
+        if (statusWriter) statusWriter(caseDir, stage, message);
+    };
+    try {
+        writeStatus("ios_app_db_timeline_promotion_start", "promote dated parsed app records into timeline/usage evidence");
+        const std::string sourceSql = sqlLiteralLocal(sourceId);
+        db.exec("DELETE FROM timeline_events WHERE source_id=" + sourceSql + " AND event_source_field LIKE 'ios_app_parsed_records.%'");
+        db.exec("DELETE FROM usage_evidence WHERE source_id=" + sourceSql + " AND field_name LIKE 'ios_app_parsed_records.%'");
+        db.exec("INSERT INTO timeline_events(artifact_id,source_id,store_guid,inode_num,event_timestamp_utc,event_type,event_source_field,file_name,path,existence_status,deleted_or_orphaned_candidate) "
+                "SELECT NULL,source_id,'ios_app_db',COALESCE(NULLIF(source_primary_key,''),CAST(ios_app_record_id AS TEXT)),record_timestamp_utc, "
+                "CASE WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS') THEN 'IOS_COMMUNICATION_RECORD' "
+                "WHEN record_category='KNOWLEDGEC_EVENTS' THEN 'IOS_KNOWLEDGEC_EVENT' "
+                "WHEN record_category IN ('CALL_RECORDS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS') THEN 'IOS_APP_ACTIVITY_RECORD' "
+                "ELSE 'IOS_APP_DATABASE_RECORD' END, "
+                "'ios_app_parsed_records.' || COALESCE(record_category,''), "
+                "COALESCE(NULLIF(title,''),NULLIF(contact_or_participant,''),database_name), "
+                "COALESCE(NULLIF(file_path,''),NULLIF(url,''),database_normalized_path), "
+                "'APP_DB_RECORD_PRESENT', "
+                "CASE WHEN record_category='MESSAGE_DELETED_OR_RECOVERABLE' OR provenance LIKE '%DELETED%' OR provenance LIKE '%EXPIRED%' OR provenance LIKE '%trash_path_activity%' THEN 1 ELSE 0 END "
+                "FROM ios_app_parsed_records WHERE source_id=" + sourceSql + " AND COALESCE(record_timestamp_utc,'')<>''");
+        db.exec("INSERT INTO usage_evidence(artifact_id,source_id,store_guid,inode_num,field_name,field_value,parsed_utc) "
+                "SELECT NULL,source_id,'ios_app_db',COALESCE(NULLIF(source_primary_key,''),CAST(ios_app_record_id AS TEXT)), "
+                "'ios_app_parsed_records.' || COALESCE(record_category,''), "
+                "substr(COALESCE(NULLIF(title,''),NULLIF(text_snippet,''),NULLIF(url,''),NULLIF(file_path,''),NULLIF(contact_or_participant,''),database_name),1,2000), "
+                "record_timestamp_utc "
+                "FROM ios_app_parsed_records WHERE source_id=" + sourceSql + " AND COALESCE(record_timestamp_utc,'')<>'' "
+                "AND (record_category IN ('KNOWLEDGEC_EVENTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','CALL_RECORDS','CALL_PARTICIPANTS','MESSAGE_RECORDS','MESSAGE_PARTICIPANTS','CHAT_RECORDS','MAIL_RECORDS','CONTACT_RECORDS','CALENDAR_RECORDS','NOTES_RECORDS','LOCATION_RECORDS') "
+                "OR provenance LIKE '%COMMUNICATION_INTENT%' OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%' OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%' OR provenance LIKE '%primary_identity_attribution%' OR provenance LIKE '%quarantine_metadata_reference%' OR provenance LIKE '%trash_path_activity%')");
+        long long timelineRows = 0;
+        long long usageRows = 0;
+        try {
+            auto st = db.prepare("SELECT COUNT(*) FROM timeline_events WHERE source_id=" + sourceSql + " AND event_source_field LIKE 'ios_app_parsed_records.%'");
+            if (st.stepRow()) timelineRows = st.colInt64(0);
+        } catch (...) {}
+        try {
+            auto st = db.prepare("SELECT COUNT(*) FROM usage_evidence WHERE source_id=" + sourceSql + " AND field_name LIKE 'ios_app_parsed_records.%'");
+            if (st.stepRow()) usageRows = st.colInt64(0);
+        } catch (...) {}
+        writeStatus("ios_app_db_timeline_promotion_complete", "timeline=" + std::to_string(timelineRows) + " usage=" + std::to_string(usageRows));
+        log.info("iOS app DB timeline/usage promotion: timeline=" + std::to_string(timelineRows) + " usage=" + std::to_string(usageRows));
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to promote iOS app parsed records into timeline/usage evidence: ") + ex.what());
+        writeStatus("ios_app_db_timeline_promotion_warning", ex.what());
     }
 }
 

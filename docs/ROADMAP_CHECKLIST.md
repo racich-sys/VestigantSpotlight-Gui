@@ -48,15 +48,21 @@
 - [ ] Shared BlockReader abstraction.
 - [ ] Direct-map and libaff4 APFS paths converged onto shared traversal math.
 
-## V1.3.7 Update
+## V1.4.2 Update
 - Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
 - Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
-- Local validation: Linux CMake build PASS; CLI version reports v1.3.7.1; self-test PASS.
-- Next required upload: V1.3.7 Windows build log and iOS thin output.
+- Local validation: Linux CMake build PASS; CLI version reports v1.4.2.1; self-test PASS.
+- Next required upload: V1.4.2 Windows build log and iOS thin output.
 
 
-## V1.3.7 requested-fixes verification
+## V1.4.2 requested-fixes verification
 
 - Verified and retained the requested GUI database pool deadlock fix, APFS guided traversal cycle detection, iOS bplist string extraction, Notes/Location routing, and widened table-column catchers.
-- Added `tools/Verify-V1_3_7-RequestedFixes.ps1` for repeatable source-presence validation.
+- Added `tools/Verify-V1_4_2-RequestedFixes.ps1` for repeatable source-presence validation.
 - Standard iOS thin should be run; AFF4/APFS thin is not required unless APFS cycle-guard behavior is specifically tested.
+
+## V1.4.2 ai_context.md bootstrap
+
+- Added root `ai_context.md` as the living project context file.
+- Future source packages must carry forward and update `ai_context.md` with current state, roadmap, known bugs, and graveyard items.
+- No parser, extraction, GUI, SQLite schema, or forensic interpretation behavior intentionally changed by this documentation-only package.

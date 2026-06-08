@@ -409,6 +409,12 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_communications_review_records.csv", "Unified iOS communications review rows from Messages, WhatsApp, call history, and other message/chat/call-like app database records.");
     row("exports/ios_communications_review_summary.csv", "Grouped counts and date coverage for the unified iOS communications review rows.");
     row("exports/ios_communication_frequency.csv", "Thread/contact grouped iOS communication frequency and volume based on committed parsed app/KnowledgeC records.");
+    row("exports/ios_url_frequency.csv", "URL/reference frequency from parsed iOS app database records.");
+    row("exports/ios_attachment_reference_frequency.csv", "Attachment/file reference frequency from parsed iOS app database records.");
+    row("exports/ios_communication_existence_evidence.csv", "Row-level communication existence evidence from parsed app records and communication provenance markers; sampled in thin mode.");
+    row("exports/ios_communication_identity_frequency.csv", "Identity/thread grouped communication frequency rollup by app, category, and source table.");
+    row("exports/ios_communication_temporal_frequency.csv", "Daily communication frequency rollup by thread/identity/app/category.");
+    row("exports/ios_communication_source_coverage.csv", "Source coverage counts for communication-related parsed app databases and tables.");
     row("exports/ios_spotlight_communication_candidates.csv", "CoreSpotlight string probes that appear communication-related, with conservative app-database context.");
     row("exports/ios_spotlight_decode_coverage_summary.csv", "Spotlight-first decode coverage by iOS CoreSpotlight store: raw records, recovered values, human text values, and native decode status.");
     row("exports/ios_spotlight_bplist_nskeyedarchiver_summary.csv", "Bounded summary of iOS CoreSpotlight binary plist / NSKeyedArchiver payload token discovery.");
@@ -1166,6 +1172,13 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         else exportQuery(db, exportDir / "ios_communications_review_records_sample.csv", "SELECT * FROM vw_ios_communications_review_records ORDER BY communication_source, record_timestamp_utc DESC, communication_record_type, ios_app_record_id LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_communications_review_summary.csv", "SELECT * FROM vw_ios_communications_review_summary ORDER BY communication_source, record_category, communication_record_type", log);
         exportQuery(db, exportDir / "ios_communication_frequency.csv", "SELECT * FROM vw_ios_communication_frequency ORDER BY total_records_in_thread DESC, last_communication_utc DESC", log);
+        if (supportDataExport) exportQuery(db, exportDir / "ios_communication_existence_evidence.csv", "SELECT * FROM vw_ios_communication_existence_evidence ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
+        else exportQuery(db, exportDir / "ios_communication_existence_evidence_sample.csv", "SELECT * FROM vw_ios_communication_existence_evidence ORDER BY record_timestamp_utc DESC, ios_app_record_id LIMIT 5000", log);
+        exportQuery(db, exportDir / "ios_communication_identity_frequency.csv", "SELECT * FROM vw_ios_communication_identity_frequency ORDER BY related_record_count DESC, last_seen_utc DESC", log);
+        exportQuery(db, exportDir / "ios_communication_temporal_frequency.csv", "SELECT * FROM vw_ios_communication_temporal_frequency ORDER BY communication_date_utc DESC, records_on_date DESC LIMIT 25000", log);
+        exportQuery(db, exportDir / "ios_communication_source_coverage.csv", "SELECT * FROM vw_ios_communication_source_coverage ORDER BY parsed_record_count DESC, records_with_timestamp DESC", log);
+        exportQuery(db, exportDir / "ios_url_frequency.csv", "SELECT * FROM vw_ios_url_frequency ORDER BY related_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
+        exportQuery(db, exportDir / "ios_attachment_reference_frequency.csv", "SELECT * FROM vw_ios_attachment_reference_frequency ORDER BY related_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_communication_candidates.csv", "SELECT * FROM vw_ios_spotlight_communication_candidates ORDER BY communication_candidate_type, raw_kv_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_contact_identity_records.csv", "SELECT * FROM vw_ios_contact_identity_records ORDER BY contact_identity_type, database_name, table_name, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_contact_identity_summary.csv", "SELECT * FROM vw_ios_contact_identity_summary ORDER BY contact_review_row_count DESC, database_name, table_name", log);

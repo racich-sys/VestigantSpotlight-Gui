@@ -1,3 +1,11 @@
+
+## V1.4.2 Update
+
+- iOS existence/frequency milestone completed.
+- New views/exports: `vw_ios_communication_existence_evidence`, `vw_ios_communication_identity_frequency`, `vw_ios_communication_temporal_frequency`, and `vw_ios_communication_source_coverage`.
+- Dated parsed iOS app records now promote into `timeline_events`; selected dated activity records promote into `usage_evidence`.
+- Next required test: iOS thin. AFF4/APFS thin is not required for this milestone.
+
 # Current Continuation Handoff - V1.3.2
 
 ## Current package
@@ -359,7 +367,7 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Local validation: Linux CMake build PASS; CLI version reports v1.3.4; self-test PASS.
 - Next required upload: V1.3.4 Windows build log and iOS thin output.
 
-## V1.3.7
+## V1.4.2
 
 - Reviewed V1.3.6 build log and failed iOS thin package before changes.
 - Failure class: iOS thin used diagnostics mode and unexpectedly materialized full FFS inventory into SQLite, hitting database/disk limits around 600,000 rows.
@@ -367,8 +375,16 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Test decision: iOS thin required; AFF4/APFS not required.
 
 
-## V1.3.7 requested-fixes verification
+## V1.4.2 requested-fixes verification
 
 - Verified and retained the requested GUI database pool deadlock fix, APFS guided traversal cycle detection, iOS bplist string extraction, Notes/Location routing, and widened table-column catchers.
-- Added `tools/Verify-V1_3_7-RequestedFixes.ps1` for repeatable source-presence validation.
+- Added `tools/Verify-V1_4_2-RequestedFixes.ps1` for repeatable source-presence validation.
 - Standard iOS thin should be run; AFF4/APFS thin is not required unless APFS cycle-guard behavior is specifically tested.
+
+## V1.4.2 ai_context.md bootstrap
+
+- Added root `ai_context.md` as the living project context file.
+- Future source packages must carry forward and update `ai_context.md` with current state, roadmap, known bugs, and graveyard items.
+- No parser, extraction, GUI, SQLite schema, or forensic interpretation behavior intentionally changed by this documentation-only package.
+
+- V1.4.2 corrected: release-blocking version consistency verification added after Build-V1_4_2.ps1 stale 1.4.1 check was found.

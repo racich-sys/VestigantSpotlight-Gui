@@ -83,6 +83,11 @@ public:
                                        const std::string& sourceId,
                                        Logger& log,
                                        const IosAppDbStatusWriter& statusWriter = {});
+    static void promoteParsedRecordsToTimelineUsage(CaseDatabase& db,
+                                                    const std::filesystem::path& caseDir,
+                                                    const std::string& sourceId,
+                                                    Logger& log,
+                                                    const IosAppDbStatusWriter& statusWriter = {});
 };
 
 } // namespace vestigant::spotlight

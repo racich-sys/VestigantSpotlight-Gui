@@ -1,3 +1,9 @@
+## V1_4_2
+
+- Documentation/context bootstrap release.
+- Added root-level `ai_context.md` as the living source-of-truth context file for future sessions.
+- No code behavior, parser behavior, schema, GUI workflow, or forensic interpretation changes are intended in this package.
+
 ## V1_3_7
 
 - Prioritized iOS communication identity and KnowledgeC expansion before broader roadmap items.

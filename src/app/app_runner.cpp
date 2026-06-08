@@ -5611,8 +5611,18 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             log.info("Active filesystem evidence-root comparison is tabled in v0.6.4. EvidenceRoot was supplied but will not be used for live/missing or deleted/orphaned classification.");
             enrichmentSource.evidenceRoot.clear();
         }
-        const auto counts = enrichment.run(db, enrichmentSource, log);
+        auto counts = enrichment.run(db, enrichmentSource, log);
         appendRunStatus(caseDir, "enrichment_complete", "artifacts=" + std::to_string(counts.artifacts) + " timeline=" + std::to_string(counts.timeline) + " usage=" + std::to_string(counts.usage));
+        if (zipInputSource && profile == SourceProfileKind::IOS) {
+            appendRunStatus(caseDir, "ios_app_db_post_enrichment_promotion_start", "re-promote parsed iOS app records after Store-V2 enrichment clears source-level timeline/usage rows");
+            IosAppDbParser::promoteParsedRecordsToTimelineUsage(db, caseDir, source.sourceId, log,
+                [](const fs::path& statusCaseDir, const std::string& stage, const std::string& message) {
+                    appendRunStatus(statusCaseDir, stage, message);
+                });
+            counts.timeline = static_cast<std::size_t>(scalarCountForSource(db, "timeline_events", source.sourceId));
+            counts.usage = static_cast<std::size_t>(scalarCountForSource(db, "usage_evidence", source.sourceId));
+            appendRunStatus(caseDir, "ios_app_db_post_enrichment_promotion_complete", "timeline=" + std::to_string(counts.timeline) + " usage=" + std::to_string(counts.usage));
+        }
         purgeOrphanSourceRows(db, caseDir, log);
         appendRunStatus(caseDir, "export_start");
         SqliteExporter exporter;
