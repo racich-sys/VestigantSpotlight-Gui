@@ -1,5 +1,6 @@
-# Vestigant Spotlight V1.3.7 Release Notes
+# V1.6.3.1
 
-V1.3.7 focuses on iOS investigator value, with communication identity and KnowledgeC expansion first. It adds WEB_DOWNLOADS app-database parsing, bounded KnowledgeC target-hint promotion, and protected-data/keychain-material candidate correlation without asserting decryption or unsupported intent.
-
-Validation in this environment: Linux CMake build passed, CLI reports v1.3.7.1, and self-test passed. Windows/MSVC build and iOS thin validation are required.
+- Adds full-investigation export guardrails so one expensive SQLite export cannot stall the entire run indefinitely.
+- Keeps thin/minimal identity exports on direct base-table summaries and bounded samples.
+- Full/support diagnostic joined identity exports remain available but now use per-export timeout protection.
+- Updates ai_context.md with the full-investigation performance rule.

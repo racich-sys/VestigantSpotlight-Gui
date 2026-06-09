@@ -1,5 +1,5 @@
 
-## V1.6.0 Update
+## V1.6.3.1 Update
 
 - iOS existence/frequency milestone completed.
 - New views/exports: `vw_ios_communication_existence_evidence`, `vw_ios_communication_identity_frequency`, `vw_ios_communication_temporal_frequency`, and `vw_ios_communication_source_coverage`.
@@ -161,7 +161,7 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts
 
 ## Current known-good baseline
 
-- V1.1.6.1: Windows/MSVC build passed and macOS AFF4/APFS thin output reviewed.
+- V1.1.6.3: Windows/MSVC build passed and macOS AFF4/APFS thin output reviewed.
 - V1.1.7: local Linux validation passed, but Windows/MSVC failed due missing worker helpers.
 - V1.1.7.1: generated as build hotfix and package cleanup; Windows/MSVC validation pending.
 
@@ -308,18 +308,18 @@ Completed: physical extraction of `writeAff4DirectMapReaderProbe` into `Aff4Prob
 Do not repeat: do not create a wrapper-only `aff4_probe_worker` and claim Tracker #17 is fixed. The direct-map body is now physically moved. The dynamic-load body is still pending and must be handled in a separate dependency-boundary pass.
 
 
-## V1.1.6.1 build-hotfix note
+## V1.1.6.3 build-hotfix note
 
-V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp`, but the MSVC build exposed a Windows-only missing helper: `wideProcessPath`. V1.1.6.1 adds a local Windows helper in the worker and corrects the versioned build script gate. This is recorded as a repeat-process pitfall: after moving code from `app_runner.cpp`, grep for Windows-only helper dependencies that Linux syntax checks cannot see.
+V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.cpp`, but the MSVC build exposed a Windows-only missing helper: `wideProcessPath`. V1.1.6.3 adds a local Windows helper in the worker and corrects the versioned build script gate. This is recorded as a repeat-process pitfall: after moving code from `app_runner.cpp`, grep for Windows-only helper dependencies that Linux syntax checks cannot see.
 
 
 ## V1.1.7 update
 
-- Baseline: validated V1.1.6.1.
+- Baseline: validated V1.1.6.3.
 - Completed Tracker #17 major step: moved `writeAff4CppLiteDynamicLoadProbe(...)` from `app_runner.cpp` into `Aff4ProbeWorker::executeDynamicLoadProbe(...)` in `src/parsers/aff4_probe_worker.cpp`.
 - `writeAff4DirectMapReaderProbe(...)` had already been moved in V1.1.6; both large AFF4/APFS probe bodies now live in `aff4_probe_worker.cpp`.
 - Added cancellation checks into the shared APFS OMAP traversal helper so the direct-map and dynamic-load paths can stop during B-tree traversal.
-- Remaining related work: compare V1.1.7 Windows build and thin output against V1.1.6.1; then clean duplicated/unused helper functions and continue moving staged probe workers only after parity is confirmed.
+- Remaining related work: compare V1.1.7 Windows build and thin output against V1.1.6.3; then clean duplicated/unused helper functions and continue moving staged probe workers only after parity is confirmed.
 
 ## V1.1.8 Update
 
@@ -367,7 +367,7 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Local validation: Linux CMake build PASS; CLI version reports v1.3.4; self-test PASS.
 - Next required upload: V1.3.4 Windows build log and iOS thin output.
 
-## V1.6.0
+## V1.6.3.1
 
 - Reviewed V1.3.6 build log and failed iOS thin package before changes.
 - Failure class: iOS thin used diagnostics mode and unexpectedly materialized full FFS inventory into SQLite, hitting database/disk limits around 600,000 rows.
@@ -375,16 +375,16 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 - Test decision: iOS thin required; AFF4/APFS not required.
 
 
-## V1.6.0 requested-fixes verification
+## V1.6.3.1 requested-fixes verification
 
 - Verified and retained the requested GUI database pool deadlock fix, APFS guided traversal cycle detection, iOS bplist string extraction, Notes/Location routing, and widened table-column catchers.
-- Added `tools/Verify-V1_6_0-RequestedFixes.ps1` for repeatable source-presence validation.
+- Added `tools/Verify-V1_6_3-RequestedFixes.ps1` for repeatable source-presence validation.
 - Standard iOS thin should be run; AFF4/APFS thin is not required unless APFS cycle-guard behavior is specifically tested.
 
-## V1.6.0 ai_context.md bootstrap
+## V1.6.3.1 ai_context.md bootstrap
 
 - Added root `ai_context.md` as the living project context file.
 - Future source packages must carry forward and update `ai_context.md` with current state, roadmap, known bugs, and graveyard items.
 - No parser, extraction, GUI, SQLite schema, or forensic interpretation behavior intentionally changed by this documentation-only package.
 
-- V1.6.0 corrected: release-blocking version consistency verification added after Build-V1_6_0.ps1 stale 1.4.1 check was found.
+- V1.6.3.1 corrected: release-blocking version consistency verification added after Build-V1_6_3.ps1 stale 1.4.1 check was found.

@@ -71,6 +71,55 @@ std::string firstMetadataWindow(const std::string& text, const std::vector<const
     return {};
 }
 
+
+bool isEmailLocalChar(unsigned char c) {
+    return std::isalnum(c) || c == '.' || c == '_' || c == '%' || c == '+' || c == '-' || c == '@';
+}
+
+std::string firstEmailLikeValue(const std::string& text) {
+    const std::size_t at = text.find('@');
+    if (at == std::string::npos) return {};
+    std::size_t b = at;
+    while (b > 0 && isEmailLocalChar(static_cast<unsigned char>(text[b - 1]))) --b;
+    std::size_t e = at + 1;
+    while (e < text.size() && isEmailLocalChar(static_cast<unsigned char>(text[e]))) ++e;
+    std::string candidate = trim(text.substr(b, e - b));
+    if (candidate.size() < 6 || candidate.find('.') == std::string::npos || candidate.front() == '@' || candidate.back() == '@') return {};
+    while (!candidate.empty() && (candidate.back() == '.' || candidate.back() == ',' || candidate.back() == ';' || candidate.back() == ':')) candidate.pop_back();
+    return candidate.size() <= 254 ? candidate : candidate.substr(0, 254);
+}
+
+std::string firstPhoneLikeValue(const std::string& text) {
+    std::string cur;
+    int digits = 0;
+    for (unsigned char c : text) {
+        const bool phoneChar = std::isdigit(c) || c == '+' || c == '-' || c == '(' || c == ')' || c == ' ' || c == '.';
+        if (phoneChar) {
+            cur.push_back(static_cast<char>(c));
+            if (std::isdigit(c)) ++digits;
+            if (cur.size() > 48) {
+                cur.clear();
+                digits = 0;
+            }
+        } else {
+            if (digits >= 7) return trim(cur);
+            cur.clear();
+            digits = 0;
+        }
+    }
+    if (digits >= 7) return trim(cur);
+    return {};
+}
+
+std::string identityRecoveryHintFromText(const std::string& text) {
+    std::string hint;
+    const std::string email = firstEmailLikeValue(text);
+    if (!email.empty()) hint += "Email: " + email + " ";
+    const std::string phone = firstPhoneLikeValue(text);
+    if (!phone.empty()) hint += "Phone: " + phone + " ";
+    return trim(hint);
+}
+
 struct IosCommunicationDerivedFields {
     std::string recordCategory;
     std::string contact;
@@ -131,6 +180,20 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
         if (!hardMatch.empty()) {
             out.contact = trim(hardMatch);
             addProv("IDENTITY_REGEX_RECOVERY=True");
+        }
+    }
+    if (out.contact.empty()) {
+        const std::string genericIdentity = identityRecoveryHintFromText(combined);
+        if (!genericIdentity.empty()) {
+            out.contact = genericIdentity;
+            addProv("IDENTITY_TEXT_PATTERN_RECOVERY=True");
+        }
+    }
+    if (out.itemIdentifier.empty()) {
+        const std::string domainLike = firstMetadataWindow(combined, {"domainidentifier", "thread", "chat", "conversation", "message_guid", "guid"}, 128);
+        if (!domainLike.empty()) {
+            out.itemIdentifier = domainLike;
+            addProv("THREAD_OR_IDENTIFIER_TEXT_PATTERN_RECOVERY=True");
         }
     }
     return out;
@@ -1178,6 +1241,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         }
         if (genericText.find("kMDItemDomainIdentifier") != std::string::npos) genericProvenance += "; THREAD_VOLUME_TRACKING_ENABLED=True";
         if (genericText.find("kMDItemAuthor") != std::string::npos || genericText.find("kMDItemRecipient") != std::string::npos) genericProvenance += "; IDENTITY_BOUND_COMMUNICATION=True";
+        if (!identityRecoveryHintFromText(genericTitle + " " + genericText + " " + genericFilePath).empty()) genericProvenance += "; IDENTITY_PATTERN_AVAILABLE=True";
         if (recordCategory == "WEB_DOWNLOADS") {
             genericProvenance += "; web_download_table_record=True";
             if (genericTitle.empty()) genericTitle = "Browser download record";

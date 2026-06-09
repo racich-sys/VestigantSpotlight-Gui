@@ -4040,7 +4040,8 @@ WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NU
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
 )VSQLFIX" R"VSQLFIX(ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
 LIMIT 25000;
-
+)VSQLFIX",
+R"VSQLFIX(
 DROP VIEW IF EXISTS vw_ios_identity_entity_rollup;
 CREATE VIEW vw_ios_identity_entity_rollup AS
 WITH identity_rows AS (
@@ -4078,7 +4079,7 @@ SELECT
   GROUP_CONCAT(DISTINCT database_category) AS database_categories,
   GROUP_CONCAT(DISTINCT record_category) AS record_categories,
   GROUP_CONCAT(DISTINCT table_name) AS source_tables,
-  'V1.6.0.1 identity rollup links phone/email/account/thread/user-like identifiers to activity, timestamps, apps, and source tables. Review row-level identity activity detail before reporting attribution.' AS interpretation_note
+  'V1.6.3.1.1 identity rollup links phone/email/account/thread/user-like identifiers to activity, timestamps, apps, and source tables. Review row-level identity activity detail before reporting attribution.' AS interpretation_note
 FROM identity_rows
 WHERE COALESCE(identity_key,'')<>''
 GROUP BY identity_key, identity_kind
@@ -4102,7 +4103,8 @@ FROM vw_ios_identity_activity_detail_sample
 WHERE COALESCE(identity_or_activity_key,'')<>''
 GROUP BY identity_or_activity_key, identity_kind, activity_thread_or_record_id, app_hint, database_category, record_category
 ORDER BY linked_activity_count DESC, last_seen_utc DESC;
-
+)VSQLFIX",
+R"VSQLFIX(
 DROP VIEW IF EXISTS vw_ios_identity_graph_edges;
 CREATE VIEW vw_ios_identity_graph_edges AS
 SELECT identity_or_activity_key AS identity_key, identity_kind,
@@ -10114,8 +10116,165 @@ SELECT 'APP_DATABASE_INVENTORY' AS surface_source, source_id, CAST(ios_db_id AS 
 )SQL" R"SQL(       'APP_DATABASE_DISCOVERY' AS review_priority,
        COALESCE(record_inventory_status,parse_status) AS residency_context,
        'App database inventory row. Use record inventory and parsed-record views to confirm whether rows were parsed.' AS interpretation_note
+
 FROM ios_app_database_inventory;
 
+)SQL" R"SQL(
+DROP VIEW IF EXISTS vw_ios_spotlight_identity_context_links;
+CREATE VIEW vw_ios_spotlight_identity_context_links AS
+WITH kv AS (
+  SELECT raw_kv_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,field_name,field_value,LOWER(field_value) AS v
+  FROM raw_key_values
+  WHERE COALESCE(field_value,'')<>''
+    AND (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
+), tagged AS (
+  SELECT *, CASE
+    WHEN v LIKE '%mailto:%' OR (v LIKE '%@%' AND v LIKE '%.%') THEN 'email_or_account'
+    WHEN v LIKE '%tel:%' OR v LIKE '%phone%' OR v GLOB '*[0-9][0-9][0-9]*[0-9][0-9][0-9]*[0-9][0-9][0-9][0-9]*' THEN 'phone_or_call_identity'
+    WHEN v LIKE '%kmditemauthor%' OR v LIKE '%kmditemrecipient%' OR v LIKE '%personhandle%' OR v LIKE '%emailaddress%' THEN 'spotlight_named_identity_marker'
+    WHEN v LIKE '%kmditemdomainidentifier%' OR v LIKE '%thread%' OR v LIKE '%chat%' OR v LIKE '%conversation%' THEN 'thread_or_conversation_marker'
+    ELSE 'other_identity_context' END AS identity_context_type
+  FROM kv
+)
+SELECT t.raw_kv_id,t.source_id,t.store_guid,t.source_db,t.inode_num AS spotlight_inode_or_object_id,t.store_id AS spotlight_store_id,t.parent_inode_num,
+       t.field_name,t.identity_context_type,substr(t.field_value,1,2000) AS identity_context_sample,
+       r.last_updated_utc AS spotlight_record_last_updated_utc,r.file_name,r.display_name,r.full_path,r.content_type,
+       'CoreSpotlight identity/thread context candidate. This is a search/pivot surface for names, phone numbers, emails, IDs, thread markers, and app-specific communication identifiers recovered from Spotlight key/value text.' AS interpretation_note
+FROM tagged t
+LEFT JOIN raw_records r ON r.source_id=t.source_id AND r.store_guid=t.store_guid AND r.source_db=t.source_db AND COALESCE(r.inode_num,'')=COALESCE(t.inode_num,'') AND COALESCE(r.store_id,'')=COALESCE(t.store_id,'')
+WHERE t.identity_context_type<>'other_identity_context';
+)SQL" R"SQL(
+DROP VIEW IF EXISTS vw_ios_identity_all_activity_links;
+CREATE VIEW vw_ios_identity_all_activity_links AS
+SELECT 'APP_DB_PARSED_RECORD' AS link_source, ios_app_record_id AS source_row_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, COALESCE(NULLIF(contact_or_participant,''),NULLIF(item_identifier,''),NULLIF(url,''),NULLIF(title,''),'') AS identity_or_link_value,
+       CASE WHEN COALESCE(contact_or_participant,'')<>'' THEN 'contact_or_participant'
+            WHEN COALESCE(item_identifier,'')<>'' THEN 'item_or_thread_identifier'
+            WHEN COALESCE(url,'')<>'' THEN 'url_or_account_reference'
+            ELSE 'title_or_text_reference' END AS identity_or_link_kind,
+       item_identifier AS thread_or_record_id, title, url, file_path, substr(text_snippet,1,1200) AS text_snippet_sample, parse_status, provenance,
+       'Parsed app database activity linked to the strongest available identity/thread/account field.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(contact_or_participant,'')<>'' OR COALESCE(item_identifier,'')<>'' OR COALESCE(url,'')<>'' OR provenance LIKE '%IDENTITY%'
+UNION ALL
+SELECT 'CORESPOTLIGHT_KEY_VALUE_CONTEXT' AS link_source, raw_kv_id AS source_row_id, source_id, 'CORESPOTLIGHT' AS database_category, '' AS app_hint, source_db AS database_name, field_name AS table_name, identity_context_type AS record_category,
+       spotlight_record_last_updated_utc AS record_timestamp_utc, identity_context_sample AS identity_or_link_value, identity_context_type AS identity_or_link_kind,
+       COALESCE(NULLIF(spotlight_store_id,''),NULLIF(spotlight_inode_or_object_id,'')) AS thread_or_record_id, display_name AS title, '' AS url, full_path AS file_path, identity_context_sample AS text_snippet_sample,
+       'spotlight_identity_context_candidate' AS parse_status, 'source=raw_key_values; identity_context_type=' || identity_context_type AS provenance,
+       interpretation_note
+FROM vw_ios_spotlight_identity_context_links;
+
+DROP VIEW IF EXISTS vw_ios_spotlight_missing_native_identity_pivots;
+CREATE VIEW vw_ios_spotlight_missing_native_identity_pivots AS
+SELECT m.record_timestamp_utc,m.spotlight_thread_id,m.recovered_identity,m.source_app,m.title,m.recovered_message_text,m.original_spotlight_path,m.forensic_status,
+       COALESCE(g.identity_key,m.recovered_identity,m.spotlight_thread_id) AS linked_identity_key,
+       COALESCE(g.identity_kind,'spotlight_missing_native_hint') AS linked_identity_kind,
+       COALESCE(g.apps,m.source_app) AS linked_apps,
+       COALESCE(g.record_categories,'') AS linked_record_categories,
+       'Present in CoreSpotlight and not matched to the parsed native database set. Linked identity/thread context is a lead only; absence from parsed native DB can also reflect encryption, unsupported parser coverage, or unavailable app data.' AS interpretation_note
+FROM vw_ios_spotlight_comms_missing_from_ffs m
+
+LEFT JOIN vw_ios_identity_graph_summary g ON g.identity_key=m.recovered_identity OR g.identity_key=m.spotlight_thread_id;
+
+DROP VIEW IF EXISTS vw_ios_identity_pivot_surface;
+CREATE VIEW vw_ios_identity_pivot_surface AS
+SELECT 'APP_PARSED_CONTACT' AS source_surface, ios_app_record_id AS source_row_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, contact_or_participant AS identity_value, 'contact_or_participant' AS identity_kind,
+       COALESCE(NULLIF(item_identifier,''), source_primary_key) AS thread_or_record_id, title, url, file_path, substr(text_snippet,1,1000) AS text_snippet_sample,
+       parse_status, provenance,
+       'Identity pivot from parsed app database contact/participant field.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(contact_or_participant,'')<>''
+)SQL" R"SQL(
+UNION ALL
+SELECT 'APP_PARSED_THREAD_OR_ITEM', ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, item_identifier, 'thread_or_item_identifier', COALESCE(NULLIF(item_identifier,''), source_primary_key), title, url, file_path, substr(text_snippet,1,1000), parse_status, provenance,
+       'Identity/thread pivot from parsed app database item identifier.'
+FROM ios_app_parsed_records
+WHERE COALESCE(item_identifier,'')<>''
+)SQL" R"SQL(
+UNION ALL
+SELECT 'APP_PARSED_URL_OR_ACCOUNT', ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, url, CASE WHEN lower(url) LIKE 'mailto:%' OR url LIKE '%@%' THEN 'email_or_account_url' WHEN lower(url) LIKE 'tel:%' THEN 'phone_url' ELSE 'url_or_reference' END,
+       COALESCE(NULLIF(item_identifier,''), source_primary_key), title, url, file_path, substr(text_snippet,1,1000), parse_status, provenance,
+       'URL/account/phone pivot from parsed app database URL field.'
+FROM ios_app_parsed_records
+WHERE COALESCE(url,'')<>''
+)SQL" R"SQL(
+UNION ALL
+SELECT 'APP_TEXT_IDENTITY_HINT', ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, substr(text_snippet,1,250),
+       CASE WHEN lower(text_snippet) LIKE '%mailto:%' OR text_snippet LIKE '%@%' THEN 'email_text_candidate'
+            WHEN lower(text_snippet) LIKE '%tel:%' OR lower(text_snippet) LIKE '%phone%' THEN 'phone_text_candidate'
+            WHEN lower(text_snippet) LIKE '%personhandle%' OR lower(text_snippet) LIKE '%recipient%' OR lower(text_snippet) LIKE '%author%' THEN 'named_identity_text_candidate'
+            ELSE 'communication_text_candidate' END,
+       COALESCE(NULLIF(item_identifier,''), source_primary_key), title, url, file_path, substr(text_snippet,1,1000), parse_status, provenance,
+       'Bounded text identity candidate from parsed app database text; use source row for verification.'
+FROM ios_app_parsed_records
+WHERE COALESCE(text_snippet,'')<>'' AND (
+      lower(text_snippet) LIKE '%mailto:%' OR lower(text_snippet) LIKE '%tel:%' OR text_snippet LIKE '%@%' OR lower(text_snippet) LIKE '%personhandle%'
+   OR lower(text_snippet) LIKE '%recipient%' OR lower(text_snippet) LIKE '%author%' OR lower(text_snippet) LIKE '%kmditemdomainidentifier%')
+)SQL" R"SQL(
+UNION ALL
+SELECT 'CORESPOTLIGHT_KEY_VALUE', raw_kv_id, source_id, 'CORESPOTLIGHT', '' AS app_hint, source_db, field_name, identity_context_type,
+       spotlight_record_last_updated_utc, identity_context_sample, identity_context_type,
+       COALESCE(NULLIF(spotlight_store_id,''),NULLIF(spotlight_inode_or_object_id,'')), display_name, '' AS url, full_path, identity_context_sample,
+       'spotlight_identity_context_candidate', 'source=raw_key_values; identity_context_type=' || identity_context_type,
+       'CoreSpotlight key/value identity/thread candidate; useful when native app database rows are absent, encrypted, or unsupported.'
+FROM vw_ios_spotlight_identity_context_links;
+
+)SQL" R"SQL(
+DROP VIEW IF EXISTS vw_ios_identity_pivot_frequency;
+CREATE VIEW vw_ios_identity_pivot_frequency AS
+SELECT identity_kind, identity_value, COUNT(*) AS linked_activity_count,
+       COUNT(DISTINCT source_surface) AS source_surface_count,
+       COUNT(DISTINCT app_hint) AS distinct_app_count,
+       COUNT(DISTINCT database_category) AS distinct_database_category_count,
+       MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT app_hint) AS app_hints,
+       GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+       'Frequency rollup for phone/email/account/name/thread identity pivots from parsed app databases and CoreSpotlight key/value context.' AS interpretation_note
+FROM vw_ios_identity_pivot_surface
+WHERE COALESCE(identity_value,'')<>''
+GROUP BY identity_kind, identity_value
+ORDER BY linked_activity_count DESC, last_seen_utc DESC;
+
+)SQL" R"SQL(
+DROP VIEW IF EXISTS vw_ios_communication_candidate_promotion;
+CREATE VIEW vw_ios_communication_candidate_promotion AS
+SELECT source_surface, source_row_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, identity_value AS identity_hint, identity_kind,
+       thread_or_record_id, title, url, file_path, text_snippet_sample,
+       CASE
+         WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_EVENTS') THEN 'parsed_communication_category'
+         WHEN identity_kind LIKE '%phone%' OR identity_kind LIKE '%email%' OR identity_kind LIKE '%recipient%' OR identity_kind LIKE '%author%' THEN 'identity_marker_communication_candidate'
+         WHEN COALESCE(thread_or_record_id,'')<>'' THEN 'thread_or_record_identifier_candidate'
+         ELSE 'text_or_context_communication_candidate' END AS communication_candidate_basis,
+       parse_status, provenance,
+       'Promotion surface: communication-related candidate based on parsed category, identity markers, thread identifiers, or Spotlight key/value context. Candidate status is not a conclusion of deletion or communication content without source review.' AS interpretation_note
+FROM vw_ios_identity_pivot_surface
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+   OR identity_kind LIKE '%phone%' OR identity_kind LIKE '%email%' OR identity_kind LIKE '%recipient%' OR identity_kind LIKE '%author%' OR identity_kind LIKE '%thread%'
+   OR lower(text_snippet_sample) LIKE '%message%' OR lower(text_snippet_sample) LIKE '%sms%' OR lower(text_snippet_sample) LIKE '%imessage%' OR lower(text_snippet_sample) LIKE '%whatsapp%';
+
+)SQL" R"SQL(
+DROP VIEW IF EXISTS vw_ios_spotlight_communication_not_observed_native;
+CREATE VIEW vw_ios_spotlight_communication_not_observed_native AS
+SELECT c.record_timestamp_utc, c.thread_or_record_id AS spotlight_thread_or_record_id, c.identity_hint AS recovered_identity,
+       c.identity_kind, c.database_name AS spotlight_database_name, c.table_name AS spotlight_field_name,
+       c.title, c.text_snippet_sample AS recovered_context_sample, c.file_path AS original_spotlight_path,
+       c.communication_candidate_basis,
+       'PRESENT_IN_CORESPOTLIGHT_NOT_MATCHED_TO_PARSED_NATIVE_APP_DB' AS comparison_status,
+       'CoreSpotlight-derived communication/identity candidate not matched to parsed native app database rows by thread/identity key. This is a lead only; possible explanations include deletion, encryption/inaccessibility, unsupported parser coverage, missing app data, or unmatched identifiers.' AS interpretation_note
+FROM vw_ios_communication_candidate_promotion c
+WHERE c.source_surface='CORESPOTLIGHT_KEY_VALUE'
+  AND COALESCE(c.thread_or_record_id,c.identity_hint,'')<>''
+  AND NOT EXISTS (
+    SELECT 1 FROM ios_app_parsed_records app
+    WHERE app.database_name NOT LIKE '%index.db%'
+      AND (app.item_identifier=c.thread_or_record_id OR app.source_primary_key=c.thread_or_record_id OR app.contact_or_participant=c.identity_hint)
+  );
 
 )SQL");
 

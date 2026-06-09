@@ -421,6 +421,9 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_identity_graph_summary.csv", "V1.6 identity graph summary connecting identities to threads, URLs, apps, and categories.");
     row("exports/ios_identity_graph_edges.csv", "V1.6 identity graph edge list for row-level correlation pivots.");
     row("exports/ios_identity_activity_timeline.csv", "V1.6 identity-linked dated activity timeline sample.");
+    row("exports/ios_identity_pivot_frequency.csv", "V1.6.3 phone/email/account/thread identity frequency rollup.");
+    row("exports/ios_communication_candidate_promotion_sample.csv", "V1.6.3 bounded communication/identity candidate promotion sample.");
+    row("exports/ios_spotlight_communication_not_observed_native_sample.csv", "V1.6.3 CoreSpotlight communication/identity candidates not matched to parsed native app database rows; lead-only wording.");
     row("exports/ios_identity_activity_detail_sample.csv", "Bounded row-level sample linking identity hints to parsed iOS activity records.");
     row("exports/ios_communication_source_coverage.csv", "Source coverage counts for communication-related parsed app databases and tables.");
     row("exports/ios_spotlight_communication_candidates.csv", "CoreSpotlight string probes that appear communication-related, with conservative app-database context.");
@@ -1019,6 +1022,8 @@ void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& expor
     const bool diagnosticsExport = (profile == "diagnostics");
     const bool supportDataExport = fullExport || diagnosticsExport || profile == "support";
     const bool thinIosExportProfile = !supportDataExport;
+    supportDataExportMode_ = supportDataExport;
+    exportTimeoutSeconds_ = supportDataExport ? 1800 : 120;
     log.info("Export profile=" + profile + (fullExport ? " (full CSV exports enabled)" : " (thin/minimal full-case CSV exports)"));
     if (thinIosExportProfile) {
         appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_thin_suppression", "full iOS FFS/record/date exports suppressed; bounded samples and summaries only");
@@ -1187,18 +1192,84 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_communication_identity_frequency.csv", "SELECT * FROM vw_ios_communication_identity_frequency ORDER BY related_record_count DESC, last_seen_utc DESC", log);
         exportQuery(db, exportDir / "ios_communication_temporal_frequency.csv", "SELECT * FROM vw_ios_communication_temporal_frequency ORDER BY communication_date_utc DESC, records_on_date DESC LIMIT 25000", log);
         exportQuery(db, exportDir / "ios_communication_source_coverage.csv", "SELECT * FROM vw_ios_communication_source_coverage ORDER BY parsed_record_count DESC, records_with_timestamp DESC", log);
-        exportQuery(db, exportDir / "ios_identity_activity_linkage.csv", "SELECT * FROM vw_ios_identity_activity_linkage ORDER BY activity_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_entity_rollup.csv", "SELECT * FROM vw_ios_identity_entity_rollup ORDER BY activity_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_thread_activity_matrix.csv", "SELECT * FROM vw_ios_identity_thread_activity_matrix ORDER BY linked_activity_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_graph_summary.csv", "SELECT * FROM vw_ios_identity_graph_summary ORDER BY edge_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_graph_edges.csv", "SELECT * FROM vw_ios_identity_graph_edges ORDER BY linked_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_activity_timeline.csv", "SELECT * FROM vw_ios_identity_activity_timeline ORDER BY record_timestamp_utc DESC, identity_key LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_identity_activity_detail_sample.csv", "SELECT * FROM vw_ios_identity_activity_detail_sample ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC LIMIT 25000", log);
-        exportQuery(db, exportDir / "ios_url_frequency.csv", "SELECT * FROM vw_ios_url_frequency ORDER BY related_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        exportQuery(db, exportDir / "ios_attachment_reference_frequency.csv", "SELECT * FROM vw_ios_attachment_reference_frequency ORDER BY related_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
-        if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_communication_candidates.csv", "SELECT * FROM vw_ios_spotlight_communication_candidates ORDER BY communication_candidate_type, raw_kv_id", log);
-        if (supportDataExport) exportQuery(db, exportDir / "ios_contact_identity_records.csv", "SELECT * FROM vw_ios_contact_identity_records ORDER BY contact_identity_type, database_name, table_name, ios_app_record_id", log);
-        exportQuery(db, exportDir / "ios_contact_identity_summary.csv", "SELECT * FROM vw_ios_contact_identity_summary ORDER BY contact_review_row_count DESC, database_name, table_name", log);
+        exportQuery(db, exportDir / "ios_identity_pivot_frequency.csv", "SELECT * FROM vw_ios_identity_pivot_frequency ORDER BY linked_activity_count DESC, last_seen_utc DESC LIMIT 25000", log);
+        exportQuery(db, exportDir / "ios_communication_candidate_promotion_sample.csv", "SELECT * FROM vw_ios_communication_candidate_promotion ORDER BY record_timestamp_utc DESC, source_surface, source_row_id LIMIT 5000", log);
+        exportQuery(db, exportDir / "ios_spotlight_communication_not_observed_native_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_not_observed_native ORDER BY record_timestamp_utc DESC LIMIT 5000", log);
+        // Identity graph exports: thin/minimal mode must avoid joined views that can materialize
+        // large CoreSpotlight/app-db cross products before returning sample rows. Full/support
+        // profiles keep the richer exports, but exportQuery now has a per-export timeout so a
+        // full investigation continues instead of hanging indefinitely on one expensive view.
+        if (supportDataExport) {
+            exportQuery(db, exportDir / "ios_identity_activity_linkage.csv", "SELECT * FROM vw_ios_identity_activity_linkage ORDER BY activity_record_count DESC, last_seen_utc DESC LIMIT 25000", log);
+            exportQuery(db, exportDir / "ios_identity_entity_rollup.csv", "SELECT * FROM vw_ios_identity_entity_rollup ORDER BY activity_record_count DESC, last_seen_utc DESC LIMIT 25000", log);
+            exportQuery(db, exportDir / "ios_identity_thread_activity_matrix.csv", "SELECT * FROM vw_ios_identity_thread_activity_matrix ORDER BY linked_activity_count DESC, last_seen_utc DESC LIMIT 25000", log);
+            exportQuery(db, exportDir / "ios_identity_graph_summary.csv", "SELECT * FROM vw_ios_identity_graph_summary ORDER BY edge_count DESC, last_seen_utc DESC LIMIT 25000", log);
+            exportQuery(db, exportDir / "ios_identity_graph_edges.csv", "SELECT * FROM vw_ios_identity_graph_edges ORDER BY linked_record_count DESC, last_seen_utc DESC LIMIT 50000", log);
+            exportQuery(db, exportDir / "ios_identity_activity_timeline.csv", "SELECT * FROM vw_ios_identity_activity_timeline ORDER BY record_timestamp_utc DESC, identity_key LIMIT 50000", log);
+            exportQuery(db, exportDir / "ios_identity_activity_detail_sample.csv", "SELECT * FROM vw_ios_identity_activity_detail_sample ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC LIMIT 5000", log);
+            exportQuery(db, exportDir / "ios_identity_all_activity_links.csv", "SELECT * FROM vw_ios_identity_all_activity_links ORDER BY record_timestamp_utc DESC, identity_or_link_value LIMIT 50000", log);
+        } else {
+            exportQuery(db, exportDir / "ios_identity_thin_export_notice.csv", R"SQL(
+SELECT 'THIN_IDENTITY_EXPORT_POLICY' AS policy_name,
+       'Thin/minimal profile exports only direct base-table identity summaries and bounded base-table samples. Full joined identity graph views are available with -FullDiagnostics/support/full profiles and are protected by per-export timeout guards.' AS policy_detail
+)SQL", log);
+            exportQuery(db, exportDir / "ios_identity_lightweight_summary.csv", R"SQL(
+WITH base AS (
+  SELECT database_category, app_hint, record_category,
+         CASE
+           WHEN COALESCE(contact_or_participant,'')<>'' THEN 'contact_or_participant'
+           WHEN COALESCE(url,'')<>'' THEN 'url'
+           WHEN COALESCE(item_identifier,'')<>'' THEN 'item_identifier'
+           WHEN COALESCE(file_path,'')<>'' THEN 'file_path'
+           ELSE 'other'
+         END AS identity_hint_kind,
+         CASE
+           WHEN COALESCE(contact_or_participant,'')<>'' THEN substr(contact_or_participant,1,250)
+           WHEN COALESCE(url,'')<>'' THEN substr(url,1,250)
+           WHEN COALESCE(item_identifier,'')<>'' THEN substr(item_identifier,1,250)
+           WHEN COALESCE(file_path,'')<>'' THEN substr(file_path,1,250)
+           ELSE ''
+         END AS identity_hint,
+         record_timestamp_utc
+  FROM ios_app_parsed_records
+  WHERE COALESCE(contact_or_participant,'')<>'' OR COALESCE(url,'')<>'' OR COALESCE(item_identifier,'')<>'' OR COALESCE(file_path,'')<>''
+)
+SELECT identity_hint_kind,
+       identity_hint,
+       COUNT(*) AS activity_record_count,
+       MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT app_hint) AS app_hints,
+       GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+       'Thin-mode direct summary from ios_app_parsed_records; avoids joined identity graph views.' AS interpretation_note
+FROM base
+WHERE COALESCE(identity_hint,'')<>''
+GROUP BY identity_hint_kind, identity_hint
+ORDER BY activity_record_count DESC, last_seen_utc DESC
+LIMIT 25000
+)SQL", log);
+            exportQuery(db, exportDir / "ios_identity_activity_timeline_sample.csv", R"SQL(
+SELECT ios_app_record_id,
+       database_category,
+       app_hint,
+       database_name,
+       table_name,
+       record_category,
+       record_timestamp_utc,
+       COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(file_path,''), '') AS identity_or_link_value,
+       title,
+       url,
+       file_path,
+       substr(text_snippet,1,1000) AS text_snippet_sample,
+       parse_status,
+       provenance,
+       'Thin-mode base-table identity activity sample; full joined graph timeline is FullDiagnostics/support-only.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(contact_or_participant,'')<>'' OR COALESCE(item_identifier,'')<>'' OR COALESCE(url,'')<>'' OR COALESCE(file_path,'')<>'' OR provenance LIKE '%IDENTITY%'
+ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
+LIMIT 5000
+)SQL", log);
+        }
         if (supportDataExport) exportQuery(db, exportDir / "ios_web_history_review_records.csv", "SELECT * FROM vw_ios_web_history_review_records ORDER BY record_timestamp_utc DESC, database_name, table_name, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_web_history_review_summary.csv", "SELECT * FROM vw_ios_web_history_review_summary ORDER BY web_review_row_count DESC, database_name, table_name", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_calendar_review_records.csv", "SELECT * FROM vw_ios_calendar_review_records ORDER BY record_timestamp_utc DESC, database_name, table_name, ios_app_record_id", log);
@@ -2354,17 +2425,26 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
     appendExportRunStatus(file, 91, "export_query_prepare", file.filename().string());
     struct ExportProgressContext {
         fs::path file;
+        std::chrono::steady_clock::time_point started;
         std::chrono::steady_clock::time_point last;
         long long ticks = 0;
         const std::atomic_bool* cancelToken = nullptr;
-    } progressCtx{file, std::chrono::steady_clock::now(), 0, cancelToken_};
+        int timeoutSeconds = 0;
+        bool timedOut = false;
+    } progressCtx{file, std::chrono::steady_clock::now(), std::chrono::steady_clock::now(), 0, cancelToken_, exportTimeoutSeconds_, false};
     sqlite3_progress_handler(db.raw(), 500000, [](void* ptr) -> int {
         auto* ctx = static_cast<ExportProgressContext*>(ptr);
         ++ctx->ticks;
         const auto now = std::chrono::steady_clock::now();
+        const auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(now - ctx->started).count();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - ctx->last).count() >= 15) {
             ctx->last = now;
-            appendExportRunStatus(ctx->file, 92, "export_query_sql_progress", ctx->file.filename().string() + " sqlite_progress_ticks=" + std::to_string(ctx->ticks));
+            appendExportRunStatus(ctx->file, 92, "export_query_sql_progress", ctx->file.filename().string() + " sqlite_progress_ticks=" + std::to_string(ctx->ticks) + " elapsed_seconds=" + std::to_string(elapsedSeconds));
+        }
+        if (ctx->timeoutSeconds > 0 && elapsedSeconds >= ctx->timeoutSeconds) {
+            ctx->timedOut = true;
+            appendExportRunStatus(ctx->file, 92, "export_query_timeout", ctx->file.filename().string() + " timeout_seconds=" + std::to_string(ctx->timeoutSeconds));
+            return 1;
         }
         if (ctx->cancelToken && ctx->cancelToken->load()) {
             appendExportRunStatus(ctx->file, 92, "export_query_cancel_requested", ctx->file.filename().string());
@@ -2398,6 +2478,7 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
     };
 
     bool exportCancelled = false;
+    bool exportTimedOut = false;
     try {
     while (stmt.stepRow()) {
         if (cancelToken_ && cancelToken_->load()) {
@@ -2437,7 +2518,11 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
         }
     }
     } catch (const std::exception& ex) {
-        if (cancelToken_ && cancelToken_->load()) {
+        if (progressCtx.timedOut) {
+            exportTimedOut = true;
+            appendExportRunStatus(file, 92, "export_query_timed_out", file.filename().string() + " rows=" + std::to_string(totalRows) + " timeout_seconds=" + std::to_string(exportTimeoutSeconds_));
+            log.warn("CSV export timed out and was skipped/truncated so the run can continue: " + pathString(file) + ": " + ex.what());
+        } else if (cancelToken_ && cancelToken_->load()) {
             exportCancelled = true;
             appendExportRunStatus(file, 92, "export_query_cancelled", file.filename().string() + " rows=" + std::to_string(totalRows));
             log.warn("CSV export interrupted after cancellation: " + pathString(file) + ": " + ex.what());
@@ -2458,8 +2543,16 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
     std::ofstream mf(ioPath(manifest), std::ios::binary);
     mf << "file_name,part_index,row_count\n";
     for (const auto& r : manifestRows) mf << r << "\n";
-    log.info(std::string(exportCancelled ? "Export cancelled: " : "Export written: ") + pathString(file) + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
-    appendExportRunStatus(file, exportCancelled ? 93 : 94, exportCancelled ? "export_query_cancelled_complete" : "export_query_complete", file.filename().string() + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
+    if (exportTimedOut) {
+        const fs::path timeoutNote = file.parent_path() / (file.stem().string() + "_TIMEOUT_NOTICE.csv");
+        std::ofstream tn(ioPath(timeoutNote), std::ios::binary);
+        tn << "file_name,status,timeout_seconds,rows_written,note\n";
+        writeCsvFieldFast(tn, file.filename().string().c_str()); tn << ",TIMED_OUT," << exportTimeoutSeconds_ << "," << totalRows << ",";
+        writeCsvFieldFast(tn, "Export exceeded per-export guardrail and was stopped so the investigation run could continue. Use FullDiagnostics/support mode and review query plan/indexing if this full export is required.");
+        tn << "\n";
+    }
+    log.info(std::string(exportTimedOut ? "Export timed out: " : (exportCancelled ? "Export cancelled: " : "Export written: ")) + pathString(file) + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
+    appendExportRunStatus(file, (exportCancelled || exportTimedOut) ? 93 : 94, exportTimedOut ? "export_query_timeout_complete" : (exportCancelled ? "export_query_cancelled_complete" : "export_query_complete"), file.filename().string() + " rows=" + std::to_string(totalRows) + (multipleParts ? " chunked=1" : " chunked=0"));
     sqlite3_progress_handler(db.raw(), 0, nullptr, nullptr);
 }
 

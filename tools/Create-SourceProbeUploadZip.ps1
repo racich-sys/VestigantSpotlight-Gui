@@ -149,6 +149,8 @@ $Wanted = @(
     "last_stage.txt",
     "last_progress.tsv",
     "run_progress.tsv",
+    "thin_performance_summary.csv",
+    "THIN_PERFORMANCE_SUMMARY.md",
     "VestigantSpotlight.log",
     "case_path_manifest.txt",
     "wrapper_case_path_manifest.txt",

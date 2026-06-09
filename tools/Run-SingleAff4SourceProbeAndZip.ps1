@@ -436,6 +436,13 @@ if ($exitCode -ne 0 -and !$ProbeTimedOut) {
     throw "Vestigant source-probe failed with exit code $exitCode. Partial diagnostics were attempted; review case output folder: $Out"
 }
 
+try {
+    $perfScript = Join-Path $PSScriptRoot "Generate-ThinPerformanceSummary.ps1"
+    if (Test-Path -LiteralPath $perfScript) { & $perfScript -CaseRoot $Out -SlowExportSeconds 30 }
+} catch {
+    Write-Warning "Unable to generate thin performance summary: $($_.Exception.Message)"
+}
+
 Write-PathManifest -Stage "post-run"
 
 $logPath = Resolve-CaseFile -RelativeName "VestigantSpotlight.log"

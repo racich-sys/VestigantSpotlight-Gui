@@ -1,4 +1,4 @@
-## V1_6_0
+## V1_6_3
 
 - Documentation/context bootstrap release.
 - Added root-level `ai_context.md` as the living source-of-truth context file for future sessions.
@@ -207,9 +207,9 @@ TEST SCOPE DECISION
 ## V1_1_6_1
 
 - Build hotfix for V1.1.6 after the direct-map probe worker split.
-- Corrected V1.1.6.1 build-wrapper version check.
+- Corrected V1.1.6.3 build-wrapper version check.
 - Added missing Windows-only `wideProcessPath(...)` helper to `src/parsers/aff4_probe_worker.cpp`.
-- Windows/MSVC build and macOS AFF4/APFS thin output were later reviewed as passing; V1.1.6.1 became the current stable baseline before V1.1.7 work.
+- Windows/MSVC build and macOS AFF4/APFS thin output were later reviewed as passing; V1.1.6.3 became the current stable baseline before V1.1.7 work.
 
 ## V1_1_6
 

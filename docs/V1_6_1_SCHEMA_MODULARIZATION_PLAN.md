@@ -1,8 +1,8 @@
-# V1.6.0 Schema Modularization Plan
+# V1.6.3.1 Schema Modularization Plan
 
 Purpose: prevent recurring MSVC C2026, SQL/view mismatches, and fragile monolithic schema edits.
 
-Immediate V1.6.0 action: release checks keep raw string literals below the configured threshold and V1.6 identity graph SQL is split into small statements.
+Immediate V1.6.3.1 action: release checks keep raw string literals below the configured threshold and V1.6 identity graph SQL is split into small statements.
 
 Next structural target:
 

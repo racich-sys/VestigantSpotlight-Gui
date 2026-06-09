@@ -4,9 +4,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $limit = 5000
 $failures = @()
-Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'src') -Recurse -Include *.cpp,*.h,*.hpp | ForEach-Object {
+$sourcePath = Join-Path $SourceRoot 'src'
+Get-ChildItem -LiteralPath $sourcePath -Recurse -File | Where-Object { $_.Extension -in @('.cpp','.h','.hpp') } | ForEach-Object {
   $path = $_.FullName
-  $text = Get-Content -LiteralPath $path -Raw
+  try {
+    $text = Get-Content -LiteralPath $path -Raw
+  } catch {
+    $failures += "${path}: unable to read file for raw-string check: $($_.Exception.Message)"
+    return
+  }
   $matches = [regex]::Matches($text, 'R"(?<delim>[A-Za-z0-9_]{0,16})\((?<body>[\s\S]*?)\)\k<delim>"')
   foreach ($m in $matches) {
     $len = $m.Groups['body'].Value.Length

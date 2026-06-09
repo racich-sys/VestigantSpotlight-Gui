@@ -168,6 +168,13 @@ $cliExit = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $cliArgs
 $global:LASTEXITCODE = $cliExit
 if ($cliExit -ne 0) { Write-Warning "iOS CLI exited with code $cliExit; upload bundle will still be attempted for diagnostics." }
 
+try {
+  $perfScript = Join-Path $ScriptRoot "Generate-ThinPerformanceSummary.ps1"
+  if (Test-Path -LiteralPath $perfScript) { & $perfScript -CaseRoot $Out -SlowExportSeconds 30 }
+} catch {
+  Write-Warning "Unable to generate thin performance summary: $($_.Exception.Message)"
+}
+
 & $UploadScript `
   -CaseRoot $Out `
   -ZipPath $ZipPath `

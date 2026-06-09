@@ -42,24 +42,24 @@ powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts
 - `Upload_Thin_MacOS_AFF4_V1_3_3.zip`
 - iOS thin output if iOS communication-frequency validation is run.
 
-## V1.6.0 Update
+## V1.6.3.1 Update
 - Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
 - Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
-- Local validation: Linux CMake build PASS; CLI version reports v1.6.0; self-test PASS.
-- Next required upload: V1.6.0 Windows build log and iOS thin output.
+- Local validation: Linux CMake build PASS; CLI version reports v1.6.3.1; self-test PASS.
+- Next required upload: V1.6.3.1 Windows build log and iOS thin output.
 
-## V1.6.0 handoff
+## V1.6.3.1 handoff
 
-Use V1.6.0 after V1.3.6 iOS thin failed with `database or disk is full` during `ios_ffs_inventory_csv_stream_import`. The corrected standard iOS thin path uses slim FFS lookup unless explicit full/support materialization is requested.
+Use V1.6.3.1 after V1.3.6 iOS thin failed with `database or disk is full` during `ios_ffs_inventory_csv_stream_import`. The corrected standard iOS thin path uses slim FFS lookup unless explicit full/support materialization is requested.
 
 
-## V1.6.0 requested-fixes verification
+## V1.6.3.1 requested-fixes verification
 
 - Verified and retained the requested GUI database pool deadlock fix, APFS guided traversal cycle detection, iOS bplist string extraction, Notes/Location routing, and widened table-column catchers.
-- Added `tools/Verify-V1_6_0-RequestedFixes.ps1` for repeatable source-presence validation.
+- Added `tools/Verify-V1_6_3-RequestedFixes.ps1` for repeatable source-presence validation.
 - Standard iOS thin should be run; AFF4/APFS thin is not required unless APFS cycle-guard behavior is specifically tested.
 
-## V1.6.0 ai_context.md bootstrap
+## V1.6.3.1 ai_context.md bootstrap
 
 - Added root `ai_context.md` as the living project context file.
 - Future source packages must carry forward and update `ai_context.md` with current state, roadmap, known bugs, and graveyard items.
