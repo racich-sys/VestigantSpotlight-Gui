@@ -1,8 +1,8 @@
-# V1.4.2 iOS Existence and Frequency Milestone
+# V1.6.0 iOS Existence and Frequency Milestone
 
 ## Scope
 
-V1.4.2 advances the iOS investigation layer from extraction/completion toward existence and frequency review. It uses V1.3.7 as the validated base and keeps the V1.3.7 stability fixes.
+V1.6.0 advances the iOS investigation layer from extraction/completion toward existence and frequency review. It uses V1.3.7 as the validated base and keeps the V1.3.7 stability fixes.
 
 ## Implemented
 

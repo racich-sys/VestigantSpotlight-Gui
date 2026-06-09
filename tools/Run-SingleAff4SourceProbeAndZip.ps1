@@ -22,6 +22,111 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Format-SizeMB {
+    param([double]$Bytes)
+    if ($Bytes -le 0) { return "0.0" }
+    return ("{0:N1}" -f ($Bytes / 1MB))
+}
+
+function Get-FolderSizeBytesSafe {
+    param([string]$PathValue)
+    try {
+        if ([string]::IsNullOrWhiteSpace($PathValue) -or !(Test-Path -LiteralPath $PathValue)) { return 0 }
+        $sum = 0L
+        Get-ChildItem -LiteralPath $PathValue -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $sum += [int64]$_.Length }
+        return $sum
+    } catch { return 0 }
+}
+
+function Get-LastMeaningfulLinesSafe {
+    param([string]$CaseRoot, [int]$Count = 5)
+    $candidates = @(
+        (Join-Path $CaseRoot "run_progress.tsv"),
+        (Join-Path (Join-Path $CaseRoot "logs") "run_progress.tsv"),
+        (Join-Path $CaseRoot "run_status.txt"),
+        (Join-Path (Join-Path $CaseRoot "logs") "run_status.txt")
+    )
+    foreach ($candidate in $candidates) {
+        try {
+            if (Test-Path -LiteralPath $candidate) { return @(Get-Content -LiteralPath $candidate -Tail $Count -ErrorAction SilentlyContinue) }
+        } catch {}
+    }
+    return @()
+}
+
+
+function ConvertTo-ProcessArgumentString {
+    param([Parameter(Mandatory=$true)][string[]]$ArgumentList)
+    $quoted = New-Object System.Collections.Generic.List[string]
+    foreach ($arg in $ArgumentList) {
+        if ($null -eq $arg) {
+            [void]$quoted.Add('""')
+        } elseif ($arg -notmatch '[\s"]') {
+            [void]$quoted.Add($arg)
+        } else {
+            [void]$quoted.Add('"' + ($arg -replace '"', '\\"') + '"')
+        }
+    }
+    return ($quoted -join " ")
+}
+
+function Start-ProcessWithTriageHeartbeat {
+    param(
+        [Parameter(Mandatory=$true)][string]$ExePath,
+        [Parameter(Mandatory=$true)][string[]]$ArgumentList,
+        [Parameter(Mandatory=$true)][string]$CaseRoot,
+        [int]$IntervalSeconds = 60,
+        [int]$TimeoutMinutes = 0
+    )
+    $heartbeatPath = Join-Path (Join-Path $CaseRoot "logs") "wrapper_heartbeat.log"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $heartbeatPath) | Out-Null
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $ExePath
+    $psi.Arguments = ConvertTo-ProcessArgumentString -ArgumentList $ArgumentList
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $false
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    if (!$proc.Start()) { throw "Unable to start process: $ExePath" }
+    $started = Get-Date
+    while (!$proc.HasExited) {
+        Start-Sleep -Seconds ([Math]::Max(5,$IntervalSeconds))
+        try { $proc.Refresh() } catch {}
+        $now = Get-Date
+        $elapsed = New-TimeSpan -Start $started -End $now
+        $caseDb = Join-Path $CaseRoot "VestigantSpotlight.case.sqlite"
+        $dbMb = 0.0
+        try { if (Test-Path -LiteralPath $caseDb) { $dbMb = (Get-Item -LiteralPath $caseDb).Length / 1MB } } catch {}
+        $outMb = (Get-FolderSizeBytesSafe -PathValue $CaseRoot) / 1MB
+        $cpu = 0.0
+        $ws = 0.0
+        try { $cpu = $proc.TotalProcessorTime.TotalSeconds; $ws = $proc.WorkingSet64 / 1MB } catch {}
+        $stamp = $now.ToString('HH:mm:ss')
+        $line = ("{0} - Heartbeat: process_id={1} cpu_seconds={2:N1} working_set_mb={3:N1} case_db_mb={4:N1} output_mb={5:N1} elapsed={6}" -f $stamp,$proc.Id,$cpu,$ws,$dbMb,$outMb,$elapsed.ToString('hh\:mm\:ss'))
+        Write-Host $line
+        Add-Content -LiteralPath $heartbeatPath -Value $line -Encoding UTF8
+        $status = "{0} - HeartbeatStatus: status=running" -f $stamp
+        Write-Host $status
+        Add-Content -LiteralPath $heartbeatPath -Value $status -Encoding UTF8
+        $tail = Get-LastMeaningfulLinesSafe -CaseRoot $CaseRoot -Count 5
+        foreach ($t in $tail) {
+            $tailLine = "{0} - HeartbeatTail: {1}" -f $stamp, $t
+            Write-Host $tailLine
+            Add-Content -LiteralPath $heartbeatPath -Value $tailLine -Encoding UTF8
+        }
+        if ($TimeoutMinutes -gt 0 -and $elapsed.TotalMinutes -ge $TimeoutMinutes) {
+            $timeoutLine = "{0} - HeartbeatStatus: timeout_minutes={1}; stopping process" -f $stamp,$TimeoutMinutes
+            Write-Warning $timeoutLine
+            Add-Content -LiteralPath $heartbeatPath -Value $timeoutLine -Encoding UTF8
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+            return 124
+        }
+    }
+    try { $proc.WaitForExit() } catch {}
+    return $proc.ExitCode
+}
+
+
 function Assert-NoWildcardPath {
     param(
         [Parameter(Mandatory=$true)][string]$PathValue,
@@ -296,26 +401,13 @@ if ($EnableAff4DynamicProbe -or $EnableAff4VirtualApfsProbe) { $args += "--enabl
 if ($EnableAff4StreamInventory) { $args += "--enable-aff4-stream-inventory" }
 
 $ProbeTimedOut = $false
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $Cli
-$psi.Arguments = ConvertTo-ProcessArgumentString -ArgumentList $args
-$psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
-$proc = New-Object System.Diagnostics.Process
-$proc.StartInfo = $psi
-if (!$proc.Start()) {
-    throw "Unable to start Vestigant source-probe process: $Cli"
-}
-if (!$proc.WaitForExit([Math]::Max(1, $CliTimeoutMinutes) * 60 * 1000)) {
+$exitCode = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $args -CaseRoot $Out -IntervalSeconds 60 -TimeoutMinutes $CliTimeoutMinutes
+if ($exitCode -eq 124) {
     $ProbeTimedOut = $true
-    try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
     $timeoutMessage = "Vestigant source-probe exceeded timeout of $CliTimeoutMinutes minute(s) and was stopped. Partial diagnostics will be packaged when available."
     Write-Warning $timeoutMessage
     Add-Content -LiteralPath (Join-Path $Out "run_status.txt") -Value "$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')) stage=wrapper_timeout message=$timeoutMessage"
     Add-Content -LiteralPath (Join-Path $Out "run_progress.tsv") -Value "$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))`t-1`twrapper_timeout`t$timeoutMessage"
-    $exitCode = 124
-} else {
-    $exitCode = $proc.ExitCode
 }
 if ($exitCode -ne 0 -and !$ProbeTimedOut) {
     Write-PathManifest -Stage "failed-run"

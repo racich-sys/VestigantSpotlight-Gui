@@ -2694,7 +2694,7 @@ function New-ZipEntryObject([string]$fullName,[string]$sizeValue,[string]$modifi
   }
   [pscustomobject]@{ FullName = $fullName; Name = $leaf; Length = $len; ModifiedUtc = $mtime }
 }
-# V0.9.42: The old 7z pipeline/Regex inventory parser was removed. The active 7z inventory path dumps -slt output to raw text and parses the file line-by-line without an external process pipeline.
+)PS" R"PS(# V0.9.42: The old 7z pipeline/Regex inventory parser was removed. The active 7z inventory path dumps -slt output to raw text and parses the file line-by-line without an external process pipeline.
 function Get-ZipEntriesViaDotNet {
   $entries = New-Object System.Collections.ArrayList
   Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -2805,7 +2805,7 @@ function Write-FfsZipInventoryFromSevenZipStreaming([string]$SevenZipPath, [Syst
   Write-ZipInventoryProgress 'ffs_inventory_7z_dump_complete' 0 ("exit=" + $sevenZipExit + " raw=" + $rawListing)
   if ($sevenZipExit -ne 0 -and -not (Test-Path -LiteralPath $rawListing)) { throw "7z inventory listing failed exit=$sevenZipExit" }
   try { $ffsWriter.Flush(); $dbWriter.Flush() } catch {}
-  Write-ZipInventoryProgress 'ffs_inventory_raw_ready_for_cpp' 0 ("raw=" + $rawListing)
+)PS" R"PS(  Write-ZipInventoryProgress 'ffs_inventory_raw_ready_for_cpp' 0 ("raw=" + $rawListing)
   Write-ZipStageHeartbeat ("7z ZIP entry inventory raw listing ready for native C++ parser: " + $rawListing)
   "ios_ffs_inventory_raw_slt=$rawListing" | Write-Output
   "ios_ffs_inventory_file_rows=0" | Write-Output

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <set>
@@ -121,6 +122,17 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
         addProv("INTENT_TARGET_HINT_PRESENT=True");
         if (out.contact.empty()) out.contact = "Extracted_Intent_Target: " + firstMetadataWindow(combined, {"personHandle", "emailAddress", "name"}, 96);
     }
+    if (out.contact.empty()) {
+        std::string hardMatch;
+        const std::size_t telPos = lower.find("tel:");
+        if (telPos != std::string::npos) hardMatch += "Phone: " + printableWindow(combined, telPos + 4U, 32) + " ";
+        const std::size_t mailPos = lower.find("mailto:");
+        if (mailPos != std::string::npos) hardMatch += "Email: " + printableWindow(combined, mailPos + 7U, 80) + " ";
+        if (!hardMatch.empty()) {
+            out.contact = trim(hardMatch);
+            addProv("IDENTITY_REGEX_RECOVERY=True");
+        }
+    }
     return out;
 }
 
@@ -148,6 +160,142 @@ std::string ripBplistStrings(const std::string& raw) {
         out += cur;
     }
     return appended == 0 ? std::string("[BPLIST detected; no printable string run >=4 bytes]") : out;
+}
+
+
+std::string jsonEscapeLocal(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() + 8);
+    for (unsigned char c : value) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c >= 0x20 && c < 0x7f) out.push_back(static_cast<char>(c));
+                else out += ' ';
+                break;
+        }
+    }
+    return out;
+}
+
+std::uint64_t readBplistUintBe(const std::string& raw, std::size_t pos, std::size_t width) {
+    if (width == 0 || width > 8 || pos + width > raw.size()) return 0;
+    std::uint64_t v = 0;
+    for (std::size_t i = 0; i < width; ++i) v = (v << 8U) | static_cast<unsigned char>(raw[pos + i]);
+    return v;
+}
+
+std::uint64_t readBplistUintBe(const std::vector<unsigned char>& raw, std::size_t pos, std::size_t width) {
+    if (width == 0 || width > 8 || pos + width > raw.size()) return 0;
+    std::uint64_t v = 0;
+    for (std::size_t i = 0; i < width; ++i) v = (v << 8U) | raw[pos + i];
+    return v;
+}
+
+std::uint64_t readBplistObjectCount(const std::vector<unsigned char>& bplist, std::size_t& cursor, std::uint8_t lowNibble) {
+    if (lowNibble < 0x0fU) return lowNibble;
+    if (cursor >= bplist.size()) return 0;
+    const std::uint8_t marker = bplist[cursor++];
+    if ((marker & 0xf0U) != 0x10U) return 0;
+    const std::size_t intBytes = static_cast<std::size_t>(1U) << (marker & 0x0fU);
+    const std::uint64_t count = readBplistUintBe(bplist, cursor, intBytes);
+    cursor += intBytes;
+    return count;
+}
+
+std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint64_t>& objOffsets, const std::vector<unsigned char>& bplist, std::size_t objectRefSize) {
+    if (depth > 16) return "\"<recursion_limit>\"";
+    if (uid >= objOffsets.size()) return "\"<invalid_uid>\"";
+    const std::uint64_t objOffset64 = objOffsets[static_cast<std::size_t>(uid)];
+    if (objOffset64 >= bplist.size()) return "\"<invalid_offset>\"";
+    const std::size_t objOffset = static_cast<std::size_t>(objOffset64);
+    const std::uint8_t marker = bplist[objOffset];
+    const std::uint8_t hi = marker & 0xf0U;
+    const std::uint8_t lo = marker & 0x0fU;
+    if (marker == 0x00U) return "null";
+    if (marker == 0x08U) return "false";
+    if (marker == 0x09U) return "true";
+    if (hi == 0x10U) {
+        const std::size_t intBytes = static_cast<std::size_t>(1U) << lo;
+        return std::to_string(readBplistUintBe(bplist, objOffset + 1, intBytes));
+    }
+    if (hi == 0x50U || hi == 0x60U) {
+        std::size_t cursor = objOffset + 1;
+        const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        std::string text;
+        if (hi == 0x50U) {
+            for (std::uint64_t i = 0; i < count && cursor + i < bplist.size() && text.size() < 4096; ++i) {
+                const unsigned char c = bplist[cursor + static_cast<std::size_t>(i)];
+                text.push_back((c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : ' ');
+            }
+        } else {
+            for (std::uint64_t i = 0; i < count && cursor + (static_cast<std::size_t>(i) * 2U) + 1U < bplist.size() && text.size() < 4096; ++i) {
+                const std::uint16_t c = static_cast<std::uint16_t>(readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * 2U, 2));
+                text.push_back((c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : ' ');
+            }
+        }
+        return "\"" + jsonEscapeLocal(trim(text)) + "\"";
+    }
+    if (hi == 0xa0U) {
+        std::size_t cursor = objOffset + 1;
+        const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        std::string json = "[";
+        for (std::uint64_t i = 0; i < count && i < 256; ++i) {
+            const std::uint64_t childUid = readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
+            if (i > 0) json += ", ";
+            json += resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize);
+        }
+        return json + "]";
+    }
+    if (hi == 0xd0U) {
+        std::size_t cursor = objOffset + 1;
+        const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        const std::size_t keyBase = cursor;
+        const std::size_t valBase = keyBase + static_cast<std::size_t>(count) * objectRefSize;
+        std::string json = "{";
+        for (std::uint64_t i = 0; i < count && i < 256; ++i) {
+            const std::uint64_t keyUid = readBplistUintBe(bplist, keyBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
+            const std::uint64_t valUid = readBplistUintBe(bplist, valBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
+            if (i > 0) json += ", ";
+            json += resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize) + ": " + resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize);
+        }
+        return json + "}";
+    }
+    if (hi == 0x80U) {
+        return "\"<uid:" + std::to_string(readBplistUintBe(bplist, objOffset + 1, static_cast<std::size_t>(lo) + 1U)) + ">\"";
+    }
+    return "\"<unparsed_bplist_type_0x" + std::to_string(marker) + ">\"";
+}
+
+std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint64_t>& objOffsets, const std::vector<unsigned char>& bplist) {
+    return resolveUid(uid, depth, objOffsets, bplist, 1);
+}
+
+std::string unflattenNSKeyedArchiverOrBplist(const std::string& raw) {
+    if (raw.size() < 40 || raw.rfind("bplist", 0) != 0) return raw;
+    const std::size_t trailer = raw.size() - 32U;
+    const std::size_t offsetIntSize = static_cast<unsigned char>(raw[trailer + 6U]);
+    const std::size_t objectRefSize = static_cast<unsigned char>(raw[trailer + 7U]);
+    const std::uint64_t numObjects = readBplistUintBe(raw, trailer + 8U, 8);
+    const std::uint64_t topObject = readBplistUintBe(raw, trailer + 16U, 8);
+    const std::uint64_t offsetTableOffset = readBplistUintBe(raw, trailer + 24U, 8);
+    if (offsetIntSize == 0 || offsetIntSize > 8 || objectRefSize == 0 || objectRefSize > 8 || numObjects == 0 || numObjects > 100000 || offsetTableOffset >= raw.size()) return ripBplistStrings(raw);
+    std::vector<std::uint64_t> offsets;
+    offsets.reserve(static_cast<std::size_t>(numObjects));
+    for (std::uint64_t i = 0; i < numObjects; ++i) {
+        const std::uint64_t off = readBplistUintBe(raw, static_cast<std::size_t>(offsetTableOffset) + static_cast<std::size_t>(i) * offsetIntSize, offsetIntSize);
+        if (off >= raw.size()) return ripBplistStrings(raw);
+        offsets.push_back(off);
+    }
+    std::vector<unsigned char> bytes(raw.begin(), raw.end());
+    std::string resolved = resolveUid(topObject, 0, offsets, bytes, objectRefSize);
+    if (resolved.empty() || resolved.find("<unparsed") != std::string::npos) return ripBplistStrings(raw);
+    if (resolved.size() > 12000) resolved.resize(12000);
+    return "[Decoded BPLIST Top Object]: " + resolved;
 }
 
 std::string sqlIdentLocal(const std::string& name) {
@@ -1010,7 +1158,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         std::string genericFilePath = columnValue(st, pathCol, 1000);
         std::string genericText = columnValue(st, textCol, 50000);
         if (genericText.size() >= 6 && genericText.rfind("bplist", 0) == 0) {
-            genericText = ripBplistStrings(genericText);
+            genericText = unflattenNSKeyedArchiverOrBplist(genericText);
         }
         if (genericText.size() > 2000) genericText.resize(2000);
         std::string genericProvenance = "read_only_sqlite_dynamic_schema table=" + table;

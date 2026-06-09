@@ -1,4 +1,4 @@
-# V1.4.2 Requested Fixes Verification
+# V1.6.0 Requested Fixes Verification
 
 This release explicitly verifies the five requested V1.3.x stability and iOS extraction changes against the active source tree.
 
@@ -26,7 +26,7 @@ This release explicitly verifies the five requested V1.3.x stability and iOS ext
 
 ## Thin-profile safeguard retained
 
-V1.4.2 also retains the V1.3.6.1 iOS thin safeguard: standard iOS thin mode should not materialize the full 2.2M-row FFS inventory unless full/support diagnostics are explicitly requested.
+V1.6.0 also retains the V1.3.6.1 iOS thin safeguard: standard iOS thin mode should not materialize the full 2.2M-row FFS inventory unless full/support diagnostics are explicitly requested.
 
 ## Validation commands
 

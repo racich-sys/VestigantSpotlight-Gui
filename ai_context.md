@@ -1,6 +1,43 @@
 # ai_context.md
 
 ## Project Overview
+Vestigant Spotlight is a Windows C++ forensic parser and investigator GUI for macOS Spotlight Store-V2 and iOS CoreSpotlight/app database evidence, with AFF4/APFS and iOS FFS ZIP workflows. The project focus is now shifting from extraction stability to identity-centric communication, frequency, timeline, and usage attribution.
+
+## Tech Stack
+- C++17, CMake, MSVC on Windows 10/11 x64.
+- Win32 GUI, SQLite, PowerShell 5.1-compatible build/test wrappers.
+- Primary validation artifacts are Windows build logs plus iOS/AFF4 thin upload bundles.
+
+## Current State
+- Current version: V1.6.0.
+- V1.5.0.2 iOS thin completed successfully with stable extraction, timeline promotion, usage evidence promotion, and export pipeline.
+- V1.6.0 adds identity graph views/exports that link identity hints to threads, records, URLs, apps, record categories, and dated activity.
+- Keychain material and protected-data candidate inventory exists as presence/correlation only; no decryption claims are made.
+
+## Next Steps / Active Goal
+Transform extracted iOS Spotlight/AppDB evidence into identity-centric investigative views: who/what identifier, what activity, which app, which thread/reference, first/last seen, and frequency. Continue modularizing schema/view code to avoid MSVC raw string failures and late export/view mismatches.
+
+## Roadmap / Implemented History
+- V1.4.x: iOS timeline and usage evidence promotion began working at scale.
+- V1.5.0.2: stabilized identity rollup/thread activity matrix exports and release checks.
+- V1.6.0: added identity graph summary, identity graph edges, and identity activity timeline views/exports. Added schema modularization plan and maintained raw string/version/wrapper release checks.
+
+## Known Bugs
+- `case_db.cpp` still contains too many schema/view definitions and should be modularized into `src/db/schema/*` modules.
+- Identity graph output is correlation evidence and still requires investigator review before attribution.
+
+## The "Do Not Do" List (Graveyard)
+- Do not add large monolithic SQL/raw-string blocks to `case_db.cpp`; this repeatedly caused MSVC C2026. Split SQL and modularize schema files.
+- Do not provide a release ZIP until version consistency, raw-string-size, wrapper compatibility, and exported-view query checks pass.
+- Do not label missing native DB records as deleted/destroyed without corroboration. Use cautious wording such as "present in CoreSpotlight; not observed in parsed native database set."
+- Do not rely on static logs alone for heartbeat; thin wrappers should report process CPU/RAM, DB/output growth, and last progress tail.
+
+
+---
+
+## Prior Context History
+
+## Project Overview
 Vestigant Spotlight / Spotlight2 is a Windows-first C++ forensic analysis application for extracting, parsing, staging, and reviewing macOS Spotlight Store-V2 and iOS CoreSpotlight/app-database evidence. The project prioritizes defensible provenance, investigator-facing SQLite/CSV/GUI review surfaces, and cautious interpretation rather than unsupported intent conclusions.
 
 ## Tech Stack
@@ -14,16 +51,18 @@ Vestigant Spotlight / Spotlight2 is a Windows-first C++ forensic analysis applic
 - Compression/codec support: Apple/lzfse optional integration path for LZFSE/LZVN; guarded decompression-size limits.
 
 ## Current State
-- Current package: V1.4.2, based on validated V1.4.1/V1.4.0 iOS existence/frequency work plus continued roadmap implementation.
-- Current functional milestone: V1.4.2 strengthens iOS investigator-value generation by re-promoting parsed app-database records after Store-V2 enrichment so timeline_events and usage_evidence are not cleared by the enrichment pass.
-- V1.4.2 also adds URL frequency and attachment/file-reference frequency views/exports, and adjusts the Case tab action-row layout so Build and Cancel buttons do not overlap.
+- Current package: V1.6.0, based on validated V1.4.1/V1.4.0 iOS existence/frequency work plus continued roadmap implementation.
+- Current functional milestone: V1.6.0 strengthens iOS investigator-value generation by re-promoting parsed app-database records after Store-V2 enrichment so timeline_events and usage_evidence are not cleared by the enrichment pass.
+- V1.6.0 also adds URL frequency and attachment/file-reference frequency views/exports, and adjusts the Case tab action-row layout so Build and Cancel buttons do not overlap.
+- V1.6.0: Adds iOS identity-linked activity views/exports to connect phone/email/account/thread/user identity hints with parsed activities, plus Triage-style wrapper heartbeat logging for iOS and AFF4 thin runs. Thin wrappers must show dynamic process/resource/output growth rather than relying only on static status logs.
+
 - V1.3.7 verified the prior critical stability/parser fixes: GUI SQLite pooled connection without instance-lifetime mutex deadlock, APFS guided lookup cycle detection, embedded bplist string ripping, Notes/Location routing, and widened iOS text/path column catchers.
 - V1.3.6 direct thin runs were reported successful for both iOS and AFF4/APFS; V1.3.6.1 contained a thin-safeguard hotfix but was not used as the tested baseline.
 - iOS thin stability improved after the V1.3.2.x export-stall fixes; minimal/thin mode avoids expensive full diagnostic exports by default.
 - AFF4/APFS can stage coherent Store-V2 groups and parse 25,000 artifacts in thin runs, with external comparison still showing path/exact-copyout gaps.
 
 ## Next Steps / Active Goal
-Validate V1.4.2 on Windows/MSVC and iOS thin. Confirm that iOS timeline_event_count and usage_evidence_count now reflect parsed app-database dated records after enrichment, and review new URL and attachment/file-reference frequency outputs. Whenever a build, thin, full, or targeted validation test is needed, every response/package handoff must include the exact PowerShell command block(s) needed to run that test, including Set-Location, Get-FileHash, Remove-Item, Expand-Archive, build command, and the applicable thin/full test wrapper commands. After validation, continue increasing iOS investigator value by improving communication identity/frequency, timeline/usage promotion, keychain plist intake, NSKeyedArchiver reconstruction depth, and selected app database routes while preserving thin-run performance.
+Validate V1.6.0 on Windows/MSVC and iOS thin. Confirm that iOS timeline_event_count and usage_evidence_count now reflect parsed app-database dated records after enrichment, and review new URL and attachment/file-reference frequency outputs. Whenever a build, thin, full, or targeted validation test is needed, every response/package handoff must include the exact PowerShell command block(s) needed to run that test, including Set-Location, Get-FileHash, Remove-Item, Expand-Archive, build command, and the applicable thin/full test wrapper commands. After validation, continue increasing iOS investigator value by improving communication identity/frequency, timeline/usage promotion, keychain plist intake, NSKeyedArchiver reconstruction depth, and selected app database routes while preserving thin-run performance.
 
 ## A full list of what has been implemented, how and what version the implementation took place in (Roadmap)
 - V0.4.x: Initial Store-V2 preservation, parser scaffolding, SQLite case model, early GUI/review/export structure, and V7 bridge/hydration workflows.
@@ -51,11 +90,11 @@ Validate V1.4.2 on Windows/MSVC and iOS thin. Confirm that iOS timeline_event_co
 - V1.3.7: Verification-focused release confirming the five requested fixes: local-scope ReadOnlyDb locking, APFS cycle guards, ripBplistStrings use, Notes/Location routing, widened catchers.
 - V1.4.0: iOS existence/frequency milestone: communication existence, identity/thread frequency, temporal frequency, source coverage, and promotion of dated parsed app records into timeline_events/usage_evidence.
 - V1.4.1: Added root ai_context.md. Initial package mistakenly left app_info.cpp at 1.4.0; corrected V1.4.1 fixed binary version metadata.
-- V1.4.2: Re-promotes parsed iOS app DB timeline/usage evidence after Store-V2 enrichment, adds URL frequency and attachment/file-reference frequency views/exports, and cleans up Case tab Build/Cancel button layout.
+- V1.6.0: Re-promotes parsed iOS app DB timeline/usage evidence after Store-V2 enrichment, adds URL frequency and attachment/file-reference frequency views/exports, and cleans up Case tab Build/Cancel button layout.
 
 ## Known Bugs
-- V1.4.2 requires Windows/MSVC build and iOS thin validation before it becomes the next validated baseline.
-- Confirm in V1.4.2 thin that timeline_event_count and usage_evidence_count increase above zero after post-enrichment iOS app DB promotion.
+- V1.6.0 requires Windows/MSVC build and iOS thin validation before it becomes the next validated baseline.
+- Confirm in V1.6.0 thin that timeline_event_count and usage_evidence_count increase above zero after post-enrichment iOS app DB promotion.
 - AFF4/APFS path reconstruction remains incomplete: prior thin results had many Vestigant-only files, external-only files, size mismatches, and NO_EXACT_COPYOUT_CANDIDATE rows.
 - APFS exact object/path attribution remains the largest AFF4/APFS correctness gap.
 - Keychain plist intake is partially recognized as material inventory/candidate correlation, but no validated decryption workflow is implemented or claimed.
@@ -65,7 +104,7 @@ Validate V1.4.2 on Windows/MSVC and iOS thin. Confirm that iOS timeline_event_co
 
 ## The "Do Not Do" List (Graveyard)
 
-- V1.4.2 initial package repeated the build-wrapper version-check mismatch: Build-V1_4_2.ps1 still checked 1.4.1 while app_info.cpp reported 1.4.2. Correct fix: before packaging, run/static-check that app_info.cpp, Build-V*.ps1 version regex, script filenames, and package folder name all match the release version. This is release-blocking.
+- Repeated build-wrapper version-check mismatches are release-blocking. V1.6.0 adds pre-package verification and must check that Build-V1_6_0.ps1 expects 1.6.0 while app_info.cpp reports 1.6.0. Correct fix: before packaging, run/static-check that app_info.cpp, Build-V*.ps1 version regex, script filenames, and package folder name all match the release version. This is release-blocking.
 - Do not use generic AFF4 intake for macOS AFF4/APFS thin validation. Use the guarded AFF4/APFS probe wrapper; generic intake can end as failed_unsupported_container while still creating a misleading upload folder.
 - Do not treat a created Upload.zip as success. Check run_status.txt, last_stage.txt, case_summary.json, and complete_success before accepting a thin package.
 - Do not bump wrapper/script checks without also bumping core app version metadata in src/core/app_info.cpp; V1.4.1 initially failed because the script expected 1.4.1 while the binary still reported 1.4.0.
@@ -81,3 +120,70 @@ Validate V1.4.2 on Windows/MSVC and iOS thin. Confirm that iOS timeline_event_co
 - Do not rely on timestamps written after Ctrl+C as proof a long export was progressing normally; buffered/cancellation unwind can write late progress lines.
 - Do not use OCR as a fallback unless absolutely necessary. Prefer native parser/string/bplist extraction for iOS Spotlight/app DB content.
 - Do not share bundled font files or assume local Windows paths are accessible unless uploaded or present in the sandbox.
+
+
+## Release Gate Addendum - MSVC string literal safety
+- Before packaging every version, run `tools/Verify-MsvcStringLiteralRisk.ps1` or equivalent static review to prevent MSVC C2026 (`string too big, trailing characters truncated`).
+- Do not place very large SQL/view definitions in one raw C++ string literal. Split large SQL with `joinSql({ R"SQL(... )SQL", R"SQL(... )SQL" })` or separate `exec(...)` calls.
+- Graveyard: V1.6.0 initially failed in `src/db/case_db.cpp` because newly added iOS identity/frequency SQL enlarged an existing raw literal enough to trigger MSVC C2026. Correct fix: split the SQL raw literal and add a release gate; do not just rerun the build or assume Linux compilation catches it.
+
+
+## V1.6.0 Wrapper Compatibility Hotfix
+
+### Current State
+- V1.6.0 fixes the thin-wrapper heartbeat launcher so it works under Windows PowerShell 5.1/.NET Framework, where `System.Diagnostics.ProcessStartInfo.ArgumentList` can be null/unavailable.
+
+### Known Bugs / Recently Fixed
+- V1.4.3 heartbeat wrappers failed before CLI launch with `You cannot call a method on a null-valued expression` because they attempted `$psi.ArgumentList.Add(...)`.
+
+### The "Do Not Do" List (Graveyard)
+- Do not use `ProcessStartInfo.ArgumentList.Add(...)` in project PowerShell wrappers. It is not safe on the Windows PowerShell version used in this test environment. Use a quoted `$psi.Arguments` string constructed by `ConvertTo-ProcessArgumentString` instead.
+- Before providing any build/thin command, verify wrapper scripts for Windows PowerShell 5.1 compatibility, version consistency, and stale script names.
+
+## V1.6.0 Build-Hygiene Hotfix
+- V1.4.3.2 failed Windows/MSVC build with C2026 in `src/db/case_db.cpp` at a newly enlarged SQL raw string. The secondary `VestigantSpotlightCli.exe not recognized` error occurred only because the compile failed before the executable was produced.
+- Correct fix in V1.6.0: split oversized SQL raw literals below MSVC limits and treat raw-string size checks as release-blocking.
+- Permanent rule: before providing a package or build command, verify app version metadata, build-script regex, wrapper names, package folder/version, PowerShell 5.1 compatibility, and oversized C++ string literals.
+
+## V1.6.0 Update
+
+### Project Overview
+Vestigant Spotlight parses and reviews macOS Spotlight Store-V2 and iOS CoreSpotlight/AppDB evidence for forensic investigation, with a focus on provenance-backed activity, identity, frequency, and timeline review.
+
+### Current State
+V1.4.3.3 validated that iOS extraction, timeline promotion, and usage-evidence promotion are working at scale. V1.6.0 advances from extraction to identity/activity correlation and strengthens release hygiene around modular code and MSVC string-literal safety.
+
+### Next Steps / Active Goal
+Transform extracted Spotlight/AppDB data into identity, communication, frequency, and attribution evidence while keeping schema/view code modular enough to avoid recurring MSVC C2026 build failures.
+
+### Roadmap Additions Implemented in V1.6.0
+- Added `iOS - Identity Entity Rollup` to group phone/email/account/thread/user-like identifiers across apps, categories, timestamps, and source tables.
+- Added `iOS - Identity Thread Activity Matrix` to link identity keys to thread/record/activity keys with app/category provenance.
+- Added corresponding CSV exports for the two V1.5 identity-correlation views.
+- Split large C++ raw SQL literals across source files so release checks can prevent MSVC C2026 oversized string-literal failures.
+- Kept Triage-style heartbeat wrappers and version consistency checks as release-blocking expectations.
+
+### Known Bugs
+- Keychain plist intake is still inventory/correlation only; no decryption workflow is claimed.
+- Some identity keys are fallback keys and require row-level review before attribution.
+- AFF4/APFS path matching remains incomplete for some extracted Store-V2 content.
+
+### The "Do Not Do" List (Graveyard)
+- Do not add new large monolithic SQL blocks to `case_db.cpp`; split schema/view SQL into smaller literals or modular helper files.
+- Do not provide a release ZIP until app version metadata, build-script version checks, wrapper script names, and `ai_context.md` agree.
+- Do not diagnose `VestigantSpotlightCli.exe not recognized` as a path problem when compile failed first; it is secondary.
+- Do not label Spotlight-only communications as deleted/destructed without corroborating evidence; use “present in CoreSpotlight / not observed in parsed native DB set.”
+
+
+## V1.6.0 Hotfix Note
+
+- V1.5.0 iOS thin parsed and exported most outputs but failed during `ios_identity_entity_rollup.csv` because `vw_ios_identity_entity_rollup` referenced `activity_thread_or_record_id` from `vw_ios_identity_activity_linkage`, which is an aggregate view and does not expose that detail-level column.
+- Fix: `vw_ios_identity_entity_rollup` now derives directly from `ios_app_parsed_records` in a local CTE so all referenced columns exist and rollup counts are not dependent on a limited/sample detail view.
+- Release-blocking check: any new view/export pair must be checked for column availability before release; failed late-export views should be treated as build/release blockers even when parsing succeeds.
+
+## V1.6.0 Export/View Schema Hotfix
+
+- V1.5.0.1 failed late in iOS thin export because `vw_ios_identity_thread_activity_matrix` referenced `identity_kind` and `activity_thread_or_record_id` through a detail sample view that did not expose those columns.
+- Correct fix in V1.6.0: expose identity classification and thread/record id columns directly in the detail sample view before downstream matrix exports query them.
+- Release-blocker rule: any SQLite view added or changed for export must be prepare-tested with its actual export query, not only created successfully. `SELECT * FROM <view> LIMIT 1` is insufficient if export uses explicit ORDER BY or column names.
+- Modularization rule: shared view column definitions must remain synchronized with GUI registry and exporter SQL; prefer single registry/definition sources where feasible.

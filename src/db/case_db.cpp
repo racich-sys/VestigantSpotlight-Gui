@@ -12,7 +12,10 @@ namespace {
 std::string joinSql(std::initializer_list<const char*> parts) {
     std::string out;
     for (const char* p : parts) {
-        if (p) out += p;
+        if (p) {
+            out += p;
+            out += "\n";
+        }
     }
     return out;
 }
@@ -92,6 +95,25 @@ void CaseDatabase::close() {
     }
 }
 void CaseDatabase::exec(const std::string& sql) {
+    if (sql.find("DROP VIEW IF EXISTS", sql.find("DROP VIEW IF EXISTS") == std::string::npos ? 0 : sql.find("DROP VIEW IF EXISTS") + 1) != std::string::npos) {
+        std::size_t start = 0;
+        while (start < sql.size()) {
+            std::size_t next = sql.find("DROP VIEW IF EXISTS", start + 1);
+            std::string part = sql.substr(start, next == std::string::npos ? std::string::npos : next - start);
+            if (part.find_first_not_of(" \t\r\n") != std::string::npos) {
+                char* partErr = nullptr;
+                int partRc = sqlite3_exec(db_, part.c_str(), nullptr, nullptr, &partErr);
+                if (partRc != SQLITE_OK) {
+                    std::string msg = partErr ? partErr : sqlite3_errmsg(db_);
+                    sqlite3_free(partErr);
+                    throw std::runtime_error("sqlite exec failed: " + msg + "\nSQL: " + part);
+                }
+            }
+            if (next == std::string::npos) break;
+            start = next;
+        }
+        return;
+    }
     char* err = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
@@ -550,7 +572,7 @@ CREATE TABLE IF NOT EXISTS native_decode_attempts (
   started_utc TEXT,
   finished_utc TEXT,
   status TEXT,
-  message TEXT
+)SQL" R"SQL(  message TEXT
 );
 CREATE TABLE IF NOT EXISTS source_probe_runs (
   source_probe_run_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1681,7 +1703,7 @@ WITH dc AS (
          GROUP_CONCAT(DISTINCT date_type) AS date_type_summary,
          substr(GROUP_CONCAT(COALESCE(field_name,'') || '=' || COALESCE(field_value,'') || ' -> ' || COALESCE(parsed_utc,'') || ' [' || COALESCE(parse_method,'') || ']',' || '),1,4000) AS date_source_evidence
   FROM raw_date_candidates
-  WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
+)VSQLFIX" R"VSQLFIX(  WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
     AND COALESCE(parsed_utc,'')<>''
   GROUP BY source_id,store_guid,source_db,inode_num,store_id
 )
@@ -1786,7 +1808,7 @@ ORDER BY record_timestamp_utc,ios_app_record_id;
 DROP VIEW IF EXISTS vw_ios_apple_messages_parsed_summary;
 CREATE VIEW vw_ios_apple_messages_parsed_summary AS
 SELECT record_category,parse_status,COUNT(*) AS parsed_record_count,COUNT(DISTINCT ios_db_id) AS database_count,
-       MIN(record_timestamp_utc) AS earliest_record_timestamp_utc,MAX(record_timestamp_utc) AS latest_record_timestamp_utc,
+)VSQLFIX" R"VSQLFIX(       MIN(record_timestamp_utc) AS earliest_record_timestamp_utc,MAX(record_timestamp_utc) AS latest_record_timestamp_utc,
        COUNT(NULLIF(contact_or_participant,'')) AS records_with_contact_or_handle,
        COUNT(NULLIF(file_path,'')) AS records_with_file_path,
        COUNT(NULLIF(text_snippet,'')) AS records_with_text_or_metadata,
@@ -1889,7 +1911,7 @@ WITH refs AS (
          COALESCE(ctx.spotlight_text_context_sample,'') AS spotlight_text_context_sample,
          CASE WHEN COALESCE(ctx.spotlight_text_context_sample,'')<>'' THEN 'TEXT_CONTEXT_RECOVERED_FROM_SAME_SPOTLIGHT_RECORD' ELSE 'NO_TEXT_CONTEXT_RECOVERED_IN_COMPACT_MODE' END AS spotlight_text_context_status,
          COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
-         COALESCE(f.protection_class_hint,'') AS matched_protection_class,COALESCE(f.app_container_hint,'') AS matched_app_container,COALESCE(f.domain_hint,'') AS matched_domain,
+)VSQLFIX" R"VSQLFIX(         COALESCE(f.protection_class_hint,'') AS matched_protection_class,COALESCE(f.app_container_hint,'') AS matched_app_container,COALESCE(f.domain_hint,'') AS matched_domain,
          COALESCE(f.lookup_source,la.lookup_source,'lookup_available_no_matching_path') AS ffs_lookup_source,
          CASE
            WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 'LOW_APP_THUMBNAIL_OR_CACHE_REFERENCE'
@@ -1949,7 +1971,7 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        MAX(normalized_ios_path) AS max_missing_path_sample,
        substr(MAX(spotlight_text_context_sample),1,4000) AS spotlight_text_context_sample,
        MAX(investigative_reason) AS investigative_reason,
-       'Compact normal-mode Missing From FFS summary. V0_9_25 adds priority/category fields so likely app thumbnail/cache noise does not dominate investigator review.' AS interpretation_note
+)VSQLFIX" R"VSQLFIX(       'Compact normal-mode Missing From FFS summary. V0_9_25 adds priority/category fields so likely app thumbnail/cache noise does not dominate investigator review.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_candidates
 GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
 
@@ -2027,7 +2049,7 @@ SELECT c.reference_id,
        c.interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_candidates c
 LEFT JOIN rr ON rr.source_id=c.source_id AND rr.store_guid=c.store_guid AND rr.source_db=c.source_db AND rr.inode_num=c.inode_num AND COALESCE(rr.store_id,'')=COALESCE(c.store_id,'')
-LEFT JOIN ctx ON ctx.source_id=c.source_id AND ctx.store_guid=c.store_guid AND ctx.source_db=c.source_db AND ctx.inode_num=c.inode_num AND COALESCE(ctx.store_id,'')=COALESCE(c.store_id,'');
+)VSQLFIX" R"VSQLFIX(LEFT JOIN ctx ON ctx.source_id=c.source_id AND ctx.store_guid=c.store_guid AND ctx.source_db=c.source_db AND ctx.inode_num=c.inode_num AND COALESCE(ctx.store_id,'')=COALESCE(c.store_id,'');
 
 DROP VIEW IF EXISTS vw_ios_spotlight_missing_from_ffs_text_coverage_summary;
 CREATE VIEW vw_ios_spotlight_missing_from_ffs_text_coverage_summary AS
@@ -2114,7 +2136,7 @@ R"VSQLFIX(
          ELSE 20
        END AS review_priority_sort,
        CASE
-         WHEN text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT' THEN 'Same-record Spotlight context indicates message, SMS/RCS/iMessage, or attachment evidence; prioritize for communications review and Missing From FFS triage.'
+)VSQLFIX" R"VSQLFIX(         WHEN text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT' THEN 'Same-record Spotlight context indicates message, SMS/RCS/iMessage, or attachment evidence; prioritize for communications review and Missing From FFS triage.'
          WHEN text_context_category='MAIL_OR_EMAIL_CONTEXT' THEN 'Same-record Spotlight context indicates mail/email content or identifiers; prioritize for communication and account review.'
          WHEN text_context_category IN ('WHATSAPP_APP_OR_CHAT_CONTEXT','SIGNAL_APP_OR_CHAT_CONTEXT','TELEGRAM_APP_OR_CHAT_CONTEXT') THEN 'Same-record Spotlight context contains explicit bundle/domain/external-id evidence for a chat application; prioritize for app attribution and indexed-only/deleted candidate review.'
          WHEN text_context_category IN ('WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION') THEN 'Same-record Spotlight context contains a chat-app link or textual mention only; review as possible communication/link evidence, not as installed-app attribution by itself.'
@@ -2238,7 +2260,7 @@ WHERE LENGTH(l.readable_text)>=4
     OR lower(COALESCE(l.field_name,'')) IN (
       '_kmditemexternalid','_kmditembundleid','_kmditemdomainidentifier','_kmditemauthoridentifier',
       'kmditemtitle','kmditemdisplayname','kmditemdescription','kmditemheadline','kmditemcomment','kmditemkeywords',
-      'kmditemidentifier','kmditemurl','kmditemcontenturl','kmditempath','kmditemfsname','kmditemwherefroms',
+)VSQLFIX" R"VSQLFIX(      'kmditemidentifier','kmditemurl','kmditemcontenturl','kmditempath','kmditemfsname','kmditemwherefroms',
       'kmditemauthors','kmditemauthoraddresses','kmditemrecipients','kmditemrecipientaddresses',
       'kmditemcontaineridentifier','kmditemcontainertitle','kmditemcontainerdisplayname',
       'com_apple_mail_subject','com_apple_mail_sender','com_apple_mail_to','com_apple_mail_cc','com_apple_mail_messageid',
@@ -2338,7 +2360,7 @@ SELECT source_id, store_guid, source_db, field_name AS spotlight_date_source_fie
        COALESCE(parse_method,'') AS parse_method,
        COUNT(*) AS date_candidate_count,
        COUNT(DISTINCT COALESCE(inode_num,'') || ':' || COALESCE(store_id,'')) AS distinct_spotlight_record_count,
-       MIN(parsed_utc) AS earliest_parsed_utc,
+)VSQLFIX" R"VSQLFIX(       MIN(parsed_utc) AS earliest_parsed_utc,
        MAX(parsed_utc) AS latest_parsed_utc,
        substr(MIN(field_value),1,500) AS min_raw_value_sample,
        substr(MAX(field_value),1,500) AS max_raw_value_sample,
@@ -2466,7 +2488,7 @@ SELECT b.raw_kv_id,b.raw_record_id,b.source_id,b.store_guid,b.source_db,
        COALESCE(f.matched_protection_class,'') AS matched_protection_class,
        COALESCE(f.matched_app_container,'') AS matched_app_container,
        COALESCE(f.matched_domain,'') AS matched_domain,
-       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
+)SQL" R"SQL(       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
             WHEN COALESCE(f.residency_status,'')<>'' THEN f.residency_status
             ELSE 'SPOTLIGHT_FILE_REFERENCE_NO_EXACT_FFS_MATCH_IN_CURRENT_LINK_VIEW' END AS file_reference_status,
        'Spotlight/CoreSpotlight file/path reference with date provenance. FFS presence supports current-file existence only and is not proof of use or deletion by itself.' AS interpretation_note
@@ -2634,7 +2656,7 @@ SELECT n.raw_kv_id,
        COALESCE(a.sample_parsed_value,'') AS sample_app_db_value,
        'raw_key_values.raw_kv_id=' || COALESCE(CAST(n.raw_kv_id AS TEXT),'') || '; raw_records.raw_record_id=' || COALESCE(CAST(n.raw_record_id AS TEXT),'') || '; field_name=' || COALESCE(n.spotlight_value_source_field,'') AS reference_validation_locator,
        'raw_date_candidates.field_name=' || COALESCE(n.spotlight_date_source_field,'') || '; raw_value=' || COALESCE(n.spotlight_date_raw_value,'') || '; parse_method=' || COALESCE(n.spotlight_date_parse_method,'') AS date_validation_locator,
-       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
+)VSQLFIX" R"VSQLFIX(       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
 FROM normalized n
 LEFT JOIN ffs f ON f.reference_id=n.raw_kv_id
 LEFT JOIN app a ON a.candidate_id=n.raw_kv_id;
@@ -2751,7 +2773,7 @@ SELECT rr.source_id,rr.store_guid,rr.source_db,
        COALESCE(nd.native_property_count,0) AS native_property_count,
        COALESCE(nd.native_category_count,0) AS native_category_count,
        COALESCE(nd.metadata_blocks,0) AS metadata_blocks,
-       COALESCE(nd.decompressed_blocks,0) AS decompressed_blocks,
+)VSQLFIX" R"VSQLFIX(       COALESCE(nd.decompressed_blocks,0) AS decompressed_blocks,
        COALESCE(nd.decode_failures,0) AS decode_failures,
        COALESCE(nd.decode_status,'NO_NATIVE_DECODE_ATTEMPT_ROW') AS decode_status,
        rr.earliest_last_updated_utc,rr.latest_last_updated_utc,
@@ -2843,7 +2865,7 @@ SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num AS spotl
             ELSE 'SPOTLIGHT_RECORD_NO_RECOVERED_TEXT' END AS spotlight_review_priority,
        CASE WHEN COALESCE(t.text_value_count,0)>0 THEN 'TEXT_VALUES_RECOVERED_FROM_SPOTLIGHT'
             ELSE 'NO_TEXT_VALUES_RECOVERED_FOR_RECORD' END AS spotlight_decode_status,
-       'Spotlight-first record review. V0_9_21 keeps GUI rows raw_record anchored and avoids broad FFS/app joins; full per-record exports are support/diagnostic-only to prevent long SQL materialization. Use Missing From FFS and object/object-summary views for residency pivots.' AS interpretation_note
+)VSQLFIX" R"VSQLFIX(       'Spotlight-first record review. V0_9_21 keeps GUI rows raw_record anchored and avoids broad FFS/app joins; full per-record exports are support/diagnostic-only to prevent long SQL materialization. Use Missing From FFS and object/object-summary views for residency pivots.' AS interpretation_note
 FROM raw_records r
 LEFT JOIN text_roll t ON t.raw_record_id=r.raw_record_id
 LEFT JOIN date_one dp ON dp.raw_record_id=r.raw_record_id
@@ -2936,7 +2958,7 @@ WITH kv AS (
 )
 SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,
        CASE
-         WHEN r.source_db LIKE '%NSFileProtectionCompleteUntilFirstUserAuthentication%' OR r.store_guid LIKE '%NSFileProtectionCompleteUntilFirstUserAuthentication%' THEN 'NSFileProtectionCompleteUntilFirstUserAuthentication'
+)VSQLFIX" R"VSQLFIX(         WHEN r.source_db LIKE '%NSFileProtectionCompleteUntilFirstUserAuthentication%' OR r.store_guid LIKE '%NSFileProtectionCompleteUntilFirstUserAuthentication%' THEN 'NSFileProtectionCompleteUntilFirstUserAuthentication'
          WHEN r.source_db LIKE '%NSFileProtectionCompleteUnlessOpen%' OR r.store_guid LIKE '%NSFileProtectionCompleteUnlessOpen%' THEN 'NSFileProtectionCompleteUnlessOpen'
          WHEN r.source_db LIKE '%NSFileProtectionCompleteWhenUserInactive%' OR r.store_guid LIKE '%NSFileProtectionCompleteWhenUserInactive%' THEN 'NSFileProtectionCompleteWhenUserInactive'
          WHEN r.source_db LIKE '%NSFileProtectionComplete%' OR r.store_guid LIKE '%NSFileProtectionComplete%' THEN 'NSFileProtectionComplete'
@@ -3023,7 +3045,7 @@ WITH parsed AS (
 )
 SELECT c.candidate_id,c.source_id,c.store_guid,c.source_db,c.inode_num AS spotlight_inode_or_object_id,c.store_id AS spotlight_store_id,c.parent_inode_num AS spotlight_parent_id,
        c.field_name,c.object_category,c.database_residency_status,c.database_name,c.database_category,c.app_hint,c.candidate_database_path,
-       c.record_inventory_status,c.matched_record_category,c.matched_table_name,c.matched_table_row_count,
+)VSQLFIX" R"VSQLFIX(       c.record_inventory_status,c.matched_record_category,c.matched_table_name,c.matched_table_row_count,
        COALESCE(p.parsed_record_count,0) AS parsed_record_count,
        COALESCE(p.earliest_record_timestamp_utc,'') AS earliest_record_timestamp_utc,
        COALESCE(p.latest_record_timestamp_utc,'') AS latest_record_timestamp_utc,
@@ -3673,7 +3695,7 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
          WHEN lower(file_name) IN ('keychain-2.db','keychain-2-debug.db') THEN 'KEYCHAIN_DATABASE'
          WHEN lower(normalized_path) LIKE '%/private/var/keychains/%' THEN 'KEYCHAIN_DIRECTORY_ARTIFACT'
          WHEN lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist' THEN 'EXTERNAL_OR_DECRYPTED_KEYCHAIN_PLIST'
-         WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
+)VSQLFIX" R"VSQLFIX(         WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
          ELSE 'KEYCHAIN_CORE_MATERIAL'
        END AS keychain_material_type,
        'Inventory only. Presence of keychain/keybag material in the FFS root does not mean WhatsApp or other app data can be decrypted unless parser-specific key extraction and validation are implemented.' AS interpretation_note
@@ -3799,6 +3821,8 @@ WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESS
 GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
 ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
 
+)VSQLFIX",
+        R"VSQLFIX(
 DROP VIEW IF EXISTS vw_ios_communication_existence_evidence;
 CREATE VIEW vw_ios_communication_existence_evidence AS
 SELECT
@@ -3836,6 +3860,32 @@ WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
    OR provenance LIKE '%INTENT_TARGET%';
 
+
+DROP VIEW IF EXISTS vw_ios_spotlight_comms_missing_from_ffs;
+CREATE VIEW vw_ios_spotlight_comms_missing_from_ffs AS
+SELECT
+    s.record_timestamp_utc,
+    s.communication_thread_id AS spotlight_thread_id,
+    s.identity_hint AS recovered_identity,
+    s.app_hint AS source_app,
+    s.title,
+    s.text_snippet_sample AS recovered_message_text,
+    s.file_path AS original_spotlight_path,
+    'COMMUNICATION_PRESENT_IN_SPOTLIGHT_NOT_MATCHED_TO_NATIVE_APP_DB' AS forensic_status,
+    'This communication-related record is present in CoreSpotlight/index-derived data and was not matched to a parsed native app database row by thread/source key. This may indicate deletion, app removal, encryption/inaccessibility, parser coverage limits, or an unmatched identifier; review source provenance before drawing conclusions.' AS interpretation_note
+FROM vw_ios_communication_existence_evidence s
+WHERE s.database_name LIKE '%index.db%'
+  AND s.existence_basis IN ('communication_related_parsed_record','domain_identifier_or_thread_marker','author_recipient_or_identity_marker','deleted_or_recoverable_message_table_or_spotlight_marker')
+  AND COALESCE(s.communication_thread_id, '') <> ''
+  AND NOT EXISTS (
+      SELECT 1
+      FROM ios_app_parsed_records app
+      WHERE app.database_name NOT LIKE '%index.db%'
+        AND COALESCE(s.communication_thread_id,'') <> ''
+        AND (app.item_identifier = s.communication_thread_id OR app.source_primary_key = s.communication_thread_id OR app.contact_or_participant = s.identity_hint)
+  )
+ORDER BY s.record_timestamp_utc DESC;
+
 DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
 CREATE VIEW vw_ios_communication_identity_frequency AS
 SELECT
@@ -3851,7 +3901,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
   'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+)VSQLFIX" R"VSQLFIX(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -3904,7 +3954,215 @@ WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_
 GROUP BY database_category, app_hint, database_name, table_name, record_category, parse_status
 ORDER BY parsed_record_count DESC, records_with_timestamp DESC;
 
+)VSQLFIX",
+R"VSQLFIX(
+DROP VIEW IF EXISTS vw_ios_identity_activity_linkage;
+CREATE VIEW vw_ios_identity_activity_linkage AS
+WITH identity_rows AS (
+  SELECT
+    ios_app_record_id,
+    source_id,
+    database_category,
+    app_hint,
+    database_name,
+    table_name,
+    record_category,
+    source_primary_key,
+    record_timestamp_utc,
+    timestamp_source,
+    COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) AS identity_or_activity_key,
+    CASE
+      WHEN COALESCE(contact_or_participant,'') LIKE '%@%' THEN 'EMAIL_OR_ACCOUNT'
+      WHEN COALESCE(contact_or_participant,'') GLOB '*[0-9][0-9][0-9]*' THEN 'PHONE_OR_NUMERIC_HANDLE'
+      WHEN COALESCE(item_identifier,'')<>'' THEN 'THREAD_OR_DOMAIN_IDENTIFIER'
+      WHEN COALESCE(url,'')<>'' THEN 'URL_OR_WEB_IDENTITY'
+      WHEN COALESCE(file_path,'')<>'' THEN 'FILE_OR_ATTACHMENT_REFERENCE'
+      ELSE 'SOURCE_PRIMARY_KEY_FALLBACK'
+    END AS identity_kind,
+    COALESCE(NULLIF(item_identifier,''), NULLIF(source_primary_key,''), CAST(ios_app_record_id AS TEXT)) AS activity_thread_or_record_id,
+    COALESCE(NULLIF(url,''), NULLIF(file_path,''), NULLIF(title,''), substr(COALESCE(text_snippet,''),1,180)) AS activity_reference,
+    parse_status,
+    provenance,
+    substr(text_snippet,1,500) AS text_snippet_sample
+  FROM ios_app_parsed_records
+  WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+     OR COALESCE(contact_or_participant,'')<>''
+     OR COALESCE(item_identifier,'')<>''
+     OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+     OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+     OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+)
+SELECT
+  identity_or_activity_key,
+  identity_kind,
+  database_category,
+  app_hint,
+  record_category,
+  COUNT(*) AS activity_record_count,
+  COUNT(DISTINCT activity_thread_or_record_id) AS distinct_thread_or_record_count,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
+  substr(MIN(COALESCE(NULLIF(activity_reference,''), NULLIF(text_snippet_sample,''), '')),1,500) AS min_activity_sample,
+  substr(MAX(COALESCE(NULLIF(activity_reference,''), NULLIF(text_snippet_sample,''), '')),1,500) AS max_activity_sample,
+  'Links contact/account/thread/phone-like/user identifiers to parsed iOS activity records. Counts support investigative triage; review source rows for final conclusions.' AS interpretation_note
+FROM identity_rows
+WHERE COALESCE(identity_or_activity_key,'')<>''
+GROUP BY identity_or_activity_key, identity_kind, database_category, app_hint, record_category
+ORDER BY activity_record_count DESC, last_seen_utc DESC;
 
+)VSQLFIX",
+R"VSQLFIX(
+DROP VIEW IF EXISTS vw_ios_identity_activity_detail_sample;
+CREATE VIEW vw_ios_identity_activity_detail_sample AS
+SELECT
+  ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+  record_timestamp_utc, timestamp_source,
+  COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) AS identity_or_activity_key,
+  CASE
+    WHEN COALESCE(contact_or_participant,'') LIKE '%@%' THEN 'EMAIL_OR_ACCOUNT'
+    WHEN COALESCE(contact_or_participant,'') GLOB '*[0-9][0-9][0-9]*' THEN 'PHONE_OR_NUMERIC_HANDLE'
+    WHEN COALESCE(item_identifier,'')<>'' THEN 'THREAD_OR_DOMAIN_IDENTIFIER'
+    WHEN COALESCE(url,'')<>'' THEN 'URL_OR_WEB_IDENTITY'
+    WHEN COALESCE(file_path,'')<>'' THEN 'FILE_OR_ATTACHMENT_REFERENCE'
+    ELSE 'SOURCE_PRIMARY_KEY_FALLBACK'
+  END AS identity_kind,
+  COALESCE(NULLIF(item_identifier,''), NULLIF(source_primary_key,''), CAST(ios_app_record_id AS TEXT)) AS activity_thread_or_record_id,
+  contact_or_participant, item_identifier, url, title, file_path, source_primary_key,
+  parse_status, provenance, substr(text_snippet,1,1000) AS text_snippet_sample,
+  'Bounded source-row sample linking identities/handles/thread IDs to activities.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) IS NOT NULL
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+       OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+       OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+)VSQLFIX" R"VSQLFIX(ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
+LIMIT 25000;
+
+DROP VIEW IF EXISTS vw_ios_identity_entity_rollup;
+CREATE VIEW vw_ios_identity_entity_rollup AS
+WITH identity_rows AS (
+  SELECT
+    COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) AS identity_key,
+    CASE
+      WHEN COALESCE(contact_or_participant,'') LIKE '%@%' THEN 'EMAIL_OR_ACCOUNT'
+      WHEN COALESCE(contact_or_participant,'') GLOB '*[0-9][0-9][0-9]*' THEN 'PHONE_OR_NUMERIC_HANDLE'
+      WHEN COALESCE(item_identifier,'')<>'' THEN 'THREAD_OR_DOMAIN_IDENTIFIER'
+      WHEN COALESCE(url,'')<>'' THEN 'URL_OR_WEB_IDENTITY'
+      WHEN COALESCE(file_path,'')<>'' THEN 'FILE_OR_ATTACHMENT_REFERENCE'
+      ELSE 'SOURCE_PRIMARY_KEY_FALLBACK'
+    END AS identity_kind,
+    COALESCE(NULLIF(item_identifier,''), NULLIF(source_primary_key,''), CAST(ios_app_record_id AS TEXT)) AS thread_or_record_id,
+    record_timestamp_utc,
+    app_hint,
+    database_category,
+    record_category,
+    table_name
+  FROM ios_app_parsed_records
+  WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) IS NOT NULL
+    AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+         OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+         OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
+         OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+)
+SELECT
+  identity_key,
+  identity_kind,
+  COUNT(*) AS activity_record_count,
+  COUNT(DISTINCT thread_or_record_id) AS distinct_thread_or_record_count,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT app_hint) AS apps,
+  GROUP_CONCAT(DISTINCT database_category) AS database_categories,
+  GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  'V1.6.0.1 identity rollup links phone/email/account/thread/user-like identifiers to activity, timestamps, apps, and source tables. Review row-level identity activity detail before reporting attribution.' AS interpretation_note
+FROM identity_rows
+WHERE COALESCE(identity_key,'')<>''
+GROUP BY identity_key, identity_kind
+ORDER BY activity_record_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_identity_thread_activity_matrix;
+CREATE VIEW vw_ios_identity_thread_activity_matrix AS
+SELECT
+  identity_or_activity_key AS identity_key,
+  identity_kind,
+  activity_thread_or_record_id AS thread_or_record_id,
+  app_hint,
+  database_category,
+  record_category,
+  COUNT(*) AS linked_activity_count,
+  MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+  MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+  GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+  'Thread/activity matrix for correlating identity hints to communication or app activity. Null or fallback keys require source-row review.' AS interpretation_note
+FROM vw_ios_identity_activity_detail_sample
+WHERE COALESCE(identity_or_activity_key,'')<>''
+GROUP BY identity_or_activity_key, identity_kind, activity_thread_or_record_id, app_hint, database_category, record_category
+ORDER BY linked_activity_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_identity_graph_edges;
+CREATE VIEW vw_ios_identity_graph_edges AS
+SELECT identity_or_activity_key AS identity_key, identity_kind,
+       'THREAD_OR_RECORD' AS related_value_kind,
+       activity_thread_or_record_id AS related_value, app_hint, database_category, record_category,
+       COUNT(*) AS linked_record_count,
+       MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+       'Identity graph edge linking an extracted identity hint to a thread, item, or source record. Review source detail before final attribution.' AS interpretation_note
+FROM vw_ios_identity_activity_detail_sample
+WHERE COALESCE(identity_or_activity_key,'')<>''
+  AND COALESCE(activity_thread_or_record_id,'')<>''
+GROUP BY identity_or_activity_key, identity_kind, activity_thread_or_record_id, app_hint, database_category, record_category
+UNION ALL
+SELECT identity_or_activity_key AS identity_key, identity_kind,
+       'URL_OR_REFERENCE' AS related_value_kind,
+       url AS related_value, app_hint, database_category, record_category,
+       COUNT(*) AS linked_record_count,
+       MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT table_name) AS source_tables,
+       'Identity graph edge linking an extracted identity hint to a URL/content reference observed in the same parsed activity row.' AS interpretation_note
+FROM vw_ios_identity_activity_detail_sample
+WHERE COALESCE(identity_or_activity_key,'')<>''
+  AND COALESCE(url,'')<>''
+GROUP BY identity_or_activity_key, identity_kind, url, app_hint, database_category, record_category;
+
+DROP VIEW IF EXISTS vw_ios_identity_graph_summary;
+CREATE VIEW vw_ios_identity_graph_summary AS
+SELECT identity_key, identity_kind,
+       COUNT(*) AS edge_count,
+       SUM(CASE WHEN related_value_kind='THREAD_OR_RECORD' THEN linked_record_count ELSE 0 END) AS thread_or_record_link_count,
+       SUM(CASE WHEN related_value_kind='URL_OR_REFERENCE' THEN linked_record_count ELSE 0 END) AS url_or_reference_link_count,
+       COUNT(DISTINCT app_hint) AS distinct_app_count,
+       COUNT(DISTINCT database_category) AS distinct_database_category_count,
+       MIN(NULLIF(first_seen_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(last_seen_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT app_hint) AS apps,
+       GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+       'V1.6 identity graph summary. This is correlation evidence, not standalone attribution; review detail rows and source tables before reporting.' AS interpretation_note
+FROM vw_ios_identity_graph_edges
+WHERE COALESCE(identity_key,'')<>''
+GROUP BY identity_key, identity_kind
+ORDER BY edge_count DESC, last_seen_utc DESC;
+
+DROP VIEW IF EXISTS vw_ios_identity_activity_timeline;
+CREATE VIEW vw_ios_identity_activity_timeline AS
+SELECT record_timestamp_utc, identity_or_activity_key AS identity_key, identity_kind,
+       activity_thread_or_record_id AS thread_or_record_id, app_hint, database_category,
+       record_category, table_name, title, url, file_path, parse_status,
+       substr(text_snippet_sample,1,800) AS text_snippet_sample,
+       'Timeline-style row linking identity hints to dated parsed iOS activity.' AS interpretation_note
+FROM vw_ios_identity_activity_detail_sample
+WHERE COALESCE(record_timestamp_utc,'')<>''
+  AND COALESCE(identity_or_activity_key,'')<>''
+ORDER BY record_timestamp_utc DESC, identity_key;
+
+)VSQLFIX",
+R"VSQLFIX(
 DROP VIEW IF EXISTS vw_ios_url_frequency;
 CREATE VIEW vw_ios_url_frequency AS
 SELECT
@@ -3949,44 +4207,27 @@ ORDER BY related_record_count DESC, last_seen_utc DESC;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS
-WITH probe AS (
-  SELECT kv.raw_kv_id, kv.source_id, kv.store_guid, kv.source_db, kv.inode_num, kv.store_id, kv.parent_inode_num, kv.field_name, kv.field_value,
-         lower(kv.field_value) AS v, rr.last_updated_utc
-  FROM raw_key_values kv
-  LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
-  WHERE COALESCE(kv.field_value,'')<>''
-    AND (kv.store_guid LIKE 'ios_%' OR kv.source_db LIKE '%CoreSpotlight%' OR kv.store_path LIKE '%CoreSpotlight%')
-), categorized AS (
-  SELECT *,
-         CASE
-           WHEN v LIKE '%whatsapp%' THEN 'WHATSAPP_TEXT_OR_REFERENCE'
-           WHEN v LIKE '%imessage%' OR v LIKE '%sms.db%' OR v LIKE '%/sms/%' OR v LIKE '%com.apple.mobilesms%' THEN 'APPLE_MESSAGES_OR_SMS_RELATED'
-           WHEN v LIKE '%message%' OR v LIKE '%chat%' OR v LIKE '%conversation%' THEN 'MESSAGE_OR_CHAT_TEXT_CANDIDATE'
-           WHEN v LIKE '%facetime%' OR v LIKE '%callhistory%' OR v LIKE '%call history%' THEN 'PHONE_OR_FACETIME_RELATED'
-           WHEN v LIKE '%mailto:%' OR (v LIKE '%@%' AND v LIKE '%.%') THEN 'EMAIL_OR_ACCOUNT_RELATED'
-           ELSE 'OTHER_COMMUNICATION_RELATED'
-         END AS communication_candidate_type
-  FROM probe
-  WHERE v LIKE '%whatsapp%' OR v LIKE '%imessage%' OR v LIKE '%sms.db%' OR v LIKE '%/sms/%' OR v LIKE '%com.apple.mobilesms%'
-     OR v LIKE '%message%' OR v LIKE '%chat%' OR v LIKE '%conversation%' OR v LIKE '%facetime%' OR v LIKE '%callhistory%' OR v LIKE '%call history%'
-     OR v LIKE '%mailto:%' OR (v LIKE '%@%' AND v LIKE '%.%')
-)
-SELECT raw_kv_id, source_id, store_guid, source_db, inode_num AS spotlight_inode_or_object_id, store_id AS spotlight_store_id, parent_inode_num AS spotlight_parent_id,
-       field_name, communication_candidate_type, last_updated_utc AS spotlight_last_updated_utc, substr(field_value,1,600) AS string_value_sample,
+SELECT kv.raw_kv_id, kv.source_id, kv.store_guid, kv.source_db, kv.inode_num AS spotlight_inode_or_object_id,
+       kv.store_id AS spotlight_store_id, kv.parent_inode_num AS spotlight_parent_id, kv.field_name,
        CASE
-         WHEN communication_candidate_type='WHATSAPP_TEXT_OR_REFERENCE' AND EXISTS (SELECT 1 FROM vw_ios_whatsapp_database_status WHERE whatsapp_residency_status<>'WHATSAPP_DB_NOT_FOUND') THEN 'WHATSAPP_DATABASE_FAMILY_PRESENT'
-         WHEN communication_candidate_type='APPLE_MESSAGES_OR_SMS_RELATED' AND EXISTS (SELECT 1 FROM vw_ios_apple_messages_database_status WHERE apple_messages_residency_status<>'SMS_DB_NOT_FOUND') THEN 'SMS_DATABASE_FAMILY_PRESENT'
-         WHEN communication_candidate_type='PHONE_OR_FACETIME_RELATED' AND EXISTS (SELECT 1 FROM ios_app_database_inventory WHERE database_category='CALL_HISTORY') THEN 'CALL_HISTORY_DATABASE_FAMILY_PRESENT'
-         ELSE 'NO_CONFIRMED_MATCHING_APP_DATABASE_ROW'
-       END AS communication_residency_context,
+         WHEN lower(kv.field_value) LIKE '%whatsapp%' THEN 'WHATSAPP_TEXT_OR_REFERENCE'
+         WHEN lower(kv.field_value) LIKE '%imessage%' OR lower(kv.field_value) LIKE '%sms.db%' OR lower(kv.field_value) LIKE '%com.apple.mobilesms%' THEN 'APPLE_MESSAGES_OR_SMS_RELATED'
+         WHEN lower(kv.field_value) LIKE '%message%' OR lower(kv.field_value) LIKE '%chat%' OR lower(kv.field_value) LIKE '%conversation%' THEN 'MESSAGE_OR_CHAT_TEXT_CANDIDATE'
+         WHEN lower(kv.field_value) LIKE '%facetime%' OR lower(kv.field_value) LIKE '%callhistory%' THEN 'PHONE_OR_FACETIME_RELATED'
+         WHEN lower(kv.field_value) LIKE '%mailto:%' OR (lower(kv.field_value) LIKE '%@%' AND lower(kv.field_value) LIKE '%.%') THEN 'EMAIL_OR_ACCOUNT_RELATED'
+         ELSE 'OTHER_COMMUNICATION_RELATED'
+       END AS communication_candidate_type,
+       rr.last_updated_utc AS spotlight_last_updated_utc,
+       substr(kv.field_value,1,600) AS string_value_sample,
+       'NO_CONFIRMED_MATCHING_APP_DATABASE_ROW' AS communication_residency_context,
        'Spotlight string candidate only. Review parsed app database views and exact links before treating this as a live message/call/chat record.' AS interpretation_note
-FROM categorized
-ORDER BY communication_candidate_type, raw_kv_id;
+FROM raw_key_values kv
+LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
+WHERE COALESCE(kv.field_value,'')<>''
+  AND (kv.store_guid LIKE 'ios_%' OR kv.source_db LIKE '%CoreSpotlight%' OR kv.store_path LIKE '%CoreSpotlight%')
+)VSQLFIX" R"VSQLFIX(  AND (lower(kv.field_value) LIKE '%whatsapp%' OR lower(kv.field_value) LIKE '%imessage%' OR lower(kv.field_value) LIKE '%sms.db%' OR lower(kv.field_value) LIKE '%com.apple.mobilesms%' OR lower(kv.field_value) LIKE '%message%' OR lower(kv.field_value) LIKE '%chat%' OR lower(kv.field_value) LIKE '%conversation%' OR lower(kv.field_value) LIKE '%facetime%' OR lower(kv.field_value) LIKE '%callhistory%' OR lower(kv.field_value) LIKE '%mailto:%' OR (lower(kv.field_value) LIKE '%@%' AND lower(kv.field_value) LIKE '%.%'))
+ORDER BY communication_candidate_type, kv.raw_kv_id;
 
-)VSQLFIX"
-}));
-
-    exec(R"SQL(
 DROP VIEW IF EXISTS vw_ios_app_live_activity_timeline;
 CREATE VIEW vw_ios_app_live_activity_timeline AS
 SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,
@@ -3997,7 +4238,8 @@ SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_n
 FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
 ORDER BY record_timestamp_utc DESC, database_category, record_category, ios_app_record_id;
-)SQL");
+)VSQLFIX"
+    }));
 
     exec(joinSql({
 R"VSQLFIX(
@@ -4058,7 +4300,7 @@ WHERE LENGTH(l.readable_text)>=4
     OR lower(COALESCE(l.field_name,'')) IN (
       '_kmditemexternalid','_kmditembundleid','_kmditemdomainidentifier','_kmditemauthoridentifier',
       'kmditemtitle','kmditemdisplayname','kmditemdescription','kmditemheadline','kmditemcomment','kmditemkeywords',
-      'kmditemidentifier','kmditemurl','kmditemcontenturl','kmditempath','kmditemfsname','kmditemwherefroms',
+)VSQLFIX" R"VSQLFIX(      'kmditemidentifier','kmditemurl','kmditemcontenturl','kmditempath','kmditemfsname','kmditemwherefroms',
       'kmditemauthors','kmditemauthoraddresses','kmditemrecipients','kmditemrecipientaddresses',
       'kmditemcontaineridentifier','kmditemcontainertitle','kmditemcontainerdisplayname',
       'com_apple_mail_subject','com_apple_mail_sender','com_apple_mail_to','com_apple_mail_cc','com_apple_mail_messageid',
@@ -4163,7 +4405,7 @@ SELECT source_id, store_guid, source_db, field_name AS spotlight_date_source_fie
        substr(MIN(field_value),1,500) AS min_raw_value_sample,
        substr(MAX(field_value),1,500) AS max_raw_value_sample,
        CASE
-         WHEN spotlight_date_semantic_class='metadata_seen_or_index_updated' THEN 'CoreSpotlight metadata/index update timing; do not report as created/modified/accessed/opened usage without another decoded field.'
+)VSQLFIX" R"VSQLFIX(         WHEN spotlight_date_semantic_class='metadata_seen_or_index_updated' THEN 'CoreSpotlight metadata/index update timing; do not report as created/modified/accessed/opened usage without another decoded field.'
          WHEN spotlight_date_semantic_class LIKE '%candidate' THEN 'Candidate semantic class inferred from Spotlight raw date field name; validate field meaning before reporting.'
          ELSE 'Unclassified Spotlight date candidate; validate against raw_date_candidates and source Store-V2 record.'
        END AS reporting_caution
@@ -4286,7 +4528,7 @@ SELECT b.raw_kv_id,b.raw_record_id,b.source_id,b.store_guid,b.source_db,
        COALESCE(f.matched_protection_class,'') AS matched_protection_class,
        COALESCE(f.matched_app_container,'') AS matched_app_container,
        COALESCE(f.matched_domain,'') AS matched_domain,
-       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
+)SQL" R"SQL(       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
             WHEN COALESCE(f.residency_status,'')<>'' THEN f.residency_status
             ELSE 'SPOTLIGHT_FILE_REFERENCE_NO_EXACT_FFS_MATCH_IN_CURRENT_LINK_VIEW' END AS file_reference_status,
        'Spotlight/CoreSpotlight file/path reference with date provenance. FFS presence supports current-file existence only and is not proof of use or deletion by itself.' AS interpretation_note
@@ -4454,7 +4696,7 @@ SELECT n.raw_kv_id,
        COALESCE(a.sample_parsed_value,'') AS sample_app_db_value,
        'raw_key_values.raw_kv_id=' || COALESCE(CAST(n.raw_kv_id AS TEXT),'') || '; raw_records.raw_record_id=' || COALESCE(CAST(n.raw_record_id AS TEXT),'') || '; field_name=' || COALESCE(n.spotlight_value_source_field,'') AS reference_validation_locator,
        'raw_date_candidates.field_name=' || COALESCE(n.spotlight_date_source_field,'') || '; raw_value=' || COALESCE(n.spotlight_date_raw_value,'') || '; parse_method=' || COALESCE(n.spotlight_date_parse_method,'') AS date_validation_locator,
-       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
+)VSQLFIX" R"VSQLFIX(       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
 FROM normalized n
 LEFT JOIN ffs f ON f.reference_id=n.raw_kv_id
 LEFT JOIN app a ON a.candidate_id=n.raw_kv_id;
@@ -4571,7 +4813,7 @@ SELECT rr.source_id,rr.store_guid,rr.source_db,
        COALESCE(nd.native_property_count,0) AS native_property_count,
        COALESCE(nd.native_category_count,0) AS native_category_count,
        COALESCE(nd.metadata_blocks,0) AS metadata_blocks,
-       COALESCE(nd.decompressed_blocks,0) AS decompressed_blocks,
+)VSQLFIX" R"VSQLFIX(       COALESCE(nd.decompressed_blocks,0) AS decompressed_blocks,
        COALESCE(nd.decode_failures,0) AS decode_failures,
        COALESCE(nd.decode_status,'NO_NATIVE_DECODE_ATTEMPT_ROW') AS decode_status,
        rr.earliest_last_updated_utc,rr.latest_last_updated_utc,
@@ -4663,7 +4905,7 @@ SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num AS spotl
             ELSE 'SPOTLIGHT_RECORD_NO_RECOVERED_TEXT' END AS spotlight_review_priority,
        CASE WHEN COALESCE(t.text_value_count,0)>0 THEN 'TEXT_VALUES_RECOVERED_FROM_SPOTLIGHT'
             ELSE 'NO_TEXT_VALUES_RECOVERED_FOR_RECORD' END AS spotlight_decode_status,
-       'Spotlight-first record review. V0_9_21 keeps GUI rows raw_record anchored and avoids broad FFS/app joins; full per-record exports are support/diagnostic-only to prevent long SQL materialization. Use Missing From FFS and object/object-summary views for residency pivots.' AS interpretation_note
+)VSQLFIX" R"VSQLFIX(       'Spotlight-first record review. V0_9_21 keeps GUI rows raw_record anchored and avoids broad FFS/app joins; full per-record exports are support/diagnostic-only to prevent long SQL materialization. Use Missing From FFS and object/object-summary views for residency pivots.' AS interpretation_note
 FROM raw_records r
 LEFT JOIN text_roll t ON t.raw_record_id=r.raw_record_id
 LEFT JOIN date_one dp ON dp.raw_record_id=r.raw_record_id
@@ -4756,7 +4998,7 @@ WHERE (r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.stor
 DROP VIEW IF EXISTS vw_ios_database_residency_candidates;
 CREATE VIEW vw_ios_database_residency_candidates AS
 WITH probes AS (
-  SELECT raw_kv_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,field_name,field_value,LOWER(field_value) AS v
+)VSQLFIX" R"VSQLFIX(  SELECT raw_kv_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,field_name,field_value,LOWER(field_value) AS v
   FROM raw_key_values
   WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
     AND COALESCE(field_value,'')<>''
@@ -4915,7 +5157,7 @@ SELECT database_category,app_hint,database_name,table_name,web_record_type,parse
        COUNT(*) AS web_review_row_count,
        SUM(CASE WHEN COALESCE(url,'')<>'' THEN 1 ELSE 0 END) AS rows_with_url,
        SUM(CASE WHEN COALESCE(title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_title,
-       MIN(NULLIF(record_timestamp_utc,'')) AS earliest_record_timestamp_utc,
+)SQL" R"SQL(       MIN(NULLIF(record_timestamp_utc,'')) AS earliest_record_timestamp_utc,
        MAX(NULLIF(record_timestamp_utc,'')) AS latest_record_timestamp_utc,
        MIN(database_normalized_path) AS first_database_path,MAX(database_normalized_path) AS last_database_path
 FROM vw_ios_web_history_review_records
@@ -4994,7 +5236,7 @@ SELECT 'APP_DATABASE_INVENTORY' AS surface_source, source_id, CAST(ios_db_id AS 
        database_category AS review_category, database_name AS source_container, normalized_path AS source_location,
        app_hint AS field_or_table, zip_modified_utc AS record_timestamp_utc, substr(normalized_path,1,2000) AS searchable_value_sample,
        normalized_path AS path_or_url, '' AS contact_or_identity,
-       'APP_DATABASE_DISCOVERY' AS review_priority,
+)SQL" R"SQL(       'APP_DATABASE_DISCOVERY' AS review_priority,
        COALESCE(record_inventory_status,parse_status) AS residency_context,
        'App database inventory row. Use record inventory and parsed-record views to confirm whether rows were parsed.' AS interpretation_note
 FROM ios_app_database_inventory;
@@ -5068,7 +5310,7 @@ SELECT source_id,store_guid,source_db,field_name,
          WHEN field_name IN ('uniqueIdentifier','domainIdentifier','relatedUniqueIdentifier','weakRelatedUniqueIdentifier','targetContentIdentifier','persistentIdentifier') THEN 'APPLE_OBJECT_IDENTITY'
          WHEN field_name IN ('title','displayName','alternateNames','contentDescription','textContent','htmlContentData') THEN 'APPLE_TEXT_CONTENT'
          WHEN field_name IN ('contentURL','path','url','webpageURL','referrerURL') THEN 'APPLE_PATH_OR_URL'
-         WHEN field_name IN ('metadataModificationDate','contentCreationDate','contentModificationDate','downloadedDate','lastUsedDate','addedDate','startDate','endDate','dueDate','completionDate','importantDates','timestamp','gpsDateStamp') THEN 'APPLE_DATE_FIELD'
+)SQL" R"SQL(         WHEN field_name IN ('metadataModificationDate','contentCreationDate','contentModificationDate','downloadedDate','lastUsedDate','addedDate','startDate','endDate','dueDate','completionDate','importantDates','timestamp','gpsDateStamp') THEN 'APPLE_DATE_FIELD'
          WHEN field_name IN ('accountHandles','accountIdentifier','authorAddresses','authorEmailAddresses','authorNames','emailAddresses','instantMessageAddresses','phoneNumbers','recipientAddresses','recipientEmailAddresses','recipientNames','mailboxIdentifiers','authors','primaryRecipients','additionalRecipients','hiddenAdditionalRecipients') THEN 'APPLE_MESSAGE_CONTACT_FIELD'
          WHEN field_name IN ('containerDisplayName','containerIdentifier','containerTitle','containerOrder') THEN 'APPLE_CONTAINER_FIELD'
          WHEN field_name LIKE 'kMDItem%' THEN 'APPLE_MDIMPORTER_KMDITEM_FIELD'
@@ -5086,7 +5328,7 @@ GROUP BY source_id,store_guid,source_db,field_name;
 )SQL");
 
     exec(joinSql({
-        R"VSQL27(
+        R"VSQL27_0(
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_record_review;
 CREATE VIEW vw_ios_spotlight_communication_record_review AS
 WITH rec AS (
@@ -5130,14 +5372,13 @@ WITH rec AS (
   FROM kv
   GROUP BY raw_record_id
 ), d AS (
-  SELECT r.raw_record_id,
+)VSQL27_0" R"VSQL27_0(  SELECT r.raw_record_id,
          MAX(NULLIF(rd.parsed_utc,'')) AS spotlight_date_utc,
          MAX(rd.field_name) AS spotlight_date_source_field,
          COUNT(rd.raw_date_id) AS compact_date_candidate_count
   FROM rec r
   LEFT JOIN raw_date_candidates rd ON rd.source_id=r.source_id AND rd.store_guid=r.store_guid AND rd.source_db=r.source_db
-       AND rd.inode_num=r.inode_num AND COALESC)VSQL27",
-        R"VSQL27(E(rd.store_id,'')=r.store_id_key
+       AND rd.inode_num=r.inode_num AND COALESCE(rd.store_id,'')=r.store_id_key
   GROUP BY r.raw_record_id
 ), classified AS (
   SELECT r.*,p.*,COALESCE(d.spotlight_date_utc,r.last_updated_utc) AS spotlight_date_utc,
@@ -5179,7 +5420,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
          WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'HIGH_COMMUNICATION_REVIEW_VALUE'
          WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 'HIGH_MESSAGE_MEDIA_REVIEW_VALUE'
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'HIGH_APP_COMMUNICATION_CONTEXT_VALUE'
-         WHEN communication_context_type IN ('CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
+)VSQL27_0" R"VSQL27_0(         WHEN communication_context_type IN ('CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
          ELSE 'LOW_CONTEXT_VALUE'
        END AS review_priority,
        CASE
@@ -5200,12 +5441,12 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
          WHEN domain_identifier='chatDomain' THEN 'conversation_index_record'
          ELSE ''
        END AS message_domain_handle_or_chat,
-       COALESCE(NULLIF(title,''),NULLIF(item_display)VSQL27",
-        R"VSQL27(_name,''),NULLIF(display_name,''),NULLIF(file_name,'')) AS best_title_or_name,
+       COALESCE(NULLIF(title,''),NULLIF(item_display_name,''),NULLIF(display_name,''),NULLIF(file_name,'')) AS best_title_or_name,
        substr(COALESCE(NULLIF(title,''),NULLIF(description_or_snippet,''),NULLIF(snippet,''),NULLIF(spotlight_text_context_sample,'')),1,2500) AS investigator_visible_text,
        substr(description_or_snippet,1,1800) AS description_or_snippet,
        substr(snippet,1,1200) AS snippet,
-       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,saved_from_app,
+)VSQL27_0",
+        R"VSQL27_1(       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,saved_from_app,
        compact_value_count,has_text_context,substr(spotlight_text_context_sample,1,2500) AS spotlight_text_context_sample,
        CASE
          WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'Explicit Apple communication content type/bundle/service/callback evidence recovered from Spotlight.'
@@ -5246,7 +5487,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
             ELSE 'TEXT_CONTEXT_ONLY' END AS attachment_reference_basis,
        validation_locator,
        'Attachment/media-focused subset of communication Spotlight review. Missing/present status is available in Missing From FFS views where path lookup can be resolved.' AS interpretation_note
-FROM vw_ios_spotlight_communication_record_review
+)VSQL27_1" R"VSQL27_1(FROM vw_ios_spotlight_communication_record_review
 WHERE COALESCE(attachment_or_media_path,'')<>'' OR COALESCE(url_or_content_reference,'')<>'';
 
 DROP VIEW IF EXISTS vw_ios_spotlight_message_text_review;
@@ -5273,7 +5514,7 @@ FROM vw_ios_spotlight_communication_record_review
 WHERE communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
    OR COALESCE(saved_from_app,'')<>''
    OR COALESCE(attachment_or_media_path,'')<>'';
-)VSQL27"
+)VSQL27_1"
     }));
 
 
@@ -5395,7 +5636,7 @@ WHERE body_review_bucket NOT IN ('CONVERSATION_INDEX_RECORD_NO_BODY')
   AND COALESCE(extracted_message_text_or_subject,'')<>'';
 
 DROP VIEW IF EXISTS vw_ios_spotlight_message_contact_summary;
-CREATE VIEW vw_ios_spotlight_message_contact_summary AS
+)VSQL29" R"VSQL29(CREATE VIEW vw_ios_spotlight_message_contact_summary AS
 SELECT communication_context_type,bundle_id,domain_identifier,message_domain_handle_or_chat,suggested_contact_name,conversation_or_thread_title,noise_hint,
        COUNT(*) AS spotlight_record_count,
        COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
@@ -5465,7 +5706,7 @@ SELECT date_anomaly_flag,event_type,review_category,
        'Basic anomaly summary for normalized iOS Spotlight timeline. Flags are triage indicators and require source-field validation.' AS interpretation_note
 
 FROM vw_ios_spotlight_normalized_timeline
-GROUP BY date_anomaly_flag,event_type,review_category;
+)VSQL29" R"VSQL29(GROUP BY date_anomaly_flag,event_type,review_category;
 )VSQL29"}));
 
     // V0_9_32: documentation/consolidation support plus more useful compact message/body extraction
@@ -5507,7 +5748,7 @@ WITH base AS (
 ), extracted AS (
   SELECT *,
          COALESCE(NULLIF(c_app_title,''),NULLIF(c_app_title2,''),NULLIF(c_kmd_title,''),NULLIF(best_title_or_name,''),NULLIF(investigator_visible_text,'')) AS extracted_subject_or_body,
-         COALESCE(NULLIF(c_subtitle,''),NULLIF(c_subtitle2,''),NULLIF(c_desc,''),NULLIF(c_snippet,''),NULLIF(description_or_snippet,''),NULLIF(snippet,'')) AS extracted_supporting_text,
+)VSQL30" R"VSQL30(         COALESCE(NULLIF(c_subtitle,''),NULLIF(c_subtitle2,''),NULLIF(c_desc,''),NULLIF(c_snippet,''),NULLIF(description_or_snippet,''),NULLIF(snippet,'')) AS extracted_supporting_text,
          c_contact AS suggested_contact_name_v30
   FROM cut
 )
@@ -5565,7 +5806,7 @@ SELECT noise_hint,body_review_bucket,communication_context_type,
        MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
        MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
        substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS min_sample,
-       substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS max_sample,
+)VSQL30" R"VSQL30(       substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS max_sample,
        'Noise reduction summary is non-destructive. It helps triage conversation placeholders and likely marketing/short-code rows while keeping all Spotlight evidence available in the full review views.' AS interpretation_note
 FROM vw_ios_spotlight_message_body_review
 GROUP BY noise_hint,body_review_bucket,communication_context_type;
@@ -5652,7 +5893,7 @@ CREATE VIEW vw_ios_spotlight_message_body_focus_summary AS
 SELECT noise_hint,body_review_bucket,communication_context_type,bundle_id,content_type,
        COUNT(*) AS spotlight_record_count,
        COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
-       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_text,
+)VSQL31" R"VSQL31(       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_text,
        SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_supporting_text,
        MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
        MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
@@ -5950,7 +6191,7 @@ SELECT record_timestamp_utc AS event_utc,
        COALESCE(title,'') || CASE WHEN COALESCE(text_snippet,'')<>'' THEN ' | ' || text_snippet ELSE '' END AS details,
        provenance,
        'Parsed iOS app database activity row; availability depends on targeted app DB extraction/materialization settings.' AS interpretation_note
-FROM ios_app_parsed_records
+)VSQL47" R"VSQL47(FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
 UNION ALL
 SELECT parsed_utc AS event_utc,
@@ -5980,7 +6221,7 @@ void CaseDatabase::ensureGuiReviewViews() {
         if (rc != SQLITE_OK) {
             std::string msg = err ? err : "unknown SQLite error creating review views";
             sqlite3_free(err);
-            throw std::runtime_error("Unable to create/update GUI review views: " + msg);
+            throw std::runtime_error("Unable to create/update GUI review views: " + msg + "\nSQL: " + std::string(sql ? sql : ""));
         }
     };
 
@@ -5988,11 +6229,22 @@ void CaseDatabase::ensureGuiReviewViews() {
         std::string sql;
         size_t total = 0;
         for (const char* part : parts) {
-            if (part) total += std::strlen(part);
+            if (part) total += std::strlen(part) + 1;
         }
         sql.reserve(total);
         for (const char* part : parts) {
-            if (part) sql += part;
+            if (part) { sql += part; sql += "\n"; }
+        }
+        if (sql.find("DROP VIEW IF EXISTS", sql.find("DROP VIEW IF EXISTS") == std::string::npos ? 0 : sql.find("DROP VIEW IF EXISTS") + 1) != std::string::npos) {
+            std::size_t start = 0;
+            while (start < sql.size()) {
+                std::size_t next = sql.find("DROP VIEW IF EXISTS", start + 1);
+                std::string part = sql.substr(start, next == std::string::npos ? std::string::npos : next - start);
+                if (part.find_first_not_of(" \t\r\n") != std::string::npos) execGuiSql(part.c_str());
+                if (next == std::string::npos) break;
+                start = next;
+            }
+            return;
         }
         execGuiSql(sql.c_str());
     };
@@ -6457,7 +6709,7 @@ WHERE r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store
 DROP VIEW IF EXISTS vw_ios_timeline_index_updates;
 CREATE VIEW vw_ios_timeline_index_updates AS
 SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,content_type,display_name,full_path,last_updated_utc,
-       'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
+)VSGUI" R"VSGUI(       'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
        record_state
 FROM raw_records
 WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
@@ -6533,7 +6785,7 @@ ORDER BY normalized_path;
 DROP VIEW IF EXISTS vw_ios_database_artifact_inventory;
 CREATE VIEW vw_ios_database_artifact_inventory AS
 SELECT ios_db_id,source_id,normalized_path,original_zip_entry,database_name,database_category,app_hint,
-       protection_class_hint,size_bytes,zip_modified_utc,parse_status,record_inventory_status,notes,extracted_path,created_utc
+)VSGUI" R"VSGUI(       protection_class_hint,size_bytes,zip_modified_utc,parse_status,record_inventory_status,notes,extracted_path,created_utc
 FROM ios_app_database_inventory
 ORDER BY database_category,app_hint,normalized_path;
 
@@ -6645,7 +6897,7 @@ WITH probes AS (
 SELECT raw_kv_id AS reference_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,field_name,
        substr(field_value,1,2000) AS raw_reference_value,
        reference_type,
-       CASE WHEN extracted_path<>'' THEN lower(replace(replace(replace(extracted_path,'file://',''),'%20',' '),'\','/')) ELSE '' END AS normalized_ios_path,
+)VSGUI" R"VSGUI(       CASE WHEN extracted_path<>'' THEN lower(replace(replace(replace(extracted_path,'file://',''),'%20',' '),'\','/')) ELSE '' END AS normalized_ios_path,
        CASE WHEN extracted_path<>'' THEN 'MEDIUM_STRING_PROBE_PATH' ELSE 'LOW_NO_LOCAL_PATH' END AS confidence,
        'Spotlight string probe reference; formal CoreSpotlight property mapping remains parser roadmap work' AS notes
 FROM extracted
@@ -6703,7 +6955,7 @@ SELECT r.reference_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_i
        END AS investigative_reason,
        COALESCE(ctx.spotlight_text_context_sample,'') AS spotlight_text_context_sample,
        CASE WHEN COALESCE(ctx.spotlight_text_context_sample,'')<>'' THEN 'TEXT_CONTEXT_RECOVERED_FROM_SAME_SPOTLIGHT_RECORD' ELSE 'NO_TEXT_CONTEXT_RECOVERED_IN_COMPACT_MODE' END AS spotlight_text_context_status,
-       COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
+)VSGUI" R"VSGUI(       COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
        COALESCE(f.protection_class_hint,'') AS matched_protection_class,COALESCE(f.app_container_hint,'') AS matched_app_container,COALESCE(f.domain_hint,'') AS matched_domain,
        COALESCE(f.lookup_source,'') AS ffs_lookup_source,
        'FFS_LOOKUP_AVAILABLE' AS ffs_lookup_status,
@@ -6753,7 +7005,7 @@ SELECT source_id,store_guid,source_db,field_name,reference_type,missing_candidat
        MAX(investigative_reason) AS investigative_reason,
        'High/medium-priority subset of Missing From FFS candidates, excluding likely thumbnail/brand/cache-only references. Use this first before the full candidate view.' AS interpretation_note
 FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates
-GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
+)VSGUI" R"VSGUI(GROUP BY source_id,store_guid,source_db,field_name,reference_type,missing_candidate_category,investigative_priority,investigative_priority_sort,spotlight_text_context_status,ffs_lookup_status;
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_text_context_review;
@@ -6813,7 +7065,7 @@ WITH base AS (
          WHEN text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT' THEN 1
          WHEN text_context_category='MAIL_OR_EMAIL_CONTEXT' THEN 2
          WHEN text_context_category IN ('WHATSAPP_APP_OR_CHAT_CONTEXT','SIGNAL_APP_OR_CHAT_CONTEXT','TELEGRAM_APP_OR_CHAT_CONTEXT') THEN 3
-         WHEN text_context_category IN ('WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION') THEN 9
+)VSGUI" R"VSGUI(         WHEN text_context_category IN ('WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION') THEN 9
          WHEN text_context_category='URL_OR_WEB_CONTEXT' THEN 4
          WHEN text_context_category='CALL_LOG_OR_PHONE_CONTEXT' THEN 5
          WHEN text_context_category='CONTACT_CONTEXT' THEN 6
@@ -6952,7 +7204,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_in
        substr(GROUP_CONCAT(field_name || '=' || readable_text_sample, ' || '),1,6000) AS readable_text_rollup_sample,
        'Record-level human-readable text rollup from iOS CoreSpotlight string probes.' AS interpretation_note
 FROM text_values
-GROUP BY raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num;
+)VSGUI" R"VSGUI(GROUP BY raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num;
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_investigative_items_with_dates;
@@ -7021,7 +7273,7 @@ SELECT source_id, store_guid, source_db, field_name AS spotlight_date_source_fie
        MIN(parsed_utc) AS earliest_parsed_utc,
        MAX(parsed_utc) AS latest_parsed_utc,
        substr(MIN(field_value),1,500) AS min_raw_value_sample,
-       substr(MAX(field_value),1,500) AS max_raw_value_sample,
+)VSGUI" R"VSGUI(       substr(MAX(field_value),1,500) AS max_raw_value_sample,
        CASE
          WHEN spotlight_date_semantic_class='metadata_seen_or_index_updated' THEN 'CoreSpotlight metadata/index update timing; do not report as created/modified/accessed/opened usage without another decoded field.'
          WHEN spotlight_date_semantic_class LIKE '%candidate' THEN 'Candidate semantic class inferred from Spotlight raw date field name; validate field meaning before reporting.'
@@ -7165,7 +7417,7 @@ SELECT b.raw_kv_id,b.raw_record_id,b.source_id,b.store_guid,b.source_db,
        COALESCE(f.matched_protection_class,'') AS matched_protection_class,
        COALESCE(f.matched_app_container,'') AS matched_app_container,
        COALESCE(f.matched_domain,'') AS matched_domain,
-       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
+)SQL" R"SQL(       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
             WHEN COALESCE(f.residency_status,'')<>'' THEN f.residency_status
             ELSE 'SPOTLIGHT_FILE_REFERENCE_NO_EXACT_FFS_MATCH_IN_CURRENT_LINK_VIEW' END AS file_reference_status,
        'Spotlight/CoreSpotlight file/path reference with date provenance. FFS presence supports current-file existence only and is not proof of use or deletion by itself.' AS interpretation_note
@@ -7333,7 +7585,7 @@ SELECT n.raw_kv_id,
        COALESCE(a.sample_parsed_value,'') AS sample_app_db_value,
        'raw_key_values.raw_kv_id=' || COALESCE(CAST(n.raw_kv_id AS TEXT),'') || '; raw_records.raw_record_id=' || COALESCE(CAST(n.raw_record_id AS TEXT),'') || '; field_name=' || COALESCE(n.spotlight_value_source_field,'') AS reference_validation_locator,
        'raw_date_candidates.field_name=' || COALESCE(n.spotlight_date_source_field,'') || '; raw_value=' || COALESCE(n.spotlight_date_raw_value,'') || '; parse_method=' || COALESCE(n.spotlight_date_parse_method,'') AS date_validation_locator,
-       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
+)VSGUI" R"VSGUI(       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
 FROM normalized n
 LEFT JOIN ffs f ON f.reference_id=n.raw_kv_id
 LEFT JOIN app a ON a.candidate_id=n.raw_kv_id;
@@ -7446,7 +7698,7 @@ SELECT rr.source_id,rr.store_guid,rr.source_db,
        COALESCE(ht.human_text_value_count,0) AS human_text_value_count,
        COALESCE(ht.records_with_human_text,0) AS records_with_human_text,
        COALESCE(ht.human_text_category_count,0) AS human_text_category_count,
-       CASE WHEN rr.raw_record_count>0 THEN printf('%.2f', 100.0 * COALESCE(ht.records_with_human_text,0) / rr.raw_record_count) ELSE '0.00' END AS pct_records_with_human_text,
+)VSGUI" R"VSGUI(       CASE WHEN rr.raw_record_count>0 THEN printf('%.2f', 100.0 * COALESCE(ht.records_with_human_text,0) / rr.raw_record_count) ELSE '0.00' END AS pct_records_with_human_text,
        COALESCE(nd.native_property_count,0) AS native_property_count,
        COALESCE(nd.native_category_count,0) AS native_category_count,
        COALESCE(nd.metadata_blocks,0) AS metadata_blocks,
@@ -7529,7 +7781,7 @@ SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num AS spotl
        'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
        COALESCE(t.text_value_count,0) AS spotlight_text_value_count,
        COALESCE(t.distinct_text_category_count,0) AS spotlight_text_category_count,
-       COALESCE(t.human_text_categories,'') AS spotlight_text_categories,
+)VSGUI" R"VSGUI(       COALESCE(t.human_text_categories,'') AS spotlight_text_categories,
        COALESCE(t.readable_text_rollup_sample,'') AS spotlight_text_rollup_sample,
        0 AS ffs_reference_count,
        0 AS ffs_present_reference_count,
@@ -7615,7 +7867,7 @@ WITH obj AS (
                 ELSE 'MORE_THAN_TWENTY_RECORDS_PER_OBJECT' END
 )
 SELECT source_id,store_guid,source_db,object_record_bucket,object_count,raw_record_count,min_records_per_object,max_records_per_object,
-       'Compact object/inode materialization diagnostic. Use this normal export to decide whether the case should pivot to object-centric aggregation; full per-object rows require support/diagnostic export.' AS interpretation_note
+)VSGUI" R"VSGUI(       'Compact object/inode materialization diagnostic. Use this normal export to decide whether the case should pivot to object-centric aggregation; full per-object rows require support/diagnostic export.' AS interpretation_note
 FROM buckets;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_object_identity;
@@ -7676,7 +7928,7 @@ WITH refs AS (
   WHERE NOT EXISTS (SELECT 1 FROM ios_ffs_file_inventory f WHERE f.source_id=l.source_id LIMIT 1)
 )
 SELECT r.reference_id,r.source_id,r.store_guid,r.source_db,r.inode_num AS spotlight_inode_or_object_id,
-       r.store_id AS spotlight_store_id,r.parent_inode_num AS spotlight_parent_id,
+)VSGUI" R"VSGUI(       r.store_id AS spotlight_store_id,r.parent_inode_num AS spotlight_parent_id,
        r.field_name,r.reference_type,r.normalized_ios_path,
        CASE WHEN f.normalized_path IS NOT NULL THEN 'PRESENT_AS_FILE_IN_FFS'
             ELSE 'SPOTLIGHT_ONLY_FILE_MISSING_OR_UNRESOLVED' END AS residency_status,
@@ -8579,7 +8831,7 @@ SELECT source_id, normalized_path, original_zip_entry, file_name, extension, siz
          WHEN lower(file_name) IN ('keychain-2.db','keychain-2-debug.db') THEN 'KEYCHAIN_DATABASE'
          WHEN lower(normalized_path) LIKE '%/private/var/keychains/%' THEN 'KEYCHAIN_DIRECTORY_ARTIFACT'
          WHEN lower(file_name) LIKE '%_keychain.plist' OR lower(file_name)='keychain_decrypted.plist' THEN 'EXTERNAL_OR_DECRYPTED_KEYCHAIN_PLIST'
-         WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
+)VSGUI" R"VSGUI(         WHEN lower(normalized_path) LIKE '%keybag%' THEN 'KEYBAG_OR_KEYCHAIN_SUPPORT'
          ELSE 'KEYCHAIN_CORE_MATERIAL'
        END AS keychain_material_type,
        'Inventory only. Presence of keychain/keybag material in the FFS root does not mean WhatsApp or other app data can be decrypted unless parser-specific key extraction and validation are implemented.' AS interpretation_note
@@ -8699,12 +8951,14 @@ SELECT
 FROM ios_app_parsed_records
 WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
-       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
+)VSGUI" R"VSGUI(       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
   AND COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key) IS NOT NULL
 GROUP BY COALESCE(NULLIF(item_identifier,''), NULLIF(contact_or_participant,''), source_primary_key)
 ORDER BY total_records_in_thread DESC, last_communication_utc DESC;
 
+)VSGUI",
+        R"VSGUI(
 DROP VIEW IF EXISTS vw_ios_communication_existence_evidence;
 CREATE VIEW vw_ios_communication_existence_evidence AS
 SELECT
@@ -8742,6 +8996,32 @@ WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
    OR provenance LIKE '%INTENT_TARGET%';
 
+
+DROP VIEW IF EXISTS vw_ios_spotlight_comms_missing_from_ffs;
+CREATE VIEW vw_ios_spotlight_comms_missing_from_ffs AS
+SELECT
+    s.record_timestamp_utc,
+    s.communication_thread_id AS spotlight_thread_id,
+    s.identity_hint AS recovered_identity,
+    s.app_hint AS source_app,
+    s.title,
+    s.text_snippet_sample AS recovered_message_text,
+    s.file_path AS original_spotlight_path,
+    'COMMUNICATION_PRESENT_IN_SPOTLIGHT_NOT_MATCHED_TO_NATIVE_APP_DB' AS forensic_status,
+    'This communication-related record is present in CoreSpotlight/index-derived data and was not matched to a parsed native app database row by thread/source key. This may indicate deletion, app removal, encryption/inaccessibility, parser coverage limits, or an unmatched identifier; review source provenance before drawing conclusions.' AS interpretation_note
+FROM vw_ios_communication_existence_evidence s
+WHERE s.database_name LIKE '%index.db%'
+  AND s.existence_basis IN ('communication_related_parsed_record','domain_identifier_or_thread_marker','author_recipient_or_identity_marker','deleted_or_recoverable_message_table_or_spotlight_marker')
+  AND COALESCE(s.communication_thread_id, '') <> ''
+  AND NOT EXISTS (
+      SELECT 1
+      FROM ios_app_parsed_records app
+      WHERE app.database_name NOT LIKE '%index.db%'
+        AND COALESCE(s.communication_thread_id,'') <> ''
+        AND (app.item_identifier = s.communication_thread_id OR app.source_primary_key = s.communication_thread_id OR app.contact_or_participant = s.identity_hint)
+  )
+ORDER BY s.record_timestamp_utc DESC;
+
 DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
 CREATE VIEW vw_ios_communication_identity_frequency AS
 SELECT
@@ -8757,7 +9037,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
   'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+)VSGUI" R"VSGUI(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -8812,44 +9092,27 @@ ORDER BY parsed_record_count DESC, records_with_timestamp DESC;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_communication_candidates;
 CREATE VIEW vw_ios_spotlight_communication_candidates AS
-WITH probe AS (
-  SELECT kv.raw_kv_id, kv.source_id, kv.store_guid, kv.source_db, kv.inode_num, kv.store_id, kv.parent_inode_num, kv.field_name, kv.field_value,
-         lower(kv.field_value) AS v, rr.last_updated_utc
-  FROM raw_key_values kv
-  LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
-  WHERE COALESCE(kv.field_value,'')<>''
-    AND (kv.store_guid LIKE 'ios_%' OR kv.source_db LIKE '%CoreSpotlight%' OR kv.store_path LIKE '%CoreSpotlight%')
-), categorized AS (
-  SELECT *,
-         CASE
-           WHEN v LIKE '%whatsapp%' THEN 'WHATSAPP_TEXT_OR_REFERENCE'
-           WHEN v LIKE '%imessage%' OR v LIKE '%sms.db%' OR v LIKE '%/sms/%' OR v LIKE '%com.apple.mobilesms%' THEN 'APPLE_MESSAGES_OR_SMS_RELATED'
-           WHEN v LIKE '%message%' OR v LIKE '%chat%' OR v LIKE '%conversation%' THEN 'MESSAGE_OR_CHAT_TEXT_CANDIDATE'
-           WHEN v LIKE '%facetime%' OR v LIKE '%callhistory%' OR v LIKE '%call history%' THEN 'PHONE_OR_FACETIME_RELATED'
-           WHEN v LIKE '%mailto:%' OR (v LIKE '%@%' AND v LIKE '%.%') THEN 'EMAIL_OR_ACCOUNT_RELATED'
-           ELSE 'OTHER_COMMUNICATION_RELATED'
-         END AS communication_candidate_type
-  FROM probe
-  WHERE v LIKE '%whatsapp%' OR v LIKE '%imessage%' OR v LIKE '%sms.db%' OR v LIKE '%/sms/%' OR v LIKE '%com.apple.mobilesms%'
-     OR v LIKE '%message%' OR v LIKE '%chat%' OR v LIKE '%conversation%' OR v LIKE '%facetime%' OR v LIKE '%callhistory%' OR v LIKE '%call history%'
-     OR v LIKE '%mailto:%' OR (v LIKE '%@%' AND v LIKE '%.%')
-)
-SELECT raw_kv_id, source_id, store_guid, source_db, inode_num AS spotlight_inode_or_object_id, store_id AS spotlight_store_id, parent_inode_num AS spotlight_parent_id,
-       field_name, communication_candidate_type, last_updated_utc AS spotlight_last_updated_utc, substr(field_value,1,600) AS string_value_sample,
+SELECT kv.raw_kv_id, kv.source_id, kv.store_guid, kv.source_db, kv.inode_num AS spotlight_inode_or_object_id,
+       kv.store_id AS spotlight_store_id, kv.parent_inode_num AS spotlight_parent_id, kv.field_name,
        CASE
-         WHEN communication_candidate_type='WHATSAPP_TEXT_OR_REFERENCE' AND EXISTS (SELECT 1 FROM vw_ios_whatsapp_database_status WHERE whatsapp_residency_status<>'WHATSAPP_DB_NOT_FOUND') THEN 'WHATSAPP_DATABASE_FAMILY_PRESENT'
-         WHEN communication_candidate_type='APPLE_MESSAGES_OR_SMS_RELATED' AND EXISTS (SELECT 1 FROM vw_ios_apple_messages_database_status WHERE apple_messages_residency_status<>'SMS_DB_NOT_FOUND') THEN 'SMS_DATABASE_FAMILY_PRESENT'
-         WHEN communication_candidate_type='PHONE_OR_FACETIME_RELATED' AND EXISTS (SELECT 1 FROM ios_app_database_inventory WHERE database_category='CALL_HISTORY') THEN 'CALL_HISTORY_DATABASE_FAMILY_PRESENT'
-         ELSE 'NO_CONFIRMED_MATCHING_APP_DATABASE_ROW'
-       END AS communication_residency_context,
+         WHEN lower(kv.field_value) LIKE '%whatsapp%' THEN 'WHATSAPP_TEXT_OR_REFERENCE'
+         WHEN lower(kv.field_value) LIKE '%imessage%' OR lower(kv.field_value) LIKE '%sms.db%' OR lower(kv.field_value) LIKE '%com.apple.mobilesms%' THEN 'APPLE_MESSAGES_OR_SMS_RELATED'
+         WHEN lower(kv.field_value) LIKE '%message%' OR lower(kv.field_value) LIKE '%chat%' OR lower(kv.field_value) LIKE '%conversation%' THEN 'MESSAGE_OR_CHAT_TEXT_CANDIDATE'
+         WHEN lower(kv.field_value) LIKE '%facetime%' OR lower(kv.field_value) LIKE '%callhistory%' THEN 'PHONE_OR_FACETIME_RELATED'
+         WHEN lower(kv.field_value) LIKE '%mailto:%' OR (lower(kv.field_value) LIKE '%@%' AND lower(kv.field_value) LIKE '%.%') THEN 'EMAIL_OR_ACCOUNT_RELATED'
+         ELSE 'OTHER_COMMUNICATION_RELATED'
+       END AS communication_candidate_type,
+       rr.last_updated_utc AS spotlight_last_updated_utc,
+       substr(kv.field_value,1,600) AS string_value_sample,
+)VSGUI" R"VSGUI(       'NO_CONFIRMED_MATCHING_APP_DATABASE_ROW' AS communication_residency_context,
        'Spotlight string candidate only. Review parsed app database views and exact links before treating this as a live message/call/chat record.' AS interpretation_note
-FROM categorized
-ORDER BY communication_candidate_type, raw_kv_id;
+FROM raw_key_values kv
+LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
+WHERE COALESCE(kv.field_value,'')<>''
+  AND (kv.store_guid LIKE 'ios_%' OR kv.source_db LIKE '%CoreSpotlight%' OR kv.store_path LIKE '%CoreSpotlight%')
+  AND (lower(kv.field_value) LIKE '%whatsapp%' OR lower(kv.field_value) LIKE '%imessage%' OR lower(kv.field_value) LIKE '%sms.db%' OR lower(kv.field_value) LIKE '%com.apple.mobilesms%' OR lower(kv.field_value) LIKE '%message%' OR lower(kv.field_value) LIKE '%chat%' OR lower(kv.field_value) LIKE '%conversation%' OR lower(kv.field_value) LIKE '%facetime%' OR lower(kv.field_value) LIKE '%callhistory%' OR lower(kv.field_value) LIKE '%mailto:%' OR (lower(kv.field_value) LIKE '%@%' AND lower(kv.field_value) LIKE '%.%'))
+ORDER BY communication_candidate_type, kv.raw_kv_id;
 
-)VSGUI"
-    });
-
-    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_ios_app_live_activity_timeline;
 CREATE VIEW vw_ios_app_live_activity_timeline AS
 SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,
@@ -8860,7 +9123,8 @@ SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_n
 FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
 ORDER BY record_timestamp_utc DESC, database_category, record_category, ios_app_record_id;
-)SQL");
+)VSGUI"
+    });
 
     execGuiSqlParts({
         R"VSGUI(
@@ -8924,7 +9188,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_in
        MIN(NULLIF(last_updated_utc,'')) AS last_updated_utc,
        'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
        substr(GROUP_CONCAT(field_name || '=' || readable_text_sample, ' || '),1,6000) AS readable_text_rollup_sample,
-       'Record-level human-readable text rollup from iOS CoreSpotlight string probes.' AS interpretation_note
+)VSGUI" R"VSGUI(       'Record-level human-readable text rollup from iOS CoreSpotlight string probes.' AS interpretation_note
 FROM text_values
 GROUP BY raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num;
 
@@ -8995,7 +9259,7 @@ SELECT source_id, store_guid, source_db, field_name AS spotlight_date_source_fie
        MIN(parsed_utc) AS earliest_parsed_utc,
        MAX(parsed_utc) AS latest_parsed_utc,
        substr(MIN(field_value),1,500) AS min_raw_value_sample,
-       substr(MAX(field_value),1,500) AS max_raw_value_sample,
+)VSGUI" R"VSGUI(       substr(MAX(field_value),1,500) AS max_raw_value_sample,
        CASE
          WHEN spotlight_date_semantic_class='metadata_seen_or_index_updated' THEN 'CoreSpotlight metadata/index update timing; do not report as created/modified/accessed/opened usage without another decoded field.'
          WHEN spotlight_date_semantic_class LIKE '%candidate' THEN 'Candidate semantic class inferred from Spotlight raw date field name; validate field meaning before reporting.'
@@ -9139,7 +9403,7 @@ SELECT b.raw_kv_id,b.raw_record_id,b.source_id,b.store_guid,b.source_db,
        COALESCE(f.matched_protection_class,'') AS matched_protection_class,
        COALESCE(f.matched_app_container,'') AS matched_app_container,
        COALESCE(f.matched_domain,'') AS matched_domain,
-       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
+)SQL" R"SQL(       CASE WHEN COALESCE(f.residency_status,'')='PRESENT_AS_FILE_IN_FFS' THEN 'SPOTLIGHT_PATH_PRESENT_IN_FFS_INVENTORY'
             WHEN COALESCE(f.residency_status,'')<>'' THEN f.residency_status
             ELSE 'SPOTLIGHT_FILE_REFERENCE_NO_EXACT_FFS_MATCH_IN_CURRENT_LINK_VIEW' END AS file_reference_status,
        'Spotlight/CoreSpotlight file/path reference with date provenance. FFS presence supports current-file existence only and is not proof of use or deletion by itself.' AS interpretation_note
@@ -9307,7 +9571,7 @@ SELECT n.raw_kv_id,
        COALESCE(a.sample_parsed_value,'') AS sample_app_db_value,
        'raw_key_values.raw_kv_id=' || COALESCE(CAST(n.raw_kv_id AS TEXT),'') || '; raw_records.raw_record_id=' || COALESCE(CAST(n.raw_record_id AS TEXT),'') || '; field_name=' || COALESCE(n.spotlight_value_source_field,'') AS reference_validation_locator,
        'raw_date_candidates.field_name=' || COALESCE(n.spotlight_date_source_field,'') || '; raw_value=' || COALESCE(n.spotlight_date_raw_value,'') || '; parse_method=' || COALESCE(n.spotlight_date_parse_method,'') AS date_validation_locator,
-       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
+)VSGUI" R"VSGUI(       'Spotlight-first entity view. The entity/value and date columns originate from CoreSpotlight/Spotlight parsed records; app DB and FFS fields are corroborating context only.' AS interpretation_note
 FROM normalized n
 LEFT JOIN ffs f ON f.reference_id=n.raw_kv_id
 LEFT JOIN app a ON a.candidate_id=n.raw_kv_id;
@@ -9420,7 +9684,7 @@ SELECT rr.source_id,rr.store_guid,rr.source_db,
        COALESCE(ht.human_text_value_count,0) AS human_text_value_count,
        COALESCE(ht.records_with_human_text,0) AS records_with_human_text,
        COALESCE(ht.human_text_category_count,0) AS human_text_category_count,
-       CASE WHEN rr.raw_record_count>0 THEN printf('%.2f', 100.0 * COALESCE(ht.records_with_human_text,0) / rr.raw_record_count) ELSE '0.00' END AS pct_records_with_human_text,
+)VSGUI" R"VSGUI(       CASE WHEN rr.raw_record_count>0 THEN printf('%.2f', 100.0 * COALESCE(ht.records_with_human_text,0) / rr.raw_record_count) ELSE '0.00' END AS pct_records_with_human_text,
        COALESCE(nd.native_property_count,0) AS native_property_count,
        COALESCE(nd.native_category_count,0) AS native_category_count,
        COALESCE(nd.metadata_blocks,0) AS metadata_blocks,
@@ -9503,7 +9767,7 @@ SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num AS spotl
        'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
        COALESCE(t.text_value_count,0) AS spotlight_text_value_count,
        COALESCE(t.distinct_text_category_count,0) AS spotlight_text_category_count,
-       COALESCE(t.human_text_categories,'') AS spotlight_text_categories,
+)VSGUI" R"VSGUI(       COALESCE(t.human_text_categories,'') AS spotlight_text_categories,
        COALESCE(t.readable_text_rollup_sample,'') AS spotlight_text_rollup_sample,
        0 AS ffs_reference_count,
        0 AS ffs_present_reference_count,
@@ -9589,7 +9853,7 @@ WITH obj AS (
                 ELSE 'MORE_THAN_TWENTY_RECORDS_PER_OBJECT' END
 )
 SELECT source_id,store_guid,source_db,object_record_bucket,object_count,raw_record_count,min_records_per_object,max_records_per_object,
-       'Compact object/inode materialization diagnostic. Use this normal export to decide whether the case should pivot to object-centric aggregation; full per-object rows require support/diagnostic export.' AS interpretation_note
+)VSGUI" R"VSGUI(       'Compact object/inode materialization diagnostic. Use this normal export to decide whether the case should pivot to object-centric aggregation; full per-object rows require support/diagnostic export.' AS interpretation_note
 FROM buckets;
 
 DROP VIEW IF EXISTS vw_ios_spotlight_decode_gap_records;
@@ -9680,7 +9944,7 @@ WITH probes AS (
 )
 SELECT c.raw_kv_id AS candidate_id,c.source_id,c.store_guid,c.source_db,c.inode_num,c.store_id,c.parent_inode_num,c.field_name,
        c.object_category,substr(c.field_value,1,2000) AS string_value_sample,
-       d.database_name,d.database_category,d.app_hint,d.candidate_database_path,d.record_inventory_status,
+)VSGUI" R"VSGUI(       d.database_name,d.database_category,d.app_hint,d.candidate_database_path,d.record_inventory_status,
        COALESCE(pb.parsed_record_category,ri.matched_record_category,'') AS matched_record_category,
        COALESCE(ri.matched_table_name,'') AS matched_table_name,
        COALESCE(ri.matched_table_row_count,0) AS matched_table_row_count,
@@ -9768,7 +10032,7 @@ SELECT database_category,app_hint,database_name,table_name,web_record_type,parse
        COUNT(*) AS web_review_row_count,
        SUM(CASE WHEN COALESCE(url,'')<>'' THEN 1 ELSE 0 END) AS rows_with_url,
        SUM(CASE WHEN COALESCE(title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_title,
-       MIN(NULLIF(record_timestamp_utc,'')) AS earliest_record_timestamp_utc,
+)SQL" R"SQL(       MIN(NULLIF(record_timestamp_utc,'')) AS earliest_record_timestamp_utc,
        MAX(NULLIF(record_timestamp_utc,'')) AS latest_record_timestamp_utc,
        MIN(database_normalized_path) AS first_database_path,MAX(database_normalized_path) AS last_database_path
 FROM vw_ios_web_history_review_records
@@ -9847,7 +10111,7 @@ SELECT 'APP_DATABASE_INVENTORY' AS surface_source, source_id, CAST(ios_db_id AS 
        database_category AS review_category, database_name AS source_container, normalized_path AS source_location,
        app_hint AS field_or_table, zip_modified_utc AS record_timestamp_utc, substr(normalized_path,1,2000) AS searchable_value_sample,
        normalized_path AS path_or_url, '' AS contact_or_identity,
-       'APP_DATABASE_DISCOVERY' AS review_priority,
+)SQL" R"SQL(       'APP_DATABASE_DISCOVERY' AS review_priority,
        COALESCE(record_inventory_status,parse_status) AS residency_context,
        'App database inventory row. Use record inventory and parsed-record views to confirm whether rows were parsed.' AS interpretation_note
 FROM ios_app_database_inventory;

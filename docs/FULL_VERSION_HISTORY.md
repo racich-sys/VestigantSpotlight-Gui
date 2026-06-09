@@ -1,10 +1,10 @@
-## V1_4_2
+## V1_6_0
 
 - Documentation/context bootstrap release.
 - Added root-level `ai_context.md` as the living source-of-truth context file for future sessions.
 - No code behavior, parser behavior, schema, GUI workflow, or forensic interpretation changes are intended in this package.
 
-## V1_4_2
+## V1_6_0
 
 - Prioritized iOS communication identity and KnowledgeC expansion before broader roadmap items.
 - Added WEB_DOWNLOADS to the iOS app database target parse categories so Safari/Chrome/WebKit download tables are parsed rather than only inventoried.

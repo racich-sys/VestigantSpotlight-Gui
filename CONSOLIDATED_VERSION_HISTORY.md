@@ -1,4 +1,4 @@
-## V1_4_2
+## V1_6_0
 
 - Documentation/context bootstrap release.
 - Added root-level `ai_context.md` as the living source-of-truth context file for future sessions.

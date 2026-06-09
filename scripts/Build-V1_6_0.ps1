@@ -1,11 +1,21 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_4_2.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_4_2",
-  [string]$BuildLog = "D:\Downloads\V1_4_2_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_0.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_0",
+  [string]$BuildLog = "D:\Downloads\V1_6_0_build.log",
   [switch]$CleanExtract
 )
 
 $ErrorActionPreference = "Stop"
+
+$WrapperCompat = Join-Path $SourceRoot "tools\Verify-PowerShellWrapperCompatibility.ps1"
+if (Test-Path -LiteralPath $WrapperCompat) { powershell -ExecutionPolicy Bypass -File $WrapperCompat -SourceRoot $SourceRoot }
+
+$MsvcStringCheck = Join-Path $SourceRoot "tools\Verify-MsvcStringLiteralRisk.ps1"
+if (Test-Path -LiteralPath $MsvcStringCheck) { powershell -ExecutionPolicy Bypass -File $MsvcStringCheck -SourceRoot $SourceRoot }
+
+$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_0-ReleaseReadiness.ps1"
+if (Test-Path -LiteralPath $ReleaseReadiness) { powershell -ExecutionPolicy Bypass -File $ReleaseReadiness -SourceRoot $SourceRoot }
+
 
 if (!(Test-Path -LiteralPath $SourceRoot)) {
   if (!(Test-Path -LiteralPath $ZipPath)) { throw "SourceRoot and source ZIP not found. SourceRoot=$SourceRoot ZIP=$ZipPath" }
@@ -32,6 +42,6 @@ Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlightTests
 if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE. Log: $BuildLog" }
 
 $version = (& "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe" --version 2>&1 | Out-String).Trim()
-if ($version -notmatch "1\.4\.2") { throw "Unexpected CLI version after build: $version" }
+if ($version -notmatch "1\.6\.0") { throw "Unexpected CLI version after build: $version" }
 Write-Host $version
 Write-Host "Build log: $BuildLog"
