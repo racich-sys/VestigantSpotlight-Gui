@@ -4,7 +4,8 @@ param(
     [string]$ZipPath = "D:\Downloads\Upload_Thin_V0_8_75_iOS_CoreSpotlight.zip",
     [switch]$CleanOut,
     [switch]$NoClipboardOrExplorer,
-    [switch]$FullDiagnostics
+    [switch]$FullDiagnostics,
+  [switch]$NoCsvExports
 )
 
 $ErrorActionPreference = "Stop"
@@ -164,6 +165,7 @@ $cliArgs = @(
   "--export-profile", $ExportProfile,
   "--verbose"
 )
+if ($NoCsvExports) { $cliArgs += "--no-csv-exports" }
 $cliExit = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $cliArgs -CaseRoot $Out -IntervalSeconds 60
 $global:LASTEXITCODE = $cliExit
 if ($cliExit -ne 0) { Write-Warning "iOS CLI exited with code $cliExit; upload bundle will still be attempted for diagnostics." }

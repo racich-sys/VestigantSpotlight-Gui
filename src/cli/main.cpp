@@ -50,8 +50,8 @@ void usage() {
               << "Usage:\n"
               << "  VestigantSpotlightCli --mode discover --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--full-scan]\n"
               << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
-              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"
-              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full]\n"
+              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
+              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
               << "  VestigantSpotlightCli --full-validation --input <raw-spotlight-root-or-zip> --out <case-folder>\n"
               << "Workflow:\n"
               << "  identify Spotlight store.db/.store.db evidence -> preserve static case copy -> native C++ decode into SQLite -> enrich -> review/export.\n\n"
@@ -120,6 +120,7 @@ int main(int argc, char** argv) {
             else if (a == "--db-size-guardrail-gb") { const auto gb = std::stoull(need(a)); opt.dbSizeGuardrailBytes = static_cast<std::uintmax_t>(gb) * 1024ull * 1024ull * 1024ull; }
             else if (a == "--disable-db-size-guardrail") { opt.dbSizeGuardrailBytes = 0; }
             else if (a == "--export-profile") { opt.exportProfile = need(a); }
+            else if (a == "--no-csv-exports") { opt.suppressCsvExports = true; opt.exportProfile = "none"; }
             else if (a == "--diagnostic-full-native-exports") { opt.exportProfile = "diagnostics"; }
             else if (a == "--full-scan") opt.fullScan = true;
             else if (a == "--skip-container-hash") opt.skipContainerHash = true;

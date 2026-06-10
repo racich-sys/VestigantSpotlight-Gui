@@ -10,6 +10,10 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <cwctype>
+#include <windows.h>
+#include <direct.h>
+#include <cerrno>
 
 namespace vestigant::spotlight {
 namespace {
@@ -29,6 +33,73 @@ std::wstring widenAscii(const std::string& s) {
     out.reserve(s.size());
     for (unsigned char ch : s) out.push_back(static_cast<wchar_t>(ch));
     return out;
+}
+
+
+std::wstring joinPath(const std::wstring& folder, const std::wstring& name) {
+    if (folder.empty()) return name;
+    const wchar_t last = folder.back();
+    if (last == L'\\' || last == L'/') return folder + name;
+    return folder + L"\\" + name;
+}
+
+std::wstring sanitizeExportName(const std::wstring& name, std::size_t fallbackOrdinal) {
+    std::wstring out;
+    out.reserve(name.size());
+    for (wchar_t ch : name) {
+        const bool safe = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') ||
+                          (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-';
+        if (safe) out.push_back(ch);
+        else if (std::iswspace(ch)) out.push_back(L'_');
+        else out.push_back(L'_');
+        if (out.size() >= 120) break;
+    }
+    while (!out.empty() && out.front() == L'_') out.erase(out.begin());
+    while (!out.empty() && out.back() == L'_') out.pop_back();
+    if (out.empty()) out = L"view_" + std::to_wstring(static_cast<unsigned long long>(fallbackOrdinal));
+    return out;
+}
+
+bool folderExistsNoThrow(const std::wstring& path) {
+    if (path.empty()) return false;
+    const DWORD attrs = GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+void ensureFolderExistsNoThrow(const std::wstring& folder) {
+    if (folder.empty() || folderExistsNoThrow(folder)) return;
+    std::wstring normalized = folder;
+    std::replace(normalized.begin(), normalized.end(), L'/', L'\\');
+    std::wstring current;
+    std::size_t i = 0;
+    if (normalized.size() >= 2 && normalized[1] == L':') {
+        current = normalized.substr(0, 2);
+        i = 2;
+        if (i < normalized.size() && normalized[i] == L'\\') { current += L"\\"; ++i; }
+    } else if (normalized.rfind(L"\\\\", 0) == 0) {
+        // UNC path: preserve the server/share prefix before creating descendants.
+        std::size_t first = normalized.find(L'\\', 2);
+        std::size_t second = first == std::wstring::npos ? std::wstring::npos : normalized.find(L'\\', first + 1);
+        if (second != std::wstring::npos) {
+            current = normalized.substr(0, second);
+            i = second + 1;
+        }
+    }
+    while (i <= normalized.size()) {
+        std::size_t next = normalized.find(L'\\', i);
+        std::wstring part = normalized.substr(i, next == std::wstring::npos ? std::wstring::npos : next - i);
+        if (!part.empty()) {
+            if (!current.empty() && current.back() != L'\\') current += L"\\";
+            current += part;
+            if (!folderExistsNoThrow(current)) {
+                if (!CreateDirectoryW(current.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
+                    break; // caller will fail opening the CSV and report the concrete path.
+                }
+            }
+        }
+        if (next == std::wstring::npos) break;
+        i = next + 1;
+    }
 }
 
 
@@ -247,6 +318,50 @@ GuiExportResult GuiExportWorker::exportFilteredView(const GuiViewExportRequest& 
     } catch (const std::exception& ex) {
         result.ok = false;
         result.message = L"ERROR exporting filtered view: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+
+GuiExportResult GuiExportWorker::exportVisibleViews(const std::wstring& dbPath,
+                                                    const std::vector<ViewSpec>& viewSpecs,
+                                                    const std::string& search,
+                                                    const std::wstring& outFolder,
+                                                    std::function<bool()> shouldCancel) {
+    GuiExportResult result;
+    try {
+        if (viewSpecs.empty()) throw std::runtime_error("No views were supplied for multi-view export.");
+        ensureFolderExistsNoThrow(outFolder);
+        ReadOnlyExportDb db(dbPath);
+        std::vector<std::pair<std::wstring, std::size_t>> manifestRows;
+        std::size_t totalRows = 0;
+        std::size_t ordinal = 0;
+        for (const ViewSpec& view : viewSpecs) {
+            if (exportCancelled(shouldCancel)) throw std::runtime_error("Multi-view export cancelled.");
+            ++ordinal;
+            std::wstring fileName = std::to_wstring(static_cast<unsigned long long>(ordinal));
+            if (ordinal < 10) fileName = L"0" + fileName;
+            fileName += L"_" + sanitizeExportName(view.displayName ? std::wstring(view.displayName) : L"view", ordinal) + L".csv";
+            const std::wstring outPath = joinPath(outFolder, fileName);
+            const std::string where = buildWhere(view, search, -1, "");
+            const std::string order = view.orderBy ? view.orderBy : "";
+            std::string sql = "SELECT " + sqlColumns(view) + " FROM " + view.tableName + where;
+            if (!order.empty()) sql += " ORDER BY " + order;
+            const std::size_t rows = writeSqlCsv(db.get(), outPath, sql, shouldCancel);
+            manifestRows.push_back({outPath, rows});
+            totalRows += rows;
+        }
+        const std::wstring manifestPath = joinPath(outFolder, L"EXPORT_VISIBLE_VIEWS_MANIFEST.csv");
+        writeSupportManifest(manifestPath, manifestRows);
+        result.ok = true;
+        result.rows = totalRows;
+        result.manifestPath = manifestPath;
+        result.message = L"Exported " + std::to_wstring(static_cast<unsigned long long>(viewSpecs.size())) +
+                         L" visible views; total rows=" + std::to_wstring(static_cast<unsigned long long>(totalRows)) +
+                         L". Manifest: " + manifestPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"ERROR exporting visible views: " + widenAscii(ex.what());
     }
     return result;
 }

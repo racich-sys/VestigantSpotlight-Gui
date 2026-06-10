@@ -165,6 +165,74 @@ bool runSchemaSmokeTest(const fs::path& out) {
     return true;
 }
 
+bool runKnowledgeCIdentitySuppressionSmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "knowledgec_identity_suppression" / "knowledgec_identity_suppression.case.sqlite";
+    std::error_code ec;
+    fs::create_directories(dbPath.parent_path(), ec);
+    fs::remove(dbPath, ec);
+    try {
+        CaseDatabase db;
+        db.open(dbPath);
+        db.initializeSchema();
+        db.ensureGuiReviewViews();
+        db.exec(R"SQL(
+INSERT INTO ios_app_parsed_records(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,contact_or_participant,url,title,file_path,item_identifier,text_snippet,parse_status,provenance,created_utc) VALUES
+('s',1,'/private/var/mobile/Library/CoreDuet/Knowledge/knowledgeC.db','knowledgeC.db','KNOWLEDGEC_COREDUET','KnowledgeC','ZOBJECT','KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY','dev1','2024-01-01T00:00:00Z','ZSTARTDATE','','','User Interaction: /app/inFocus','','/app/inFocus','stream=/app/inFocus; bundle=com.example','parsed_knowledgec_generic_row','read_only_sqlite_dynamic_schema table=ZOBJECT; KNOWLEDGEC_DEVICE_STATE_STREAM=True; IDENTITY_PROMOTION_SUPPRESSED=True','2024-01-01T00:00:00Z'),
+('s',1,'/private/var/mobile/Library/CoreDuet/Knowledge/knowledgeC.db','knowledgeC.db','KNOWLEDGEC_COREDUET','KnowledgeC','ZOBJECT','KNOWLEDGEC_EVENTS','evt1','2024-01-01T00:01:00Z','ZSTARTDATE','','','User Interaction: /app/activity','','/app/activity','stream=/app/activity; bundle=com.example','parsed_knowledgec_generic_row','read_only_sqlite_dynamic_schema table=ZOBJECT','2024-01-01T00:01:00Z'),
+('s',1,'/private/var/mobile/Library/CoreDuet/Knowledge/knowledgeC.db','knowledgeC.db','KNOWLEDGEC_COREDUET','KnowledgeC','ZOBJECT','KNOWLEDGEC_COMMUNICATION_INTENT','comm1','2024-01-01T00:02:00Z','ZSTARTDATE','target@example.com','','COMMUNICATION INTENT: Document Shared/Sent','','/app/intents','intent_class=INSendMessageIntent; personHandle=target@example.com','parsed_knowledgec_communication_intent','read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v1_3_2; COMMUNICATION_INTENT_STREAM=True; INTENT_TARGET_IDENTIFIED=True','2024-01-01T00:02:00Z');
+)SQL");
+        auto scalar = [&](const std::string& sql) -> long long {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return -1;
+            return st.colInt64(0);
+        };
+        if (scalar("SELECT COUNT(*) FROM vw_ios_communication_frequency WHERE communication_thread_id='/app/inFocus'") != 0) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_communication_frequency WHERE communication_thread_id='/app/activity'") != 0) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_communication_frequency WHERE communication_thread_id='/app/intents'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_communication_existence_evidence WHERE record_category='KNOWLEDGEC_EVENTS'") != 0) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_identity_activity_linkage WHERE record_category IN ('KNOWLEDGEC_EVENTS','KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY')") != 0) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_identity_activity_linkage WHERE record_category='KNOWLEDGEC_COMMUNICATION_INTENT' AND identity_kind='EMAIL_OR_ACCOUNT'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_identity_pivot_surface WHERE record_category='KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'") != 0) return false;
+    } catch (const std::exception& ex) {
+        std::cerr << "KnowledgeC identity suppression smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
+
+bool runIosCoreProbeTextContextSmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "ios_core_probe_text_context" / "ios_core_probe_text_context.case.sqlite";
+    std::error_code ec;
+    fs::create_directories(dbPath.parent_path(), ec);
+    fs::remove(dbPath, ec);
+    try {
+        CaseDatabase db;
+        db.open(dbPath);
+        db.initializeSchema();
+        db.ensureGuiReviewViews();
+        db.exec(R"SQL(
+INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,flags,last_updated_raw,last_updated_utc,file_name,content_type,content_type_tree,where_froms,display_name,full_path,record_state,logical_size_bytes,physical_size_bytes) VALUES
+('s','ios_private_var_mobile_Library_Spotlight_CoreSpotlight_Priority_index.spotlightV2','/private/var/mobile/Library/Spotlight/CoreSpotlight/Priority/index.spotlightV2','/private/var/mobile/Library/Spotlight/CoreSpotlight/Priority/index.spotlightV2/store.db','100','200','2','','','2025-01-01T00:00:00Z','------NONAME------','','','','','/','PARTIAL_OR_NO_PATH','','');
+INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,full_path,record_state,field_name,field_value) VALUES
+('s','ios_private_var_mobile_Library_Spotlight_CoreSpotlight_Priority_index.spotlightV2','/private/var/mobile/Library/Spotlight/CoreSpotlight/Priority/index.spotlightV2','/private/var/mobile/Library/Spotlight/CoreSpotlight/Priority/index.spotlightV2/store.db','100','200','2','/','PARTIAL_OR_NO_PATH','__native_core_probe_string_001','#iMessage;-;target@example.com; file:///var/mobile/Library/SMS/Attachments/aa/bb/example.jpeg');
+)SQL");
+        auto scalar = [&](const std::string& sql) -> long long {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return -1;
+            return st.colInt64(0);
+        };
+        if (scalar("SELECT COUNT(*) FROM vw_ios_spotlight_text_context_review WHERE source_field_name LIKE '__native_core_probe_string_%' AND text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_spotlight_communication_record_review WHERE communication_context_type='SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE' AND native_probe_context_count=1") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_spotlight_message_body_review WHERE body_review_bucket='SPOTLIGHT_MESSAGE_OR_ATTACHMENT_PROBE_TEXT' AND extracted_message_text_or_subject LIKE '%iMessage%'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_spotlight_investigator_overview WHERE review_order='10_string_probes' AND CAST(row_count AS INTEGER)>=1") != 1) return false;
+    } catch (const std::exception& ex) {
+        std::cerr << "iOS core probe text context smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
@@ -172,6 +240,8 @@ int main(int argc, char** argv) {
     bool ok = true;
     if (appVersion().empty()) { std::cerr << "App version empty\n"; ok = false; }
     if (!runSchemaSmokeTest(out)) { std::cerr << "Schema smoke test failed\n"; ok = false; }
+    if (!runKnowledgeCIdentitySuppressionSmokeTest(out)) { std::cerr << "KnowledgeC identity suppression smoke test failed\n"; ok = false; }
+    if (!runIosCoreProbeTextContextSmokeTest(out)) { std::cerr << "iOS core probe text context smoke test failed\n"; ok = false; }
     if (!runIosAppDbParserSmokeTest()) { std::cerr << "iOS app DB parser smoke test failed\n"; ok = false; }
     if (!runApfsModuleSmokeTest()) { std::cerr << "APFS module smoke test failed\n"; ok = false; }
     if (!runLzfseCodecSmokeTest()) { std::cerr << "Apple/lzfse codec smoke test failed\n"; ok = false; }

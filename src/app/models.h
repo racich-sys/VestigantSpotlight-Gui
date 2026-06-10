@@ -33,6 +33,7 @@ struct RunOptions {
     std::string investigator;
     std::size_t chunkRows = 250000;
     std::string exportProfile = "minimal"; // minimal, investigator, diagnostics, full
+    bool suppressCsvExports = false; // GUI/CLI option: build SQLite case and summaries without end-of-run CSV review exports.
     bool fullScan = false;
     bool skipContainerHash = false;  // source-probe speed option for very large image containers; preserves registration with HASH_DEFERRED
     bool forceContainerHash = false; // explicitly hash large AFF4/raw containers during source-probe when a full evidentiary hash is needed

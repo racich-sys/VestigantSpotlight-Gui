@@ -421,9 +421,9 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_identity_graph_summary.csv", "V1.6 identity graph summary connecting identities to threads, URLs, apps, and categories.");
     row("exports/ios_identity_graph_edges.csv", "V1.6 identity graph edge list for row-level correlation pivots.");
     row("exports/ios_identity_activity_timeline.csv", "V1.6 identity-linked dated activity timeline sample.");
-    row("exports/ios_identity_pivot_frequency.csv", "V1.6.3 phone/email/account/thread identity frequency rollup.");
-    row("exports/ios_communication_candidate_promotion_sample.csv", "V1.6.3 bounded communication/identity candidate promotion sample.");
-    row("exports/ios_spotlight_communication_not_observed_native_sample.csv", "V1.6.3 CoreSpotlight communication/identity candidates not matched to parsed native app database rows; lead-only wording.");
+    row("exports/ios_identity_pivot_frequency.csv", "V1.6.6.3 thin-safe direct identity pivot in minimal mode; joined graph rollup in support/full mode.");
+    row("exports/ios_communication_candidate_promotion_sample.csv", "V1.6.6.3 thin-safe direct communication candidate sample in minimal mode; joined promotion view in support/full mode.");
+    row("exports/ios_spotlight_communication_not_observed_native_sample.csv", "V1.6.6.3 support/full-only CoreSpotlight not-observed-native comparison; thin mode writes an explicit not-evaluated notice to avoid timeout.");
     row("exports/ios_identity_activity_detail_sample.csv", "Bounded row-level sample linking identity hints to parsed iOS activity records.");
     row("exports/ios_communication_source_coverage.csv", "Source coverage counts for communication-related parsed app databases and tables.");
     row("exports/ios_spotlight_communication_candidates.csv", "CoreSpotlight string probes that appear communication-related, with conservative app-database context.");
@@ -1192,9 +1192,95 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         exportQuery(db, exportDir / "ios_communication_identity_frequency.csv", "SELECT * FROM vw_ios_communication_identity_frequency ORDER BY related_record_count DESC, last_seen_utc DESC", log);
         exportQuery(db, exportDir / "ios_communication_temporal_frequency.csv", "SELECT * FROM vw_ios_communication_temporal_frequency ORDER BY communication_date_utc DESC, records_on_date DESC LIMIT 25000", log);
         exportQuery(db, exportDir / "ios_communication_source_coverage.csv", "SELECT * FROM vw_ios_communication_source_coverage ORDER BY parsed_record_count DESC, records_with_timestamp DESC", log);
-        exportQuery(db, exportDir / "ios_identity_pivot_frequency.csv", "SELECT * FROM vw_ios_identity_pivot_frequency ORDER BY linked_activity_count DESC, last_seen_utc DESC LIMIT 25000", log);
-        exportQuery(db, exportDir / "ios_communication_candidate_promotion_sample.csv", "SELECT * FROM vw_ios_communication_candidate_promotion ORDER BY record_timestamp_utc DESC, source_surface, source_row_id LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_communication_not_observed_native_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_not_observed_native ORDER BY record_timestamp_utc DESC LIMIT 5000", log);
+        if (supportDataExport) {
+            exportQuery(db, exportDir / "ios_identity_pivot_frequency.csv", "SELECT * FROM vw_ios_identity_pivot_frequency ORDER BY linked_activity_count DESC, last_seen_utc DESC LIMIT 25000", log);
+            exportQuery(db, exportDir / "ios_communication_candidate_promotion_sample.csv", "SELECT * FROM vw_ios_communication_candidate_promotion ORDER BY record_timestamp_utc DESC, source_surface, source_row_id LIMIT 5000", log);
+            exportQuery(db, exportDir / "ios_spotlight_communication_not_observed_native_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_not_observed_native ORDER BY record_timestamp_utc DESC LIMIT 5000", log);
+        } else {
+            exportQuery(db, exportDir / "ios_identity_pivot_frequency.csv", R"SQL(
+WITH direct_identity AS (
+  SELECT 'contact_or_participant' AS identity_kind, substr(contact_or_participant,1,250) AS identity_value,
+         'APP_DB_DIRECT' AS source_surface, app_hint, database_category, record_category, record_timestamp_utc
+  FROM ios_app_parsed_records
+  WHERE COALESCE(contact_or_participant,'')<>''
+    AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+    AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
+  UNION ALL
+  SELECT 'thread_or_item_identifier', substr(item_identifier,1,250),
+         'APP_DB_DIRECT', app_hint, database_category, record_category, record_timestamp_utc
+  FROM ios_app_parsed_records
+  WHERE COALESCE(item_identifier,'')<>''
+    AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+    AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
+  UNION ALL
+  SELECT CASE WHEN lower(url) LIKE 'mailto:%' OR url LIKE '%@%' THEN 'email_or_account_url'
+              WHEN lower(url) LIKE 'tel:%' THEN 'phone_url' ELSE 'url_or_reference' END,
+         substr(url,1,250), 'APP_DB_DIRECT', app_hint, database_category, record_category, record_timestamp_utc
+  FROM ios_app_parsed_records
+  WHERE COALESCE(url,'')<>''
+  UNION ALL
+  SELECT CASE
+           WHEN LOWER(field_value) LIKE '%mailto:%' OR (field_value LIKE '%@%' AND LOWER(field_value) LIKE '%.%') THEN 'email_or_account'
+           WHEN LOWER(field_value) LIKE '%tel:%' OR LOWER(field_value) LIKE '%phone%' OR field_value GLOB '*[0-9][0-9][0-9]*[0-9][0-9][0-9]*[0-9][0-9][0-9][0-9]*' THEN 'phone_or_call_identity'
+           WHEN LOWER(field_value) LIKE '%thread%' OR LOWER(field_value) LIKE '%chat%' OR LOWER(field_value) LIKE '%conversation%' THEN 'thread_or_conversation_marker'
+           ELSE 'spotlight_named_identity_marker' END,
+         substr(field_value,1,250), 'CORESPOTLIGHT_KV_DIRECT', '' AS app_hint, 'CORESPOTLIGHT' AS database_category, field_name AS record_category, '' AS record_timestamp_utc
+  FROM raw_key_values
+  WHERE COALESCE(field_value,'')<>''
+    AND (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
+    AND (LOWER(field_value) LIKE '%mailto:%' OR (field_value LIKE '%@%' AND LOWER(field_value) LIKE '%.%')
+         OR LOWER(field_value) LIKE '%tel:%' OR LOWER(field_value) LIKE '%phone%'
+         OR LOWER(field_value) LIKE '%thread%' OR LOWER(field_value) LIKE '%chat%' OR LOWER(field_value) LIKE '%conversation%'
+         OR LOWER(field_value) LIKE '%kmditemauthor%' OR LOWER(field_value) LIKE '%kmditemrecipient%' OR LOWER(field_value) LIKE '%personhandle%' OR LOWER(field_value) LIKE '%emailaddress%')
+)
+SELECT identity_kind, identity_value, COUNT(*) AS linked_activity_count,
+       COUNT(DISTINCT source_surface) AS source_surface_count,
+       COUNT(DISTINCT app_hint) AS distinct_app_count,
+       COUNT(DISTINCT database_category) AS distinct_database_category_count,
+       MIN(NULLIF(record_timestamp_utc,'')) AS first_seen_utc,
+       MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
+       GROUP_CONCAT(DISTINCT app_hint) AS app_hints,
+       GROUP_CONCAT(DISTINCT record_category) AS record_categories,
+       'THIN_PROFILE_DIRECT_IDENTITY_PIVOT: direct base-table identity summary used to avoid timeout-prone joined graph materialization; run support/full exports for the joined graph view.' AS interpretation_note
+FROM direct_identity
+WHERE COALESCE(identity_value,'')<>''
+GROUP BY identity_kind, identity_value
+ORDER BY linked_activity_count DESC, last_seen_utc DESC
+LIMIT 25000
+)SQL", log);
+            exportQuery(db, exportDir / "ios_communication_candidate_promotion_sample.csv", R"SQL(
+SELECT 'APP_DB_DIRECT' AS source_surface, ios_app_record_id AS source_row_id, source_id, database_category, app_hint, database_name, table_name, record_category,
+       record_timestamp_utc, COALESCE(NULLIF(contact_or_participant,''), NULLIF(url,''), NULLIF(item_identifier,''), '') AS identity_hint,
+       CASE WHEN COALESCE(contact_or_participant,'')<>'' THEN 'contact_or_participant'
+            WHEN COALESCE(url,'')<>'' AND (lower(url) LIKE 'mailto:%' OR url LIKE '%@%') THEN 'email_or_account_url'
+            WHEN COALESCE(url,'')<>'' AND lower(url) LIKE 'tel:%' THEN 'phone_url'
+            WHEN COALESCE(item_identifier,'')<>'' THEN 'thread_or_item_identifier'
+            ELSE 'text_or_context_candidate' END AS identity_kind,
+       COALESCE(NULLIF(item_identifier,''), source_primary_key) AS thread_or_record_id, title, url, file_path, substr(text_snippet,1,1000) AS text_snippet_sample,
+       CASE WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_COMMUNICATION_INTENT') THEN 'parsed_communication_category'
+            WHEN COALESCE(contact_or_participant,'')<>'' OR COALESCE(url,'')<>'' THEN 'identity_marker_communication_candidate'
+            WHEN COALESCE(item_identifier,'')<>'' THEN 'thread_or_record_identifier_candidate'
+            ELSE 'text_or_context_communication_candidate' END AS communication_candidate_basis,
+       parse_status, provenance,
+       'THIN_PROFILE_DIRECT_CANDIDATE_SAMPLE: bounded direct app-database communication candidate sample used to avoid timeout-prone joined graph materialization; run support/full exports for the joined promotion view.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_COMMUNICATION_INTENT','MESSAGE_DELETED_OR_RECOVERABLE')
+       OR COALESCE(contact_or_participant,'')<>'' OR COALESCE(url,'')<>'' OR COALESCE(item_identifier,'')<>''
+       OR lower(text_snippet) LIKE '%message%' OR lower(text_snippet) LIKE '%sms%' OR lower(text_snippet) LIKE '%imessage%' OR lower(text_snippet) LIKE '%whatsapp%')
+  AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+  AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
+ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
+LIMIT 5000
+)SQL", log);
+            exportQuery(db, exportDir / "ios_spotlight_communication_not_observed_native_sample.csv", R"SQL(
+SELECT '' AS record_timestamp_utc, '' AS spotlight_thread_or_record_id, '' AS recovered_identity,
+       '' AS identity_kind, '' AS spotlight_database_name, '' AS spotlight_field_name,
+       '' AS title, '' AS recovered_context_sample, '' AS original_spotlight_path,
+       'THIN_PROFILE_NOT_EVALUATED' AS communication_candidate_basis,
+       'THIN_PROFILE_NOT_EVALUATED' AS comparison_status,
+       'THIN_PROFILE_NOT_EVALUATED: the joined CoreSpotlight-not-observed-native comparison is support/full-export only in V1.6.6.3 because the V1.6.6.2 thin run timed out at 120 seconds on this view. Use support/full exports for this lead-generation comparison.' AS interpretation_note
+)SQL", log);
+        }
         // Identity graph exports: thin/minimal mode must avoid joined views that can materialize
         // large CoreSpotlight/app-db cross products before returning sample rows. Full/support
         // profiles keep the richer exports, but exportQuery now has a per-export timeout so a

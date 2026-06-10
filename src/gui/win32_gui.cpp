@@ -54,8 +54,8 @@ namespace {
 HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
-HWND gVerbose{}, gExportProfile{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
+HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
@@ -90,6 +90,7 @@ std::atomic<unsigned long long> gReviewRequestSeq{0};
 std::atomic_bool gShuttingDown{false};
 std::atomic_bool gExportPageActive{false};
 std::atomic_bool gExportFilteredActive{false};
+std::atomic_bool gExportVisibleActive{false};
 std::atomic_bool gExportCheckedActive{false};
 std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
@@ -136,8 +137,8 @@ void cancelAndJoinReviewThreadNoThrow() {
     }
 }
 
-constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006;
-constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117;
+constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008;
+constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
 constexpr int ID_CTX_SORT_ASC = 2101, ID_CTX_SORT_DESC = 2102, ID_CTX_FILTER_SEARCH = 2103, ID_CTX_CLEAR_FILTER = 2104;
@@ -157,6 +158,7 @@ constexpr int WM_EXPORT_PAGE_RESULT = WM_APP + 6;
 constexpr int WM_EXPORT_FILTERED_RESULT = WM_APP + 7;
 constexpr int WM_EXPORT_CHECKED_RESULT = WM_APP + 8;
 constexpr int WM_EXPORT_TAGGED_RESULT = WM_APP + 9;
+constexpr int WM_EXPORT_VISIBLE_RESULT = WM_APP + 10;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
@@ -468,7 +470,7 @@ SELECT
     GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
     'Partial committed SQLite preview/analysis view. Thread identifiers are taken from item_identifier when available, otherwise contact/source primary key fallback.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -507,7 +509,7 @@ SELECT
   END AS existence_basis,
   'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
 )SQL" R"SQL(   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -528,7 +530,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
   'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -550,7 +552,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
 FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
-  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -574,7 +576,7 @@ SELECT
   MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
   'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -1825,6 +1827,7 @@ void setReviewLoadingState(bool loading) {
     if (gNext) EnableWindow(gNext, (!loading && gCurrentHasNext) ? TRUE : FALSE);
     if (gExportPage) EnableWindow(gExportPage, loading ? FALSE : TRUE);
     if (gExportFiltered) EnableWindow(gExportFiltered, loading ? FALSE : TRUE);
+    if (gExportVisible) EnableWindow(gExportVisible, loading ? FALSE : TRUE);
     if (gExportChecked) EnableWindow(gExportChecked, loading ? FALSE : TRUE);
     if (gReviewBusy) {
         ShowWindow(gReviewBusy, loading ? SW_SHOW : SW_HIDE);
@@ -2112,6 +2115,39 @@ void exportFilteredView(HWND owner) {
 }
 
 
+
+
+void exportVisibleViews(HWND owner) {
+    if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting visible views."); return; }
+    if (gVisibleViews.empty()) { setReviewSummary(L"No visible review views are available to export."); return; }
+    bool expected = false;
+    if (!gExportVisibleActive.compare_exchange_strong(expected, true)) {
+        setReviewSummary(L"Export Visible Views is already running. Wait for the current export to finish.");
+        return;
+    }
+    int answer = MessageBoxW(owner,
+        L"This exports every view currently listed in the view panel to separate CSV files in one folder. Active search text will be applied to each view. Column-specific filters are not applied across different views. Large view sets may take time. Continue?",
+        L"Vestigant Spotlight - Export Visible Views",
+        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    if (answer != IDYES) { gExportVisibleActive.store(false); return; }
+    std::wstring outFolder = browseFolder(owner);
+    if (outFolder.empty()) { gExportVisibleActive.store(false); return; }
+    std::vector<ViewSpec> viewSpecs;
+    viewSpecs.reserve(gVisibleViews.size());
+    for (size_t idx : gVisibleViews) {
+        if (idx < views().size()) viewSpecs.push_back(views()[idx]);
+    }
+    if (viewSpecs.empty()) { gExportVisibleActive.store(false); setReviewSummary(L"No valid visible views were available to export."); return; }
+    const std::wstring dbPath = gOpenedCaseDb;
+    const std::string search = narrow(getText(gSearch));
+
+    setReviewSummary(L"Export Visible Views in progress... GUI remains active.");
+    if (gExportVisible) EnableWindow(gExportVisible, FALSE);
+    registerExportThread(std::thread([owner, dbPath, viewSpecs, search, outFolder]() {
+        const GuiExportResult result = GuiExportWorker::exportVisibleViews(dbPath, viewSpecs, search, outFolder, []() { return gShuttingDown.load(); });
+        postExportResult(owner, WM_EXPORT_VISIBLE_RESULT, result.ok, result.message);
+    }));
+}
 
 void exportCheckedArtifacts(HWND owner) {
     if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting checked artifacts."); return; }
@@ -2761,6 +2797,11 @@ void worker() {
         opt.verbose = SendMessageW(gVerbose, BM_GETCHECK, 0, 0) == BST_CHECKED;
         int exportProfile = static_cast<int>(SendMessageW(gExportProfile, CB_GETCURSEL, 0, 0));
         opt.exportProfile = exportProfile == 1 ? "investigator" : exportProfile == 2 ? "diagnostics" : exportProfile == 3 ? "full" : "minimal";
+        opt.suppressCsvExports = (gSuppressCsvExports && SendMessageW(gSuppressCsvExports, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        if (opt.suppressCsvExports) {
+            opt.exportProfile = "none";
+            postLog(L"CSV review exports disabled for this run. SQLite case database will remain available for GUI review.");
+        }
         int prof = static_cast<int>(SendMessageW(gProfile, CB_GETCURSEL, 0, 0));
         int mode = static_cast<int>(SendMessageW(gMode, CB_GETCURSEL, 0, 0));
         opt.profile = prof == 1 ? "macos" : prof == 2 ? "ios" : "auto";
@@ -2872,6 +2913,7 @@ void createProcessControls(HWND hwnd) {
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
     labelP(hwnd, L"Export profile", 715, y0 + 534, 100, 22); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 815, y0 + 530, 154, 130, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Minimal", L"Investigator", L"Diagnostics", L"Full CSV"}) SendMessageW(gExportProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gExportProfile, CB_SETCURSEL, 1, 0);
+    gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"SQLite only (no CSV dump)", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 244, y0 + 530, 260, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
 
     labelP(hwnd, L"Ingest status", 16, y0 + 568, 120, 22);
     gIngestStatus = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"Waiting: choose/create a case location and evidence source, then run ingest. Progress, elapsed time, and throughput estimates appear here and in the processing log below.", WS_CHILD | WS_VISIBLE | SS_LEFT, 140, y0 + 564, 842, 64, hwnd, nullptr, gInst, nullptr));
@@ -2988,7 +3030,8 @@ void createReviewControls(HWND hwnd) {
     gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 372, y0 + 66, 104, 30);
     gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 482, y0 + 66, 112, 30);
     gExportFiltered = buttonR(hwnd, L"Export Filtered", ID_EXPORT_FILTERED, 600, y0 + 66, 126, 30);
-    gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 732, y0 + 66, 126, 30);
+    gExportVisible = buttonR(hwnd, L"Export Views", ID_EXPORT_VISIBLE_VIEWS, 732, y0 + 66, 112, 30);
+    gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 850, y0 + 66, 126, 30);
     gClearChecked = buttonR(hwnd, L"Clear Checked", ID_CLEAR_CHECKED, 864, y0 + 66, 116, 30);
     gManageTags = buttonR(hwnd, L"Tags", ID_CTX_MANAGE_TAGS, 986, y0 + 66, 68, 30);
     gOpenCaseFolder = buttonR(hwnd, L"Case Folder", ID_OPEN_CASE_FOLDER, 262, y0 + 102, 116, 26);
@@ -3130,6 +3173,8 @@ void layoutControls(HWND hwnd) {
     moveIf(gEvidenceRoot, 236, y0 + 360, std::max(220, rightBrowseX - 246), 26);
     moveIf(gBrowse7z, rightBrowseX, y0 + 396, browseW, 28);
     moveIf(gSevenZip, 236, y0 + 396, std::max(220, rightBrowseX - 246), 26);
+    moveIf(gSuppressCsvExports, 244, y0 + 530, 270, 24);
+    moveIf(gExportProfile, right - 154, y0 + 530, 154, 130);
     moveIf(gIngestStatus, 140, y0 + 564, right - 140, 64);
     moveIf(gIngestProgress, 140, y0 + 636, right - 140, 26);
     moveIf(gLog, 16, y0 + 672, right - 16, std::max(120, bottom - (y0 + 672)));
@@ -3146,6 +3191,18 @@ void layoutControls(HWND hwnd) {
     const int reviewW = right - reviewX;
     // Keep the search box from expanding over the Update/Cancel/Rows controls on wide windows.
     moveIf(gSearch, 326, y0 + 30, 250, 26);
+    // Review export action bar: two rows prevent overlap on narrower/DPI-scaled systems.
+    moveIf(gPrev, reviewX, y0 + 66, 104, 30);
+    moveIf(gNext, reviewX + 110, y0 + 66, 104, 30);
+    moveIf(gExportPage, reviewX + 220, y0 + 66, 112, 30);
+    moveIf(gExportFiltered, reviewX + 338, y0 + 66, 126, 30);
+    moveIf(gExportVisible, reviewX + 470, y0 + 66, 118, 30);
+    moveIf(gExportChecked, reviewX + 596, y0 + 66, 126, 30);
+    moveIf(gClearChecked, reviewX + 220, y0 + 100, 116, 28);
+    moveIf(gManageTags, reviewX + 342, y0 + 100, 74, 28);
+    moveIf(gOpenCaseFolder, reviewX + 426, y0 + 102, 116, 26);
+    moveIf(gOpenUploadFolder, reviewX + 548, y0 + 102, 128, 26);
+    moveIf(gOpenLogsFolder, reviewX + 682, y0 + 102, 76, 26);
     moveIf(gReviewSummary, reviewX, y0 + 136, reviewW, 58);
     moveIf(gReviewBusy, reviewX, y0 + 198, reviewW, 6);
     const int reviewBodyY = y0 + 206;
@@ -3164,7 +3221,6 @@ void layoutControls(HWND hwnd) {
     moveIf(gRowDetails, reviewX, splitterY + splitterH + detailsLabelH, reviewW, gReviewDetailsPaneHeight);
     resizeDetailsListColumns();
     enforceDetailsPaneTabVisibility();
-    moveIf(gManageTags, std::min(right - 210, 986), y0 + 66, 68, 30);
     moveIf(gOpenDashboard, right - 248, y0 + 102, 116, 26);
     moveIf(gOpenReviewIndex, right - 126, y0 + 102, 126, 26);
 
@@ -3460,6 +3516,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_REVIEW_NEXT: { ++gCurrentPage; loadReviewPage(); return 0; }
         case ID_EXPORT_PAGE: { exportCurrentPage(hwnd); return 0; }
         case ID_EXPORT_FILTERED: { exportFilteredView(hwnd); return 0; }
+        case ID_EXPORT_VISIBLE_VIEWS: { exportVisibleViews(hwnd); return 0; }
         case ID_EXPORT_CHECKED: { exportCheckedArtifacts(hwnd); return 0; }
         case ID_CLEAR_CHECKED: { gCheckedArtifactIds.clear(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); setReviewSummary(L"Cleared all checked artifacts from the current case database."); return 0; }
         case ID_REFRESH_TAGS: { refreshTagList(); return 0; }
@@ -3506,6 +3563,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (s) { setReviewSummary(*s); delete s; }
         gExportFilteredActive.store(false);
         if (gExportFiltered) EnableWindow(gExportFiltered, TRUE);
+        return 0;
+    }
+    case WM_EXPORT_VISIBLE_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setReviewSummary(*s); delete s; }
+        gExportVisibleActive.store(false);
+        if (gExportVisible) EnableWindow(gExportVisible, TRUE);
         return 0;
     }
     case WM_EXPORT_CHECKED_RESULT: {

@@ -5625,8 +5625,25 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         }
         purgeOrphanSourceRows(db, caseDir, log);
         appendRunStatus(caseDir, "export_start");
-        SqliteExporter exporter;
-        exporter.exportReviewPackage(db, caseDir / "exports", log, opt.exportProfile, cancelToken);
+        if (opt.suppressCsvExports) {
+            const fs::path exportDir = caseDir / "exports";
+            fs::create_directories(exportDir);
+            {
+                std::ofstream notice(exportDir / "CSV_EXPORTS_DISABLED.txt", std::ios::binary);
+                notice << "CSV review exports were disabled for this run. The SQLite case database remains the primary review artifact.\n";
+                notice << "Use the GUI Review tab for investigation, or rerun/export selected pages when CSV files are needed.\n";
+            }
+            {
+                std::ofstream index(exportDir / "EXPORT_INDEX.csv", std::ios::binary);
+                index << "export_name,path,source_path,row_count,chunked,generated_utc\n";
+                index << "CSV_EXPORTS_DISABLED.txt," << pathString(exportDir / "CSV_EXPORTS_DISABLED.txt") << ",,0,0," << nowUtc() << "\n";
+            }
+            appendRunStatus(caseDir, "export_skipped_csv_disabled", "CSV review exports disabled by operator; SQLite case database and summaries retained");
+            log.info("CSV review exports disabled by operator option. SQLite case database remains available for GUI review.");
+        } else {
+            SqliteExporter exporter;
+            exporter.exportReviewPackage(db, caseDir / "exports", log, opt.exportProfile, cancelToken);
+        }
         if (cancelRequested()) return returnCancelled("during_export");
         writeUiAndIosPlanningFiles(caseDir);
         result.artifactCount = counts.artifacts;

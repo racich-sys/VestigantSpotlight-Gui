@@ -2079,6 +2079,7 @@ WITH base AS (
          kv.inode_num AS spotlight_inode_or_object_id,
          kv.store_id AS spotlight_store_id,
          kv.parent_inode_num,
+         kv.field_name AS source_field_name,
          rr.file_name,
          rr.display_name,
          rr.content_type,
@@ -2088,14 +2089,28 @@ WITH base AS (
          lower(COALESCE(rr.content_type,'')) AS ct
   FROM raw_key_values kv
   LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
-  WHERE kv.field_name='__spotlight_investigator_text_context')VSQLFIX",
+  WHERE COALESCE(kv.field_value,'')<>''
+    AND (kv.field_name='__spotlight_investigator_text_context'
+         OR kv.field_name LIKE '__native_core_probe_string_%'
+         OR lower(kv.field_name) LIKE '%title%'
+         OR lower(kv.field_name) LIKE '%displayname%'
+         OR lower(kv.field_name) LIKE '%snippet%'
+         OR lower(kv.field_name) LIKE '%description%'
+         OR lower(kv.field_name) LIKE '%message%'
+         OR lower(kv.field_name) LIKE '%mail%'
+         OR lower(kv.field_name) LIKE '%url%'
+         OR lower(kv.field_name) LIKE '%path%'
+         OR lower(kv.field_name) LIKE '%sender%'
+         OR lower(kv.field_name) LIKE '%recipient%'
+         OR lower(kv.field_name) LIKE '%phone%'
+         OR lower(kv.field_name) LIKE '%contact%'))VSQLFIX",
 R"VSQLFIX(
 ), labeled AS (
   SELECT *,
        CASE
-         WHEN ct='public.message' OR v LIKE '%kmditemmessageservice%' OR v LIKE '%/sms/attachments/%' OR v LIKE '%com.apple.mobilesms%' THEN 'MESSAGE_OR_ATTACHMENT_CONTEXT'
-         WHEN ct='public.email-message' OR v LIKE '%com_apple_mail_%' OR v LIKE '%kmditememail%' OR v LIKE '%from:%' OR v LIKE '%to:%' THEN 'MAIL_OR_EMAIL_CONTEXT'
-         WHEN v LIKE '%_kmditembundleid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemexternalid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemdomainidentifier=net.whatsapp%' OR v LIKE '%_kmditemalternatenames=whatsapp%' THEN 'WHATSAPP_APP_OR_CHAT_CONTEXT'
+         WHEN ct='public.message' OR v LIKE '%kmditemmessageservice%' OR v LIKE '%/sms/attachments/%' OR v LIKE '%com.apple.mobilesms%' OR v LIKE '%mobilesms%' OR v LIKE '%imessage%' OR v LIKE 'sms;%' THEN 'MESSAGE_OR_ATTACHMENT_CONTEXT'
+         WHEN ct='public.email-message' OR v LIKE '%com_apple_mail_%' OR v LIKE '%mobilemail%' OR v LIKE '%kmditememail%' OR v LIKE '%mailto:%' OR v LIKE '%from:%' OR v LIKE '%to:%' THEN 'MAIL_OR_EMAIL_CONTEXT'
+)VSQLFIX" R"VSQLFIX(         WHEN v LIKE '%_kmditembundleid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemexternalid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemdomainidentifier=net.whatsapp%' OR v LIKE '%_kmditemalternatenames=whatsapp%' THEN 'WHATSAPP_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%_kmditembundleid=org.whispersystems.signal%' OR v LIKE '%_kmditemexternalid=org.whispersystems.signal%' OR v LIKE '%_kmditemdomainidentifier=org.whispersystems.signal%' OR v LIKE '%signal.messenger%' THEN 'SIGNAL_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%_kmditembundleid=ph.telegra.telegraph%' OR v LIKE '%_kmditemexternalid=ph.telegra.telegraph%' OR v LIKE '%telegram.messenger%' OR v LIKE '%org.telegram%' THEN 'TELEGRAM_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%whatsapp group%' OR v LIKE '%chat.whatsapp.com%' OR v LIKE '%wa.me/%' OR v LIKE '%api.whatsapp.com%' THEN 'WHATSAPP_LINK_OR_TEXT_MENTION'
@@ -2150,10 +2165,11 @@ R"VSQLFIX(
   FROM labeled
 )
 SELECT raw_kv_id,raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
-       file_name,display_name,content_type,last_updated_utc,text_context_category,review_priority,review_priority_sort,text_context_reason,
+       source_field_name,file_name,display_name,content_type,last_updated_utc,text_context_category,review_priority,review_priority_sort,text_context_reason,
        CASE
          WHEN text_context_category IN ('WHATSAPP_APP_OR_CHAT_CONTEXT','SIGNAL_APP_OR_CHAT_CONTEXT','TELEGRAM_APP_OR_CHAT_CONTEXT') THEN 'EXPLICIT_CHAT_APP_BUNDLE_DOMAIN_OR_EXTERNAL_ID'
          WHEN text_context_category IN ('WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION') THEN 'CHAT_LINK_OR_TEXT_MENTION_ONLY_NOT_APP_ATTRIBUTION'
+         WHEN source_field_name LIKE '__native_core_probe_string_%' THEN 'NATIVE_CORE_PROBE_STRING_VALUE'
          WHEN text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT' THEN 'APPLE_MESSAGE_CONTENT_TYPE_OR_MOBILESMS_FIELD'
          WHEN text_context_category='MAIL_OR_EMAIL_CONTEXT' THEN 'MAIL_CONTENT_TYPE_OR_MAIL_SEARCH_INDEXER_FIELD'
          ELSE 'CATEGORY_BY_CONTENT_TYPE_FIELD_OR_VALUE_PATTERN'
@@ -3813,7 +3829,7 @@ SELECT
     GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
     'Thread/contact grouped iOS communication frequency view. Thread identifiers use item_identifier when available, then contact/source primary key fallback. Treat as committed parsed-record frequency, not a final communication assertion without source-row review.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -3854,7 +3870,7 @@ SELECT
   END AS existence_basis,
   'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -3901,7 +3917,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
   'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
 FROM ios_app_parsed_records
-)VSQLFIX" R"VSQLFIX(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+)VSQLFIX" R"VSQLFIX(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -3923,7 +3939,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
 FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
-  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -3947,7 +3963,7 @@ SELECT
   MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
   'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -3985,12 +4001,17 @@ WITH identity_rows AS (
     provenance,
     substr(text_snippet,1,500) AS text_snippet_sample
   FROM ios_app_parsed_records
-  WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+  WHERE (
+        record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_COMMUNICATION_INTENT','MESSAGE_DELETED_OR_RECOVERABLE')
      OR COALESCE(contact_or_participant,'')<>''
      OR COALESCE(item_identifier,'')<>''
      OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
      OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
-     OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
+     OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+    AND NOT (record_category IN ('KNOWLEDGEC_EVENTS','KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY')
+             AND COALESCE(provenance,'') NOT LIKE '%COMMUNICATION_INTENT_STREAM%'
+             AND COALESCE(provenance,'') NOT LIKE '%INTENT_TARGET%'
+             AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_BOUND_COMMUNICATION%')
 )
 SELECT
   identity_or_activity_key,
@@ -4034,10 +4055,14 @@ SELECT
   'Bounded source-row sample linking identities/handles/thread IDs to activities.' AS interpretation_note
 FROM ios_app_parsed_records
 WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) IS NOT NULL
-  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_COMMUNICATION_INTENT','MESSAGE_DELETED_OR_RECOVERABLE')
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+  AND NOT (record_category IN ('KNOWLEDGEC_EVENTS','KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY')
+           AND COALESCE(provenance,'') NOT LIKE '%COMMUNICATION_INTENT_STREAM%'
+           AND COALESCE(provenance,'') NOT LIKE '%INTENT_TARGET%'
+           AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_BOUND_COMMUNICATION%')
 )VSQLFIX" R"VSQLFIX(ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
 LIMIT 25000;
 )VSQLFIX",
@@ -4063,10 +4088,14 @@ WITH identity_rows AS (
     table_name
   FROM ios_app_parsed_records
   WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NULLIF(url,''), NULLIF(title,''), NULLIF(file_path,''), source_primary_key) IS NOT NULL
-    AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+    AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','WEB_HISTORY','WEB_VISITS','WEB_DOWNLOADS','MAIL_RECORDS','CALENDAR_RECORDS','CONTACT_RECORDS','NOTES_RECORDS','LOCATION_RECORDS','KNOWLEDGEC_COMMUNICATION_INTENT','MESSAGE_DELETED_OR_RECOVERABLE')
          OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
          OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
          OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
+    AND NOT (record_category IN ('KNOWLEDGEC_EVENTS','KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY')
+             AND COALESCE(provenance,'') NOT LIKE '%COMMUNICATION_INTENT_STREAM%'
+             AND COALESCE(provenance,'') NOT LIKE '%INTENT_TARGET%'
+             AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_BOUND_COMMUNICATION%')
 )
 SELECT
   identity_key,
@@ -5369,7 +5398,9 @@ WITH rec AS (
     MAX(CASE WHEN field_name IN ('kMDItemAuthorEmailAddresses','kMDItemRecipientEmailAddresses','kMDItemEmailAddresses','kMDItemAuthors','kMDItemRecipients') THEN field_value ELSE '' END) AS mail_participants,
     MAX(CASE WHEN field_name IN ('kMDItemPhotosSavedFromAppBundleIdentifier','kMDItemPhotosSavedFromAppName') THEN field_value ELSE '' END) AS saved_from_app,
     MAX(CASE WHEN field_name='__spotlight_investigator_text_context' THEN field_value ELSE '' END) AS spotlight_text_context_sample,
+    MAX(CASE WHEN field_name LIKE '__native_core_probe_string_%' THEN field_value ELSE '' END) AS native_probe_context_sample,
     SUM(CASE WHEN field_name='__spotlight_investigator_text_context' THEN 1 ELSE 0 END) AS has_text_context,
+    SUM(CASE WHEN field_name LIKE '__native_core_probe_string_%' THEN 1 ELSE 0 END) AS native_probe_context_count,
     COUNT(*) AS compact_value_count
   FROM kv
   GROUP BY raw_record_id
@@ -5390,6 +5421,7 @@ WITH rec AS (
          lower(COALESCE(p.bundle_id,'')) AS lbundle,
          lower(COALESCE(p.domain_identifier,'')) AS ldomain,
          lower(COALESCE(p.spotlight_text_context_sample,'')) AS lctx,
+         lower(COALESCE(p.native_probe_context_sample,'')) AS lprobe,
          lower(COALESCE(p.title,'')) AS ltitle,
          lower(COALESCE(p.description_or_snippet,'')) AS ldesc,
          lower(COALESCE(p.app_entity_type_display_name,'')) AS lentity_type
@@ -5404,13 +5436,15 @@ WITH rec AS (
            AND (lentity_type NOT LIKE '%asset%' OR lbundle LIKE '%mobilesms%' OR ct LIKE '%message%' OR ldomain LIKE 'sms;%' OR ldomain LIKE 'imessage;%') THEN 'APPLE_MESSAGES_SMS_RCS_IMESSAGE'
       WHEN (lower(COALESCE(saved_from_app,'')) LIKE '%mobilesms%' OR lower(COALESCE(saved_from_app,'')) LIKE '%mobile sms%' OR lower(COALESCE(saved_from_app,'')) LIKE '%messages%')
            AND (ct LIKE '%image%' OR ct LIKE '%movie%' OR ct LIKE '%video%' OR lentity_type LIKE '%asset%' OR lbundle LIKE '%mobileslideshow%') THEN 'MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
-      WHEN ct='kspotlightitemtypecall' OR lbundle LIKE '%mobilephone%' OR COALESCE(callback_url,'')<>'' OR lctx LIKE '%com_apple_mobilephone_%' THEN 'PHONE_OR_FACETIME_CALL'
-      WHEN lower(COALESCE(saved_from_app,'')) LIKE '%whatsapp%' OR lctx LIKE '%net.whatsapp.whatsapp%' OR lctx LIKE '%chat.whatsapp.com%' OR lctx LIKE '%wa.me/%' THEN 'WHATSAPP_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN lctx LIKE '%org.whispersystems.signal%' OR lctx LIKE '%signal.messenger%' OR lctx LIKE '%signal.org/%' THEN 'SIGNAL_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN lctx LIKE '%org.telegram%' OR lctx LIKE '%telegram.messenger%' OR lctx LIKE '%t.me/%' OR lctx LIKE '%telegram.me/%' THEN 'TELEGRAM_RELATED_SPOTLIGHT_CONTEXT'
-      WHEN ct LIKE '%calendar%' OR lctx LIKE '%calendar%' OR lctx LIKE '%vevent%' THEN 'CALENDAR_OR_INVITATION_CONTEXT'
+      WHEN ct='kspotlightitemtypecall' OR lbundle LIKE '%mobilephone%' OR COALESCE(callback_url,'')<>'' OR lctx LIKE '%com_apple_mobilephone_%' OR lprobe LIKE '%tel://%' THEN 'PHONE_OR_FACETIME_CALL'
+)VSQL27_0" R"VSQL27_0(      WHEN lprobe LIKE '%/sms/attachments/%' OR lprobe LIKE '%mobilesms%' OR lprobe LIKE '%imessage%' OR lprobe LIKE 'sms;%' THEN 'SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE'
+      WHEN lprobe LIKE '%mobilemail%' OR lprobe LIKE '%mailto:%' OR (lprobe LIKE '%@%' AND lprobe LIKE '%.%' AND lprobe NOT LIKE '%http://%' AND lprobe NOT LIKE '%https://%') THEN 'SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE'
+      WHEN lower(COALESCE(saved_from_app,'')) LIKE '%whatsapp%' OR lctx LIKE '%net.whatsapp.whatsapp%' OR lctx LIKE '%chat.whatsapp.com%' OR lctx LIKE '%wa.me/%' OR lprobe LIKE '%net.whatsapp.whatsapp%' OR lprobe LIKE '%chat.whatsapp.com%' OR lprobe LIKE '%wa.me/%' THEN 'WHATSAPP_RELATED_SPOTLIGHT_CONTEXT'
+      WHEN lctx LIKE '%org.whispersystems.signal%' OR lctx LIKE '%signal.messenger%' OR lctx LIKE '%signal.org/%' OR lprobe LIKE '%org.whispersystems.signal%' OR lprobe LIKE '%signal.messenger%' OR lprobe LIKE '%signal.org/%' THEN 'SIGNAL_RELATED_SPOTLIGHT_CONTEXT'
+      WHEN lctx LIKE '%org.telegram%' OR lctx LIKE '%telegram.messenger%' OR lctx LIKE '%t.me/%' OR lctx LIKE '%telegram.me/%' OR lprobe LIKE '%org.telegram%' OR lprobe LIKE '%telegram.messenger%' OR lprobe LIKE '%t.me/%' OR lprobe LIKE '%telegram.me/%' THEN 'TELEGRAM_RELATED_SPOTLIGHT_CONTEXT'
+      WHEN ct LIKE '%calendar%' OR lctx LIKE '%calendar%' OR lctx LIKE '%vevent%' OR lprobe LIKE '%calendar%' OR lprobe LIKE '%vevent%' THEN 'CALENDAR_OR_INVITATION_CONTEXT'
       WHEN lower(COALESCE(app_entity_type_identifier,'')) LIKE '%contact%' OR lower(COALESCE(domain_identifier,'')) LIKE '%contact%' OR COALESCE(phone_or_callback,'')<>'' THEN 'CONTACT_OR_ACCOUNT_CONTEXT'
-      WHEN COALESCE(url_or_content_reference,'')<>'' OR lctx LIKE '%http://%' OR lctx LIKE '%https://%' OR lctx LIKE '%www.%' THEN 'URL_OR_WEB_CONTEXT'
+      WHEN COALESCE(url_or_content_reference,'')<>'' OR lctx LIKE '%http://%' OR lctx LIKE '%https://%' OR lctx LIKE '%www.%' OR lprobe LIKE '%http://%' OR lprobe LIKE '%https://%' OR lprobe LIKE '%www.%' THEN 'URL_OR_WEB_CONTEXT'
       ELSE 'OTHER_SPOTLIGHT_CONTEXT'
     END AS communication_context_type
   FROM classified
@@ -5419,15 +5453,17 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
        spotlight_date_utc,spotlight_date_source_field,compact_date_candidate_count,last_updated_utc,
        communication_context_type,
        CASE
-         WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'HIGH_COMMUNICATION_REVIEW_VALUE'
+         WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL','SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE') THEN 'HIGH_COMMUNICATION_REVIEW_VALUE'
          WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 'HIGH_MESSAGE_MEDIA_REVIEW_VALUE'
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'HIGH_APP_COMMUNICATION_CONTEXT_VALUE'
-)VSQL27_0" R"VSQL27_0(         WHEN communication_context_type IN ('CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
+)VSQL27_0" R"VSQL27_0(         WHEN communication_context_type IN ('SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE','CONTACT_OR_ACCOUNT_CONTEXT','URL_OR_WEB_CONTEXT','CALENDAR_OR_INVITATION_CONTEXT') THEN 'MEDIUM_COMMUNICATION_REVIEW_VALUE'
          ELSE 'LOW_CONTEXT_VALUE'
        END AS review_priority,
        CASE
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' THEN 1
          WHEN communication_context_type='APPLE_MAIL_OR_EMAIL' THEN 2
+         WHEN communication_context_type='SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE' THEN 2
+         WHEN communication_context_type='SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE' THEN 3
          WHEN communication_context_type='PHONE_OR_FACETIME_CALL' THEN 3
          WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 4
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 5
@@ -5444,14 +5480,15 @@ SELECT raw_record_id,source_id,store_guid,source_db,inode_num AS spotlight_inode
          ELSE ''
        END AS message_domain_handle_or_chat,
        COALESCE(NULLIF(title,''),NULLIF(item_display_name,''),NULLIF(display_name,''),NULLIF(file_name,'')) AS best_title_or_name,
-       substr(COALESCE(NULLIF(title,''),NULLIF(description_or_snippet,''),NULLIF(snippet,''),NULLIF(spotlight_text_context_sample,'')),1,2500) AS investigator_visible_text,
+       substr(COALESCE(NULLIF(title,''),NULLIF(description_or_snippet,''),NULLIF(snippet,''),NULLIF(spotlight_text_context_sample,''),NULLIF(native_probe_context_sample,'')),1,2500) AS investigator_visible_text,
        substr(description_or_snippet,1,1800) AS description_or_snippet,
        substr(snippet,1,1200) AS snippet,
 )VSQL27_0",
         R"VSQL27_1(       account_identifier,container_display_name,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,saved_from_app,
-       compact_value_count,has_text_context,substr(spotlight_text_context_sample,1,2500) AS spotlight_text_context_sample,
+       compact_value_count,has_text_context,native_probe_context_count,substr(native_probe_context_sample,1,2500) AS native_probe_context_sample,substr(spotlight_text_context_sample,1,2500) AS spotlight_text_context_sample,
        CASE
          WHEN communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL') THEN 'Explicit Apple communication content type/bundle/service/callback evidence recovered from Spotlight.'
+         WHEN communication_context_type IN ('SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE','SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE') THEN 'Communication-relevant native CoreSpotlight probe string recovered in compact mode; treat as reviewable Spotlight text/context and validate against raw_kv_id/source_db before reporting.'
          WHEN communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES' THEN 'Media/photo asset indexed by Spotlight with Photos saved-from-app context pointing to Messages/MobileSMS. Treat as message-related media context and corroborate with FFS/app DB where available.'
          WHEN communication_context_type LIKE '%WHATSAPP%' OR communication_context_type LIKE '%SIGNAL%' OR communication_context_type LIKE '%TELEGRAM%' THEN 'Chat-app context found in Spotlight text/app reference; treat as Spotlight evidence and corroborate with app DB if support parsing is enabled.'
          ELSE 'Communication-adjacent Spotlight context retained for triage; verify with raw locators before reporting.'
@@ -5473,8 +5510,8 @@ SELECT communication_context_type,review_priority,review_priority_sort,bundle_id
        COUNT(NULLIF(phone_or_callback,'')) AS rows_with_phone_or_callback,
        MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
        MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
-       substr(MIN(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS min_context_sample,
-       substr(MAX(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''))),1,1000) AS max_context_sample,
+       substr(MIN(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''),NULLIF(native_probe_context_sample,''))),1,1000) AS min_context_sample,
+       substr(MAX(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''),NULLIF(native_probe_context_sample,''))),1,1000) AS max_context_sample,
        'Record-centric summary of communication-relevant Spotlight/CoreSpotlight records. Counts are Spotlight records, not live app database records.' AS interpretation_note
 FROM vw_ios_spotlight_communication_record_review
 GROUP BY communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type;
@@ -5498,19 +5535,20 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
        spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
        message_domain_handle_or_chat,best_title_or_name,investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,
        phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
-       spotlight_text_context_sample,interpretation_note,validation_locator
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,interpretation_note,validation_locator
 FROM vw_ios_spotlight_communication_record_review
 WHERE communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL')
    OR communication_context_type LIKE '%WHATSAPP%'
    OR communication_context_type LIKE '%SIGNAL%'
-   OR communication_context_type LIKE '%TELEGRAM%';
+   OR communication_context_type LIKE '%TELEGRAM%'
+   OR communication_context_type IN ('SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE','SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE');
 
 DROP VIEW IF EXISTS vw_ios_spotlight_message_media_review;
 CREATE VIEW vw_ios_spotlight_message_media_review AS
 SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
        spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
        saved_from_app,best_title_or_name,investigator_visible_text,description_or_snippet,attachment_or_media_path,url_or_content_reference,
-       spotlight_text_context_sample,validation_locator,
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,validation_locator,
        'Media/photo/video Spotlight record with message-related saved-from-app or attachment context; review as message-adjacent media, not as a direct message body unless corroborated.' AS interpretation_note
 FROM vw_ios_spotlight_communication_record_review
 WHERE communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
@@ -5610,9 +5648,12 @@ WITH base AS (
 )
 SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
        spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
-       message_domain_handle_or_chat,suggested_contact_name,extracted_subtitle AS conversation_or_thread_title,extracted_title AS extracted_message_text_or_subject,
+       message_domain_handle_or_chat,suggested_contact_name,extracted_subtitle AS conversation_or_thread_title,
+       CASE WHEN communication_context_type IN ('SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE','SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE') THEN substr(native_probe_context_sample,1,2500) ELSE extracted_title END AS extracted_message_text_or_subject,
        CASE
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' AND extracted_title<>'' THEN 'DIRECT_APPLE_MESSAGE_TEXT_OR_REACTION'
+         WHEN communication_context_type='SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE' THEN 'SPOTLIGHT_MESSAGE_OR_ATTACHMENT_PROBE_TEXT'
+         WHEN communication_context_type='SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE' THEN 'SPOTLIGHT_MAIL_OR_ACCOUNT_PROBE_TEXT'
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' AND domain_identifier='chatDomain' THEN 'CONVERSATION_INDEX_RECORD_NO_BODY'
          WHEN communication_context_type='APPLE_MAIL_OR_EMAIL' AND extracted_title<>'' THEN 'MAIL_SUBJECT_OR_TEXT_CONTEXT'
          WHEN communication_context_type='PHONE_OR_FACETIME_CALL' THEN 'CALL_OR_FACETIME_CONTEXT'
@@ -5625,7 +5666,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
          ELSE 'USER_REVIEW_CANDIDATE'
        END AS noise_hint,
        investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
-       spotlight_text_context_sample,validation_locator,
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,validation_locator,
        'V0_9_32 extracts message body/subject, conversation title, and suggested contact from compact Spotlight text context. This is Spotlight index evidence; corroborate against Messages/Mail/app DB records when support parsing is enabled.' AS interpretation_note
 FROM extracted;
 
@@ -5749,7 +5790,11 @@ WITH base AS (
   FROM base
 ), extracted AS (
   SELECT *,
-         COALESCE(NULLIF(c_app_title,''),NULLIF(c_app_title2,''),NULLIF(c_kmd_title,''),NULLIF(best_title_or_name,''),NULLIF(investigator_visible_text,'')) AS extracted_subject_or_body,
+         CASE
+           WHEN communication_context_type IN ('SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE','SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE')
+             THEN COALESCE(NULLIF(native_probe_context_sample,''),NULLIF(investigator_visible_text,''),NULLIF(c_app_title,''),NULLIF(c_app_title2,''),NULLIF(c_kmd_title,''),NULLIF(best_title_or_name,''))
+           ELSE COALESCE(NULLIF(c_app_title,''),NULLIF(c_app_title2,''),NULLIF(c_kmd_title,''),NULLIF(best_title_or_name,''),NULLIF(investigator_visible_text,''))
+         END AS extracted_subject_or_body,
 )VSQL30" R"VSQL30(         COALESCE(NULLIF(c_subtitle,''),NULLIF(c_subtitle2,''),NULLIF(c_desc,''),NULLIF(c_snippet,''),NULLIF(description_or_snippet,''),NULLIF(snippet,'')) AS extracted_supporting_text,
          c_contact AS suggested_contact_name_v30
   FROM cut
@@ -5759,6 +5804,8 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
        message_domain_handle_or_chat,suggested_contact_name_v30 AS suggested_contact_name,extracted_supporting_text AS conversation_or_thread_title,extracted_subject_or_body AS extracted_message_text_or_subject,
        CASE
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' AND COALESCE(extracted_subject_or_body,'')<>'' THEN 'DIRECT_APPLE_MESSAGE_TEXT_OR_REACTION'
+         WHEN communication_context_type='SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE' THEN 'SPOTLIGHT_MESSAGE_OR_ATTACHMENT_PROBE_TEXT'
+         WHEN communication_context_type='SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE' THEN 'SPOTLIGHT_MAIL_OR_ACCOUNT_PROBE_TEXT'
 )VSQL30", R"VSQL30(
          WHEN communication_context_type='APPLE_MESSAGES_SMS_RCS_IMESSAGE' AND domain_identifier='chatDomain' THEN 'CONVERSATION_INDEX_RECORD_NO_BODY'
          WHEN communication_context_type='APPLE_MAIL_OR_EMAIL' AND COALESCE(extracted_subject_or_body,extracted_supporting_text,'')<>'' THEN 'MAIL_SUBJECT_SNIPPET_OR_TEXT_CONTEXT'
@@ -5772,7 +5819,7 @@ SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id
          ELSE 'USER_REVIEW_CANDIDATE'
        END AS noise_hint,
        investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
-       spotlight_text_context_sample,validation_locator,
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,validation_locator,
        'V0_9_32 extracts message/mail body, subject, snippet, and thread/contact context from compact same-record Spotlight text. This is Spotlight index evidence; corroborate against app DB/FFS where available.' AS interpretation_note
 FROM extracted;
 
@@ -6013,33 +6060,33 @@ GROUP BY substr(event_time_utc,1,7),review_category,event_type,bundle_id,content
 
 DROP VIEW IF EXISTS vw_ios_spotlight_investigator_overview;
 CREATE VIEW vw_ios_spotlight_investigator_overview AS
-SELECT '01_start_here' AS review_order,'case_quality_dashboard' AS review_area,'iOS - Case Quality Dashboard' AS gui_view,'vw_ios_spotlight_case_quality_dashboard' AS sqlite_view,CAST(COUNT(*) AS TEXT) AS row_count,
-       'Start here for compact counts, parser diagnostics, missing-FFS candidate count, and whether the run is compact/normal mode.' AS why_review_this
-FROM vw_ios_spotlight_case_quality_dashboard
-UNION ALL SELECT '02_direct_messages','communications','iOS - Direct User Message Review','vw_ios_spotlight_direct_user_message_review',CAST(COUNT(*) AS TEXT),
-       'Direct Apple Messages/SMS/RCS/iMessage text recovered from Spotlight compact context. This is the most investigator-facing message-text view.'
-FROM vw_ios_spotlight_direct_user_message_review
-UNION ALL SELECT '03_threads','communications','iOS - Direct User Message Thread Summary','vw_ios_spotlight_direct_user_message_thread_summary',CAST(COUNT(*) AS TEXT),
-       'Use this to identify high-volume or notable handles/threads before opening row-level message records.'
-FROM vw_ios_spotlight_direct_user_message_thread_summary
-UNION ALL SELECT '04_message_bodies','communications','iOS - Spotlight Message Body Review','vw_ios_spotlight_message_body_review',CAST(COUNT(*) AS TEXT),
-       'Broader message/mail/call/body review including mail subjects, calls, media, and message-adjacent records.'
-FROM vw_ios_spotlight_message_body_review
-UNION ALL SELECT '05_missing_from_ffs','residency','iOS - High-Value Missing From FFS','vw_ios_spotlight_missing_from_ffs_high_value_candidates',CAST(COUNT(*) AS TEXT),
-       'Spotlight path/reference candidates that did not match available FFS lookup; review with Spotlight text context and lookup status.'
-FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates
-UNION ALL SELECT '06_timeline','timeline','iOS - Timeline Month Summary','vw_ios_spotlight_timeline_month_summary',CAST(COUNT(*) AS TEXT),
-       'Monthly normalized Spotlight timeline summary for triage before opening row-level timeline samples.'
-FROM vw_ios_spotlight_timeline_month_summary
-UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diagnostics Action Summary','vw_parser_diagnostics_action_summary',CAST(COUNT(*) AS TEXT),
-       'Visible parser gaps/unparsed diagnostics. Non-zero values should be interpreted as coverage limits, not absence of evidence.'
-FROM vw_parser_diagnostics_action_summary
-UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',CAST(COUNT(*) AS TEXT),
-       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. V0_9_54 extracts bounded bplist object string tokens only; full object graph decoding remains future work.'
-FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary
-UNION ALL SELECT '09_super_timeline','timeline','iOS - Investigator Super Timeline','vw_investigator_super_timeline',CAST(COUNT(*) AS TEXT),
-       'Unified chronological surface combining normalized Spotlight timeline, targeted app database events, KnowledgeC/CoreDuet rows, and usage evidence where available.'
-FROM vw_investigator_super_timeline;
+SELECT '01_start_here' AS review_order,'case_quality_dashboard' AS review_area,'iOS - Case Quality Dashboard' AS gui_view,'vw_ios_spotlight_case_quality_dashboard' AS sqlite_view,
+       CAST((SELECT COUNT(*) FROM raw_records WHERE store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%') AS TEXT) AS row_count,
+       'Start here for compact counts, parser diagnostics, missing-FFS candidate count, and whether the run is compact/normal mode. Count is a lightweight CoreSpotlight raw-record count.' AS why_review_this
+UNION ALL SELECT '02_direct_messages','communications','iOS - Direct User Message Review','vw_ios_spotlight_direct_user_message_review',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE lower(field_value) LIKE '%imessage%' OR lower(field_value) LIKE '%mobilesms%' OR lower(field_value) LIKE '%/sms/attachments/%') AS TEXT),
+       'Direct Apple Messages/SMS/RCS/iMessage text recovered from Spotlight compact context where available. Lightweight count uses compact message probe strings.'
+UNION ALL SELECT '03_text_context','communications','iOS - Spotlight Text Context Review','vw_ios_spotlight_text_context_review',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE COALESCE(field_value,'')<>'' AND (field_name='__spotlight_investigator_text_context' OR field_name LIKE '__native_core_probe_string_%')) AS TEXT),
+       'Row-level same-record Spotlight text context, including native core probe string fallback when property names are not mapped.'
+UNION ALL SELECT '04_message_bodies','communications','iOS - Spotlight Message Body Review','vw_ios_spotlight_message_body_review',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE lower(field_value) LIKE '%imessage%' OR lower(field_value) LIKE '%mobilesms%' OR lower(field_value) LIKE '%mobilemail%' OR lower(field_value) LIKE '%mailto:%') AS TEXT),
+       'Broader message/mail/call/body review including mail subjects, calls, media, and message-adjacent records. Count is a lightweight compact-probe estimate.'
+UNION ALL SELECT '05_missing_from_ffs','residency','iOS - High-Value Missing From FFS','vw_ios_spotlight_missing_from_ffs_high_value_candidates',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE COALESCE(field_value,'')<>'' AND (lower(field_value) LIKE '%file://%' OR lower(field_value) LIKE '%/var/mobile/%' OR lower(field_value) LIKE '%/private/var/mobile/%')) AS TEXT),
+       'Spotlight path/reference candidates that did not match available FFS lookup; lightweight count is compact iOS file/path reference rows.'
+UNION ALL SELECT '06_timeline','timeline','iOS - Timeline Month Summary','vw_ios_spotlight_timeline_month_summary',CAST((SELECT COUNT(*) FROM timeline_events) AS TEXT),
+       'Monthly normalized Spotlight timeline summary for triage before opening row-level timeline samples. Count is timeline_events rows.'
+UNION ALL SELECT '07_parser_diagnostics','parser_diagnostics','iOS - Parser Diagnostics Action Summary','vw_parser_diagnostics_action_summary',CAST((SELECT COUNT(*) FROM raw_failures) AS TEXT),
+       'Visible parser gaps/unparsed diagnostics. Count is raw_failures rows; non-zero values are coverage limits, not absence of evidence.'
+UNION ALL SELECT '08_bplist_nskeyedarchiver','parser_diagnostics','iOS - Bplist/NSKeyedArchiver Summary','vw_ios_spotlight_bplist_nskeyedarchiver_summary',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE field_name='__spotlight_bplist_nskeyedarchiver_context') AS TEXT),
+       'Bounded discovery surface for binary plist / NSKeyedArchiver payloads found in iOS CoreSpotlight values. Full object graph decoding remains future work.'
+UNION ALL SELECT '09_super_timeline','timeline','iOS - Investigator Super Timeline','vw_investigator_super_timeline',CAST((SELECT COUNT(*) FROM timeline_events) AS TEXT),
+       'Unified chronological surface combining normalized Spotlight timeline, targeted app database events, KnowledgeC/CoreDuet rows, and usage evidence where available. Count is timeline_events rows for speed.'
+UNION ALL SELECT '10_string_probes','decoded_text','iOS - String Probe Values','vw_ios_string_probe_values',
+       CAST((SELECT COUNT(*) FROM raw_key_values WHERE COALESCE(field_value,'')<>'') AS TEXT),
+       'Decoded compact string-probe values. Use this when communication-specific views are sparse because the store exposes native probe strings rather than named Apple fields.';
 )VSQL32"}));
 
     // V0_9_44: bounded bplist / NSKeyedArchiver discovery views. These expose
@@ -7022,6 +7069,7 @@ WITH base AS (
          kv.inode_num AS spotlight_inode_or_object_id,
          kv.store_id AS spotlight_store_id,
          kv.parent_inode_num,
+         kv.field_name AS source_field_name,
          rr.file_name,
          rr.display_name,
          rr.content_type,
@@ -7031,13 +7079,27 @@ WITH base AS (
          lower(COALESCE(rr.content_type,'')) AS ct
   FROM raw_key_values kv
   LEFT JOIN raw_records rr ON rr.source_id=kv.source_id AND rr.store_guid=kv.store_guid AND rr.source_db=kv.source_db AND rr.inode_num=kv.inode_num AND COALESCE(rr.store_id,'')=COALESCE(kv.store_id,'')
-  WHERE kv.field_name='__spotlight_investigator_text_context'
+  WHERE COALESCE(kv.field_value,'')<>''
+    AND (kv.field_name='__spotlight_investigator_text_context'
+         OR kv.field_name LIKE '__native_core_probe_string_%'
+         OR lower(kv.field_name) LIKE '%title%'
+         OR lower(kv.field_name) LIKE '%displayname%'
+         OR lower(kv.field_name) LIKE '%snippet%'
+         OR lower(kv.field_name) LIKE '%description%'
+         OR lower(kv.field_name) LIKE '%message%'
+         OR lower(kv.field_name) LIKE '%mail%'
+         OR lower(kv.field_name) LIKE '%url%'
+         OR lower(kv.field_name) LIKE '%path%'
+         OR lower(kv.field_name) LIKE '%sender%'
+         OR lower(kv.field_name) LIKE '%recipient%'
+         OR lower(kv.field_name) LIKE '%phone%'
+         OR lower(kv.field_name) LIKE '%contact%')
 ), labeled AS (
   SELECT *,
        CASE
-         WHEN ct='public.message' OR v LIKE '%kmditemmessageservice%' OR v LIKE '%/sms/attachments/%' OR v LIKE '%com.apple.mobilesms%' THEN 'MESSAGE_OR_ATTACHMENT_CONTEXT'
-         WHEN ct='public.email-message' OR v LIKE '%com_apple_mail_%' OR v LIKE '%kmditememail%' OR v LIKE '%from:%' OR v LIKE '%to:%' THEN 'MAIL_OR_EMAIL_CONTEXT'
-         WHEN v LIKE '%_kmditembundleid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemexternalid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemdomainidentifier=net.whatsapp%' OR v LIKE '%_kmditemalternatenames=whatsapp%' THEN 'WHATSAPP_APP_OR_CHAT_CONTEXT'
+         WHEN ct='public.message' OR v LIKE '%kmditemmessageservice%' OR v LIKE '%/sms/attachments/%' OR v LIKE '%com.apple.mobilesms%' OR v LIKE '%mobilesms%' OR v LIKE '%imessage%' OR v LIKE 'sms;%' THEN 'MESSAGE_OR_ATTACHMENT_CONTEXT'
+         WHEN ct='public.email-message' OR v LIKE '%com_apple_mail_%' OR v LIKE '%mobilemail%' OR v LIKE '%kmditememail%' OR v LIKE '%mailto:%' OR v LIKE '%from:%' OR v LIKE '%to:%' THEN 'MAIL_OR_EMAIL_CONTEXT'
+)VSGUI" R"VSGUI(         WHEN v LIKE '%_kmditembundleid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemexternalid=net.whatsapp.whatsapp%' OR v LIKE '%_kmditemdomainidentifier=net.whatsapp%' OR v LIKE '%_kmditemalternatenames=whatsapp%' THEN 'WHATSAPP_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%_kmditembundleid=org.whispersystems.signal%' OR v LIKE '%_kmditemexternalid=org.whispersystems.signal%' OR v LIKE '%_kmditemdomainidentifier=org.whispersystems.signal%' OR v LIKE '%signal.messenger%' THEN 'SIGNAL_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%_kmditembundleid=ph.telegra.telegraph%' OR v LIKE '%_kmditemexternalid=ph.telegra.telegraph%' OR v LIKE '%telegram.messenger%' OR v LIKE '%org.telegram%' THEN 'TELEGRAM_APP_OR_CHAT_CONTEXT'
          WHEN v LIKE '%whatsapp group%' OR v LIKE '%chat.whatsapp.com%' OR v LIKE '%wa.me/%' OR v LIKE '%api.whatsapp.com%' THEN 'WHATSAPP_LINK_OR_TEXT_MENTION'
@@ -7093,10 +7155,11 @@ WITH base AS (
   FROM labeled
 )
 SELECT raw_kv_id,raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
-       file_name,display_name,content_type,last_updated_utc,text_context_category,review_priority,review_priority_sort,text_context_reason,
+       source_field_name,file_name,display_name,content_type,last_updated_utc,text_context_category,review_priority,review_priority_sort,text_context_reason,
        CASE
          WHEN text_context_category IN ('WHATSAPP_APP_OR_CHAT_CONTEXT','SIGNAL_APP_OR_CHAT_CONTEXT','TELEGRAM_APP_OR_CHAT_CONTEXT') THEN 'EXPLICIT_CHAT_APP_BUNDLE_DOMAIN_OR_EXTERNAL_ID'
          WHEN text_context_category IN ('WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION') THEN 'CHAT_LINK_OR_TEXT_MENTION_ONLY_NOT_APP_ATTRIBUTION'
+         WHEN source_field_name LIKE '__native_core_probe_string_%' THEN 'NATIVE_CORE_PROBE_STRING_VALUE'
          WHEN text_context_category='MESSAGE_OR_ATTACHMENT_CONTEXT' THEN 'APPLE_MESSAGE_CONTENT_TYPE_OR_MOBILESMS_FIELD'
          WHEN text_context_category='MAIL_OR_EMAIL_CONTEXT' THEN 'MAIL_CONTENT_TYPE_OR_MAIL_SEARCH_INDEXER_FIELD'
          ELSE 'CATEGORY_BY_CONTENT_TYPE_FIELD_OR_VALUE_PATTERN'
@@ -8951,7 +9014,7 @@ SELECT
     GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
     'Thread/contact grouped iOS communication frequency view. Thread identifiers use item_identifier when available, then contact/source primary key fallback. Treat as committed parsed-record frequency, not a final communication assertion without source-row review.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
 )VSGUI" R"VSGUI(       OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -8992,7 +9055,7 @@ SELECT
   END AS existence_basis,
   'Presence/frequency support view. Rows show committed parsed records and provenance markers that support existence or activity frequency; review source row before making final conclusions.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -9039,7 +9102,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses,
   'Identity/frequency rollup from parsed app records and communication provenance markers.' AS interpretation_note
 FROM ios_app_parsed_records
-)VSGUI" R"VSGUI(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+)VSGUI" R"VSGUI(WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -9061,7 +9124,7 @@ SELECT
   GROUP_CONCAT(DISTINCT parse_status) AS parse_statuses
 FROM ios_app_parsed_records
 WHERE COALESCE(record_timestamp_utc,'')<>''
-  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+  AND (record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
        OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
        OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
        OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%')
@@ -9085,7 +9148,7 @@ SELECT
   MAX(NULLIF(record_timestamp_utc,'')) AS last_seen_utc,
   'Communication existence/frequency source coverage by database/table/category.' AS interpretation_note
 FROM ios_app_parsed_records
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_EVENTS')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','MESSAGE_DELETED_OR_RECOVERABLE','KNOWLEDGEC_COMMUNICATION_INTENT')
    OR provenance LIKE '%THREAD_VOLUME_TRACKING_ENABLED%'
    OR provenance LIKE '%IDENTITY_BOUND_COMMUNICATION%'
    OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
@@ -10185,6 +10248,8 @@ SELECT 'APP_PARSED_CONTACT' AS source_surface, ios_app_record_id AS source_row_i
        'Identity pivot from parsed app database contact/participant field.' AS interpretation_note
 FROM ios_app_parsed_records
 WHERE COALESCE(contact_or_participant,'')<>''
+  AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+  AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
 )SQL" R"SQL(
 UNION ALL
 SELECT 'APP_PARSED_THREAD_OR_ITEM', ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
@@ -10192,6 +10257,8 @@ SELECT 'APP_PARSED_THREAD_OR_ITEM', ios_app_record_id, source_id, database_categ
        'Identity/thread pivot from parsed app database item identifier.'
 FROM ios_app_parsed_records
 WHERE COALESCE(item_identifier,'')<>''
+  AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+  AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
 )SQL" R"SQL(
 UNION ALL
 SELECT 'APP_PARSED_URL_OR_ACCOUNT', ios_app_record_id, source_id, database_category, app_hint, database_name, table_name, record_category,
@@ -10211,7 +10278,10 @@ SELECT 'APP_TEXT_IDENTITY_HINT', ios_app_record_id, source_id, database_category
        COALESCE(NULLIF(item_identifier,''), source_primary_key), title, url, file_path, substr(text_snippet,1,1000), parse_status, provenance,
        'Bounded text identity candidate from parsed app database text; use source row for verification.'
 FROM ios_app_parsed_records
-WHERE COALESCE(text_snippet,'')<>'' AND (
+WHERE COALESCE(text_snippet,'')<>''
+  AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_PROMOTION_SUPPRESSED=True%'
+  AND record_category <> 'KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY'
+  AND (
       lower(text_snippet) LIKE '%mailto:%' OR lower(text_snippet) LIKE '%tel:%' OR text_snippet LIKE '%@%' OR lower(text_snippet) LIKE '%personhandle%'
    OR lower(text_snippet) LIKE '%recipient%' OR lower(text_snippet) LIKE '%author%' OR lower(text_snippet) LIKE '%kmditemdomainidentifier%')
 )SQL" R"SQL(
@@ -10247,14 +10317,14 @@ SELECT source_surface, source_row_id, source_id, database_category, app_hint, da
        record_timestamp_utc, identity_value AS identity_hint, identity_kind,
        thread_or_record_id, title, url, file_path, text_snippet_sample,
        CASE
-         WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_EVENTS') THEN 'parsed_communication_category'
+         WHEN record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_COMMUNICATION_INTENT') THEN 'parsed_communication_category'
          WHEN identity_kind LIKE '%phone%' OR identity_kind LIKE '%email%' OR identity_kind LIKE '%recipient%' OR identity_kind LIKE '%author%' THEN 'identity_marker_communication_candidate'
          WHEN COALESCE(thread_or_record_id,'')<>'' THEN 'thread_or_record_identifier_candidate'
          ELSE 'text_or_context_communication_candidate' END AS communication_candidate_basis,
        parse_status, provenance,
        'Promotion surface: communication-related candidate based on parsed category, identity markers, thread identifiers, or Spotlight key/value context. Candidate status is not a conclusion of deletion or communication content without source review.' AS interpretation_note
 FROM vw_ios_identity_pivot_surface
-WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_EVENTS','MESSAGE_DELETED_OR_RECOVERABLE')
+WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_RECORDS','MESSAGE_PARTICIPANTS','CALL_PARTICIPANTS','KNOWLEDGEC_COMMUNICATION_INTENT','MESSAGE_DELETED_OR_RECOVERABLE')
    OR identity_kind LIKE '%phone%' OR identity_kind LIKE '%email%' OR identity_kind LIKE '%recipient%' OR identity_kind LIKE '%author%' OR identity_kind LIKE '%thread%'
    OR lower(text_snippet_sample) LIKE '%message%' OR lower(text_snippet_sample) LIKE '%sms%' OR lower(text_snippet_sample) LIKE '%imessage%' OR lower(text_snippet_sample) LIKE '%whatsapp%';
 
@@ -10293,6 +10363,7 @@ void CaseDatabase::insertCaseInfo(const RunOptions& opt) {
     put("app_version", appVersion());
     put("created_utc", nowUtc());
     put("export_profile", opt.exportProfile);
+    put("suppress_csv_exports", opt.suppressCsvExports ? "true" : "false");
     put("profile", opt.profile);
     put("skip_container_hash", opt.skipContainerHash ? "true" : "false");
     put("force_container_hash", opt.forceContainerHash ? "true" : "false");

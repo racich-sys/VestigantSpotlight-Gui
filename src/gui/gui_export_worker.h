@@ -36,6 +36,12 @@ public:
     static GuiExportResult exportCurrentPage(const GuiViewExportRequest& request);
     static GuiExportResult exportFilteredView(const GuiViewExportRequest& request);
 
+    static GuiExportResult exportVisibleViews(const std::wstring& dbPath,
+                                             const std::vector<ViewSpec>& viewSpecs,
+                                             const std::string& search,
+                                             const std::wstring& outFolder,
+                                             std::function<bool()> shouldCancel = {});
+
     static GuiExportResult exportCheckedArtifacts(const std::wstring& dbPath,
                                                   const std::vector<long long>& artifactIds,
                                                   const std::wstring& outPath,

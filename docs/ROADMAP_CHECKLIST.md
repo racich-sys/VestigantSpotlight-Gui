@@ -1,3 +1,10 @@
+## V1.6.6.2 workflow ledger
+
+- Completed prerequisite review of every `.md` and `.txt` file in the uploaded V1.6.6.1 package.
+- Implemented KnowledgeC/CoreDuet identity suppression hardening and SQLite view predicate correction.
+- Added self-test coverage for KnowledgeC device/generic/communication-intent separation.
+- Next: Windows/MSVC build plus iOS thin upload review. AFF4/APFS thin is not required unless shared schema/build behavior regresses.
+
 # Roadmap Checklist - V1.3.2
 
 ## Active priority order

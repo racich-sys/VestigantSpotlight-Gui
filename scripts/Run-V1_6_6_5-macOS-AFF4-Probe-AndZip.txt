@@ -1,17 +1,9 @@
-# Quick Start - V1.6.6.5
-
-```powershell
 Set-Location D:\Downloads
 Get-FileHash .\VestigantSpotlightInv_V1_6_6_5.zip -Algorithm SHA256
 Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_6_6_5" -Recurse -Force -ErrorAction SilentlyContinue
 Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_6_6_5.zip -DestinationPath T:\ -Force
 powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Build-V1_6_6_5.ps1
-```
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Run-V1_6_6_5-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 
-After the build passes, run iOS thin:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
-```
-
-Upload `V1_6_6_5_build.log` and `Upload_Thin_iOS_CoreSpotlight_V1_6_6_5.zip`.
+# If the V1.6.6.5 AFF4/APFS case already completed and only thin packaging failed, use this faster packaging-only command:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Package-V1_6_6_5-macOS-AFF4-ThinFromExistingCase.ps1

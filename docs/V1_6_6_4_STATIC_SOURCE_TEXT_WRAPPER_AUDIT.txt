@@ -1,0 +1,31 @@
+V1.6.6.4 static source/text/wrapper audit
+root=/mnt/data/VestigantSpotlightInv_V1_6_6_4
+files_scanned=164
+lines_scanned=64860
+md_txt_files_scanned=62
+md_txt_lines_scanned=14807
+PASS: VERSION
+PASS: VERSION.txt
+PASS: CMakeLists project version
+PASS: app_info version
+PASS: expected current wrapper scripts/Build-V1_6_6_4.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper scripts/Build-V1_6_6_4.ps1
+PASS: expected current wrapper scripts/Run-V1_6_6_4-iOS-CoreSpotlight-AndZip.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper scripts/Run-V1_6_6_4-iOS-CoreSpotlight-AndZip.ps1
+PASS: expected current wrapper scripts/Run-V1_6_6_4-macOS-AFF4-Probe-AndZip.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper scripts/Run-V1_6_6_4-macOS-AFF4-Probe-AndZip.ps1
+PASS: expected current wrapper scripts/Launch-V1_6_6_4-GUI.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper scripts/Launch-V1_6_6_4-GUI.ps1
+PASS: expected current wrapper tools/Verify-V1_6_6_4-ReleaseReadiness.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper tools/Verify-V1_6_6_4-ReleaseReadiness.ps1
+PASS: expected current wrapper tools/Verify-V1_6_6_4-ForensicDirectives.ps1
+PASS: no stale V1_6_6_3/1.6.6.3 in current wrapper tools/Verify-V1_6_6_4-ForensicDirectives.ps1
+PASS: build wrapper extracts before preflight and preflights before MSVC build
+PASS: build wrapper CLI regex is pinned to 1.6.6.4
+PASS: gui_export_worker contains std::wstring joinPath
+PASS: gui_export_worker contains std::wstring sanitizeExportName
+PASS: gui_export_worker contains void ensureFolderExistsNoThrow
+PASS: no generic KNOWLEDGEC_EVENTS positive promotional predicates in case_db.cpp or win32_gui.cpp communication/identity views
+raw_string_max_bytes=4485 file=src/db/case_db.cpp line=9055
+PASS: raw string max below 5000-byte MSVC risk guard
+PASS: current .md/.txt files do not contain stale V1_6_6_3 command/upload/build references outside preserved V1.6.6.3 historical release note

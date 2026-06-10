@@ -1,49 +1,37 @@
-# Current Continuation Handoff - V1.3.2
+# V1.6.6.5 Continuation Handoff
 
-Current package: `VestigantSpotlightInv_V1_3_3.zip`
+## Current status
 
-## Build command
+V1.6.6.5 is a narrow hotfix after the V1.6.6.3 Windows wrapper stopped at release-readiness with a generic `KNOWLEDGEC_EVENTS` communication/identity predicate warning.
+
+## What changed
+
+- Current build wrapper is `scripts/Build-V1_6_6_5.ps1` and validates CLI version `1.6.6.5`.
+- Build-wrapper preflight checks now run after extraction / clean extraction so stale extracted source is not checked before replacement.
+- `src/gui/win32_gui.cpp` bootstrap communication views now use `KNOWLEDGEC_COMMUNICATION_INTENT` and provenance markers rather than generic `KNOWLEDGEC_EVENTS`.
+- `tools/Verify-V1_6_6_5-ReleaseReadiness.ps1` now scans both `src/db/case_db.cpp` and `src/gui/win32_gui.cpp` and distinguishes allowed suppression guards from disallowed promotional predicates.
+- The main case schema still contains suppression guards that explicitly exclude `KNOWLEDGEC_EVENTS` / `KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY` rows unless communication-intent provenance is present.
+
+## Required next artifacts
+
+- `V1_6_6_5_build.log`
+- `Upload_Thin_iOS_CoreSpotlight_V1_6_6_5.zip`
+
+## Build and thin commands
 
 ```powershell
 Set-Location D:\Downloads
-
-Get-FileHash .\VestigantSpotlightInv_V1_3_3.zip -Algorithm SHA256
-
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_3_3" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_3_3.zip -DestinationPath T:\ -Force
-
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Build-V1_3_3.ps1
+Get-FileHash .\VestigantSpotlightInv_V1_6_6_5.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_6_6_5" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_6_6_5.zip -DestinationPath T:\ -Force
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Build-V1_6_6_5.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
 ```
 
-## AFF4/APFS thin-create command
+## Test scope decision
 
-```powershell
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_3_3\scripts\Run-V1_3_3-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
-```
+Run Windows/MSVC build first because V1.6.6.5 directly fixes the wrapper/readiness stop observed in V1.6.6.3.
 
-## Completed/worked sections
+Run iOS thin after build passes because V1.6.6.3 still needs validation that the three timeout-prone exports no longer time out, and V1.6.6.5 also updates GUI bootstrap communication predicates.
 
-- A1: AFF4/APFS progress visibility advanced. Direct-map AFF4 reader now emits progress heartbeats during long operations.
-- A2: GUI status display improved with percent-derived GB-of-GB source progress when possible.
-- B1: iOS communication and identity analysis elevated to active work. Added communication identity provenance, KnowledgeC interaction streams, communication-frequency view, and export.
-- C: Case tab stability remains in follow-through; prior V1.3.1 mutation-control safeguards remain in place.
-
-## Still open
-
-- Full NSKeyedArchiver UID graph reconstruction.
-- Full APFS traversal unification through a shared BlockReader architecture.
-- WhereFroms/quarantine/volume metadata extraction.
-- Safe Live Ingest Preview panel.
-- Any additional Case tab button issues observed during live GUI runs.
-
-## Next uploads requested
-
-- `V1_3_3_build.log`
-- `Upload_Thin_MacOS_AFF4_V1_3_3.zip`
-- iOS thin output if iOS communication-frequency validation is run.
-
-## V1.6.3.1 Update
-- Implemented cautious WhereFroms XATTR surfacing, bounded bplist/NSKeyedArchiver graph-sample output, safe iOS provenance markers, and tombstone/deleted review routing keywords.
-- Preserved non-interpretive wording: no automatic exfiltration or destruction conclusions were added.
-- Local validation: Linux CMake build PASS; CLI version reports v1.6.3.1; self-test PASS.
-- Next required upload: V1.6.3.1 Windows build log and iOS thin output.
+Do not run AFF4/APFS thin/full for V1.6.6.5 unless the Windows build or shared schema/view initialization regresses. This release does not change AFF4/APFS traversal, copy-out, decompression, source-reader, APFS filesystem reading, or Store-V2 staging behavior.

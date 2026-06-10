@@ -1,3 +1,53 @@
+## V1.6.6.5 - iOS native CoreSpotlight probe review bridge
+
+V1.6.6.5 was built after review of the uploaded V1.6.6.4 Windows build log and iOS thin bundle. The Windows build log showed a completed V1.6.6.4 build. The iOS thin bundle reached `complete_success`, with 6 valid stores, 344,445 raw records, 22,569 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events.
+
+The V1.6.6.4 thin run showed that timeout-prone V1.6.6.2 exports were fixed, but compact native probe strings were still not flowing into the main iOS text-context and communication review surfaces. `ios_string_probe_category_summary.csv` contained 9,591 message/app string probes and 933 email/account probes, while message/text-context review exports remained empty.
+
+Implemented:
+- high-signal `__native_core_probe_string_*` values can now feed same-record text context;
+- iOS text-context review exposes `source_field_name` and classifies native SMS/iMessage/mail/account/file-reference probes;
+- iOS communication/message review views expose `native_probe_context_count` and `native_probe_context_sample`;
+- new communication buckets identify `SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE` and `SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE`;
+- `vw_ios_spotlight_investigator_overview` now uses lightweight base/probe counts to avoid the V1.6.6.4 46-second slow overview export;
+- self-test coverage now includes native CoreSpotlight probe-to-text-context and communication-review checks.
+
+Validation performed here:
+- Linux CMake build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.5`.
+- Self-test: PASS.
+- Windows/MSVC build: not run here.
+
+## V1.6.6.5 Local Validation
+
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.5`.
+- Self-test: PASS (`Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.6.5`).
+- Static current-wrapper/text audit: PASS.
+- Static KnowledgeC promotional predicate audit: PASS for `src/db/case_db.cpp` and `src/gui/win32_gui.cpp`.
+- Windows/MSVC build: not run in this environment; required next artifact is `V1_6_6_5_build.log`.
+- iOS thin: required next artifact is `Upload_Thin_iOS_CoreSpotlight_V1_6_6_5.zip`.
+- AFF4/APFS thin/full: not required unless build/shared schema behavior regresses.
+
+## V1.6.6.3 Local Validation
+
+- Reviewed uploaded `Upload_Thin_iOS_CoreSpotlight_V1_6_6_2.zip` before source changes.
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.3`.
+- Self-test: PASS (`Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.6.3`).
+- Windows/MSVC build: not run in this environment for V1.6.6.3; superseded by the V1.6.6.5 build-wrapper hotfix.
+- iOS thin: still required under V1.6.6.5 after the Windows build passes.
+- AFF4/APFS thin/full: not required for this version unless build/shared schema behavior regresses.
+
+## V1.6.6.2 Local Validation
+
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.2`.
+- Self-test: PASS, including `runKnowledgeCIdentitySuppressionSmokeTest`.
+- Windows/MSVC build: not run in this environment; required next artifact is `V1_6_6_2_build.log`.
+- iOS thin: required next artifact is `Upload_Thin_iOS_CoreSpotlight_V1_6_6_2.zip`.
+- AFF4/APFS thin/full: not required for this version unless shared schema/build behavior regresses.
+
 ## V1.3.2 local validation
 
 - Linux CMake configure: PASS.

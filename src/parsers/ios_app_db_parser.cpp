@@ -89,9 +89,47 @@ std::string firstEmailLikeValue(const std::string& text) {
     return candidate.size() <= 254 ? candidate : candidate.substr(0, 254);
 }
 
+bool looksLikeAppleAbsoluteTimeNumeric(const std::string& raw) {
+    std::string s = trim(raw);
+    while (!s.empty() && (s.front() == ':' || s.front() == '=' || s.front() == ' ')) s.erase(s.begin());
+    while (!s.empty() && (s.back() == ',' || s.back() == ';' || s.back() == ')' || s.back() == ']' || s.back() == '}')) s.pop_back();
+    if (s.empty()) return false;
+    int dots = 0;
+    int leftDigits = 0;
+    int rightDigits = 0;
+    bool right = false;
+    bool sawSeparatorOtherThanDot = false;
+    for (char ch : s) {
+        if (std::isdigit(static_cast<unsigned char>(ch))) {
+            if (right) ++rightDigits;
+            else ++leftDigits;
+        } else if (ch == '.') {
+            ++dots;
+            right = true;
+        } else if (ch == '+' || ch == '-' || ch == '(' || ch == ')' || ch == ' ') {
+            sawSeparatorOtherThanDot = true;
+        } else {
+            return false;
+        }
+    }
+    if (dots != 1 || sawSeparatorOtherThanDot) return false;
+    if (leftDigits < 8 || leftDigits > 10 || rightDigits < 1 || rightDigits > 7) return false;
+    char* end = nullptr;
+    const double value = std::strtod(s.c_str(), &end);
+    if (!end || *end != '\0') return false;
+    // CFAbsoluteTime around 2016-2035 sits in this range. These values are common in KnowledgeC start/end fields.
+    return value >= 473385600.0 && value <= 1072915200.0;
+}
+
 std::string firstPhoneLikeValue(const std::string& text) {
     std::string cur;
     int digits = 0;
+    auto candidateOrEmpty = [&]() -> std::string {
+        const std::string candidate = trim(cur);
+        if (digits < 7) return {};
+        if (looksLikeAppleAbsoluteTimeNumeric(candidate)) return {};
+        return candidate;
+    };
     for (unsigned char c : text) {
         const bool phoneChar = std::isdigit(c) || c == '+' || c == '-' || c == '(' || c == ')' || c == ' ' || c == '.';
         if (phoneChar) {
@@ -102,13 +140,13 @@ std::string firstPhoneLikeValue(const std::string& text) {
                 digits = 0;
             }
         } else {
-            if (digits >= 7) return trim(cur);
+            const std::string candidate = candidateOrEmpty();
+            if (!candidate.empty()) return candidate;
             cur.clear();
             digits = 0;
         }
     }
-    if (digits >= 7) return trim(cur);
-    return {};
+    return candidateOrEmpty();
 }
 
 std::string identityRecoveryHintFromText(const std::string& text) {
@@ -1126,24 +1164,38 @@ std::size_t parseKnowledgeCIosZObjectRows(const std::string& sourceId,
         }
         std::string parseStatus = "parsed_knowledgec_zobject_interaction_joined_metadata";
         std::string provenance = hasStructuredMetadata ? "read_only_sqlite_coreduet_knowledgec joined_zstructuredmetadata_v1_3_2" : "read_only_sqlite_coreduet_knowledgec table=" + table;
-        if (intentClass == "INSendMessageIntent" || bundleId == "com.apple.sharingd" || stream == "/item/interactions" || stream == "/app/activity") {
+        auto isCommunicationIntentClass = [](const std::string& cls) {
+            return cls == "INSendMessageIntent" || cls == "INStartCallIntent" ||
+                   cls == "INStartAudioCallIntent" || cls == "INStartVideoCallIntent" ||
+                   cls == "INSendPaymentIntent";
+        };
+        const bool communicationIntent = (stream == "/app/intents" && isCommunicationIntentClass(intentClass)) ||
+                                         (stream == "/item/interactions" && bundleId == "com.apple.sharingd");
+        const bool deviceOrStateStream = (stream == "/display/isBacklit" || stream == "/app/inFocus" || stream == "/document/open");
+        std::string knowledgeRecordCategory = communicationIntent ? "KNOWLEDGEC_COMMUNICATION_INTENT" :
+                                               (deviceOrStateStream ? "KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY" : "KNOWLEDGEC_EVENTS");
+        std::string contactForRecord = communicationIntent ? contactHint : "";
+        std::string itemIdentifierForRecord = communicationIntent ? stream : "";
+        if (communicationIntent) {
             title = "COMMUNICATION INTENT: Document Shared/Sent";
             parseStatus = "parsed_knowledgec_communication_intent";
             provenance += "; COMMUNICATION_INTENT_STREAM=True";
             if (serialized.find("personHandle") != std::string::npos || serialized.find("emailAddress") != std::string::npos || serialized.find("name") != std::string::npos) {
                 provenance += "; INTENT_TARGET_IDENTIFIED=True";
             }
+        } else if (deviceOrStateStream) {
+            provenance += "; KNOWLEDGEC_DEVICE_STATE_STREAM=True; IDENTITY_PROMOTION_SUPPRESSED=True";
         }
         if (snippet.size() > 2000) snippet.resize(2000);
-        bindIosParsedRecord(parsedIns, sourceId, inv, table, "KNOWLEDGEC_EVENTS",
+        bindIosParsedRecord(parsedIns, sourceId, inv, table, knowledgeRecordCategory,
                             columnValue(st, rowidCol, 256),
                             !startTs.first.empty() ? startTs.first : creationTs.first,
                             !startTs.second.empty() ? startTs.second : creationTs.second,
-                            contactHint.empty() ? bundleId : contactHint,
+                            contactForRecord,
                             "",
                             title,
                             "",
-                            stream,
+                            itemIdentifierForRecord,
                             snippet,
                             parseStatus,
                             provenance);
@@ -1195,12 +1247,16 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             const std::string stream = columnValue(st, streamNameCol, 256);
             if (stream != "/app/inFocus" && stream != "/document/open" && stream != "/app/intents" && stream != "/display/isBacklit" && stream != "/app/activity" && stream != "/item/interactions") continue;
             const std::string bundleId = columnValue(st, valueStringCol, 512);
-            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
-                                columnValue(st, pkCol, 256), ts.first, ts.second, bundleId, "",
+            const bool deviceOrStateStream = (stream == "/display/isBacklit" || stream == "/app/inFocus" || stream == "/document/open");
+            const std::string fallbackKnowledgeCategory = deviceOrStateStream ? "KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY" : recordCategory;
+            std::string fallbackProvenance = "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_48";
+            if (deviceOrStateStream) fallbackProvenance += "; KNOWLEDGEC_DEVICE_STATE_STREAM=True; IDENTITY_PROMOTION_SUPPRESSED=True";
+            bindIosParsedRecord(parsedIns, sourceId, inv, table, fallbackKnowledgeCategory,
+                                columnValue(st, pkCol, 256), ts.first, ts.second, "", "",
                                 "User Interaction: " + stream, "", stream,
                                 iosAppDbBuildKnowledgeCTextSnippet(stream, bundleId, dateRaw, columnValue(st, findColumnIndex(cols, {"zenddate"}, true), 128)),
                                 "parsed_knowledgec_generic_row",
-                                "read_only_sqlite_dynamic_schema table=" + table + "; specialized_knowledgec_mapping=v0_9_48");
+                                fallbackProvenance);
             ++rows;
             continue;
         }

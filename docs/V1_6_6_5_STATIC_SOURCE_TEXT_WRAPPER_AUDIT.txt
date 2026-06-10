@@ -1,0 +1,49 @@
+V1.6.6.5 static source/text/wrapper audit
+root=/mnt/data/work_v1665/VestigantSpotlightInv_V1_6_6_5
+files_scanned=191
+lines_scanned=69695
+md_txt_files_scanned=66
+md_txt_lines_scanned=14989
+PASS: VERSION
+PASS: VERSION.txt
+PASS: CMakeLists project version
+PASS: app_info version
+PASS: expected current wrapper scripts/Build-V1_6_6_5.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper scripts/Build-V1_6_6_5.ps1
+PASS: expected current wrapper scripts/Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper scripts/Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1
+PASS: expected current wrapper scripts/Run-V1_6_6_5-macOS-AFF4-Probe-AndZip.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper scripts/Run-V1_6_6_5-macOS-AFF4-Probe-AndZip.ps1
+PASS: expected current wrapper scripts/Launch-V1_6_6_5-GUI.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper scripts/Launch-V1_6_6_5-GUI.ps1
+PASS: expected current wrapper tools/Verify-V1_6_6_5-ReleaseReadiness.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper tools/Verify-V1_6_6_5-ReleaseReadiness.ps1
+PASS: expected current wrapper tools/Verify-V1_6_6_5-ForensicDirectives.ps1
+PASS: no stale V1.6.6.3/4 in current wrapper tools/Verify-V1_6_6_5-ForensicDirectives.ps1
+PASS: build wrapper extracts/preflights before MSVC build
+PASS: build wrapper CLI regex is pinned to 1.6.6.5
+PASS: gui_export_worker contains std::wstring joinPath
+PASS: gui_export_worker contains std::wstring sanitizeExportName
+PASS: gui_export_worker contains void ensureFolderExistsNoThrow
+PASS: case_db native probe coverage __native_core_probe_string_%
+PASS: case_db native probe coverage native_probe_context_sample
+PASS: case_db native probe coverage SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE
+PASS: case_db native probe coverage SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE
+PASS: case_db native probe coverage 10_string_probes
+PASS: native parser probe guard coreProbeField
+PASS: native parser probe guard looksLikeForensicReferenceValue
+PASS: native parser probe guard fieldLabel = "__native_core_probe_string"
+PASS: GUI registry native probe column source_field_name
+PASS: GUI registry native probe column native_probe_context_count
+PASS: GUI registry native probe column native_probe_context_sample
+PASS: self-test coverage runIosCoreProbeTextContextSmokeTest
+PASS: self-test coverage SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE
+PASS: self-test coverage runKnowledgeCIdentitySuppressionSmokeTest
+PASS: release readiness uses PowerShell-safe native parser needle quoting
+PASS: no generic KNOWLEDGEC_EVENTS positive promotional predicates in case_db.cpp or win32_gui.cpp communication/identity views
+raw_string_max_bytes=4992 file=src/db/case_db.cpp line=6054
+PASS: raw string max below 5000-byte MSVC risk guard
+PASS: current .md/.txt files do not contain stale V1_6_6_4 command/upload/build references outside preserved historical/evidence notes
+PASS: uploaded V1_6_6_4_build.log reviewed; build completed and reported Vestigant Spotlight v1.6.6.4
+PASS: uploaded V1.6.6.4 thin bundle reviewed; last_stage complete_success
+PASS: V1.6.6.5 targets native CoreSpotlight probe evidence observed in uploaded thin bundle

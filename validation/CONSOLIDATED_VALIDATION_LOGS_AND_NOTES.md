@@ -1,3 +1,33 @@
+## V1.6.6.5 Local Validation
+
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.5`.
+- Self-test: PASS (`Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.6.5`).
+- Static current-wrapper/text audit: PASS.
+- Static KnowledgeC promotional predicate audit: PASS for `src/db/case_db.cpp` and `src/gui/win32_gui.cpp`.
+- Windows/MSVC build: not run in this environment; required next artifact is `V1_6_6_5_build.log`.
+- iOS thin: required next artifact is `Upload_Thin_iOS_CoreSpotlight_V1_6_6_5.zip`.
+- AFF4/APFS thin/full: not required unless build/shared schema behavior regresses.
+
+## V1.6.6.3 Local Validation
+
+- Reviewed uploaded `Upload_Thin_iOS_CoreSpotlight_V1_6_6_2.zip` before source changes.
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.3`.
+- Self-test: PASS (`Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.6.3`).
+- Windows/MSVC build: not run in this environment for V1.6.6.3; superseded by the V1.6.6.5 build-wrapper hotfix.
+- iOS thin: still required under V1.6.6.5 after the Windows build passes.
+- AFF4/APFS thin/full: not required for this version unless build/shared schema behavior regresses.
+
+## V1.6.6.2 Local Validation
+
+- Linux CMake configure/build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.2`.
+- Self-test: PASS, including `runKnowledgeCIdentitySuppressionSmokeTest`.
+- Windows/MSVC build: not run in this environment; required next artifact is `V1_6_6_2_build.log`.
+- iOS thin: required next artifact is `Upload_Thin_iOS_CoreSpotlight_V1_6_6_2.zip`.
+- AFF4/APFS thin/full: not required for this version unless shared schema/build behavior regresses.
+
 # V1.3.2 Validation Note
 
 Input reviewed:

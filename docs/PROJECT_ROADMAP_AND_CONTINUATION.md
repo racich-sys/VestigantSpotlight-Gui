@@ -1,211 +1,37 @@
-# V1.0.27 Process and GUI SQLite Hardening
-
-V1.0.27 is a narrow hardening release after V1.0.26.1 built successfully and the macOS AFF4/APFS thin ZIP was generated and reviewed.
-
-## Evidence reviewed before patching
-
-- `V1_0_26_1_build.log` showed the Windows/MSVC build completed and reported `Vestigant Spotlight v1.0.26.1`.
-- `Upload_Thin_MacOS_AFF4_V1_0_26_1.zip` was present and reviewed.
-- The V1.0.26.1 thin ZIP did not contain the denied raw log/inventory names:
-  - `aff4_stream_inventory_raw.txt`
-  - `ios_focused_zip_extract.log`
-  - `ios_focused_zip_extract_7z.log`
-  - `ios_focused_zip_extract.ps1`
-  - `ios_ffs_file_inventory.csv`
-  - `image_file_inventory.csv`
-- The V1.0.26.1 case/additional inventories used relative paths rather than full `Q:\`, `D:\`, or `T:\` paths.
-- The AFF4/APFS run reached `complete_source_probe`.
-- APFS staged Store-V2 parse baseline remained: `raw_records=25000`, `raw_key_values=2181`, `raw_date_candidates=25000`.
-- External comparison summary remained: `external_file_count=4123`, `vestigant_file_count=8986`, `file_match_rows=2213`, `external_only_rows=1424`, `vestigant_only_rows=6710`, `hash_different_path_rows=431`, and `RELATIVE_PATH_SIZE_MISMATCH=486`.
-
-## Implemented changes
-
-1. Added Windows Job Object wrapping to hidden external process launches in `app_runner.cpp`.
-   - `runShellCommandNoWindow()` now creates a kill-on-close Job Object when available.
-   - redirected process execution also uses the same Job Object helper.
-   - on timeout, `TerminateJobObject()` is used when a job was assigned; otherwise the parent process is terminated as fallback.
-   - this is intended to prevent orphaned child processes from locking evidence files.
-
-2. Added resilient SQLite busy retry handling for GUI review database connections.
-   - `win32_gui.cpp` now installs a bounded custom `sqlite3_busy_handler` for `ReadOnlyDb` connections.
-   - `gui_export_worker.cpp` now installs a matching portable busy handler for export-worker database connections.
-   - temp-store/cache PRAGMAs remain unchanged.
-
-3. Added a thin-upload ZIP deny-list self-check to `tools/Create-SourceProbeUploadZip.ps1`.
-   - after `Compress-Archive`, the script opens the generated ZIP and fails if any denied raw filenames are present.
-
-4. Updated continuity files:
-   - `docs/CONTINUATION_HANDOFF.md`
-   - `docs/ROADMAP_CHECKLIST.md`
-   - `docs/SUGGESTIONS_AND_FIXES_TRACKER.md`
-
-## Intentionally deferred
-
-- APFS absolute-path reverse catalog walker: deferred because the proposed implementation is pseudocode and would require validated APFS B-tree lookup/value parsing before being forensically safe.
-- Evidence intake/staging extraction module: deferred because moving ZIP staging and iOS inventory import is broad and should not be combined with process/GUI hardening.
-- iOS NSKeyedArchiver unflattener: deferred until a real bplist object model/UID parser is present; returning placeholder JSON would create misleading investigative output.
-- APFS diagnostic writer relocation: still a good next target, but not combined with V1.0.27.
-
-## Validation performed locally
-
-- `g++ -std=c++20 -DVESTIGANT_HAS_LZFSE=1 -Isrc -Ithird_party/lzfse/src -fsyntax-only src/app/app_runner.cpp`
-- `g++ -std=c++20 -Isrc -fsyntax-only src/gui/gui_export_worker.cpp`
-- `g++ -std=c++20 -Isrc -fsyntax-only src/core/app_info.cpp`
-
-Windows/MSVC build and Windows GUI runtime validation are still required for V1.0.27.
-
----
-
-# V1.0.27
-
-V1.0.27 is a thin-upload packaging hotfix after the V1.0.26 AFF4/APFS run and external comparison completed but the thin ZIP failed during PowerShell relative-path inventory generation.
-
-## Changed
-
-- Fixed `tools/Create-SourceProbeUploadZip.ps1` so `Get-RelativePathForThinInventory` no longer uses `[char]'\\'`, which Windows PowerShell treats as a two-character string and rejects.
-- Reused the robust relative-path helper for `ExtractedSpotlight` copy paths.
-- Changed `reader_tools_file_inventory.txt` to use relative paths instead of full local paths.
-- Added `scripts/Package-V1_0_27-macOS-AFF4-ThinFromExistingCase.ps1` for packaging an already-completed V1.0.26 AFF4/APFS case without rerunning the probe.
-- Added `docs/CONTINUATION_HANDOFF.md`, `docs/ROADMAP_CHECKLIST.md`, and `docs/SUGGESTIONS_AND_FIXES_TRACKER.md`.
-
-## Not changed
-
-- No APFS traversal, copy-out, Store-V2 parsing, iOS parsing, database schema, or GUI behavior was intentionally changed.
-
-## Validation
-
-- Reviewed the uploaded V1.0.26 build log; the Windows/MSVC build completed and reported `Vestigant Spotlight v1.0.26`.
-- Reviewed the user-reported wrapper output showing the AFF4/APFS probe and external comparison completed before packaging failed.
-- Local syntax/text checks were performed for modified C++ and PowerShell packaging files. Windows/MSVC V1.0.27 validation remains required.
-
-## V1.0.26
-
-- Thin-upload redaction and hidden-process/large-offset I/O hardening added. Windows/MSVC validation pending.
-
-# Vestigant Spotlight V1.0.0 Notes
-
-V1.0.0 starts the post-0.9.x V1 line. It keeps the stable V0_9_60 GUI/iOS baseline and moves the next work back toward macOS Spotlight investigation from AFF4/APFS forensic images.
-
-## What changed in V1.0.0
-
-- Version identifiers were advanced to `1.0.0` in `VERSION`, `VERSION.txt`, `CMakeLists.txt`, and `src/core/app_info.cpp`.
-- Added a V1 AFF4/APFS diagnostic rerun artifact set written during AFF4 source-probe runs:
-  - `AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md`
-  - `aff4_apfs_v1_diagnostic_checklist.csv`
-  - `aff4_apfs_v1_diagnostic_plan_summary.json`
-- Added those V1 AFF4/APFS diagnostic files to the thin-upload review index and upload bundle copy list.
-- Updated the single-AFF4 probe wrapper defaults for the V1.0.0 case/output names.
-- Added concrete V1.0.0 PowerShell scripts:
-  - `scripts/Build-V1_0_0.ps1`
-  - `scripts/Launch-V1_0_0-GUI.ps1`
-  - `scripts/Run-V1_0_0-macOS-AFF4-Probe-AndZip.ps1`
-  - copy/paste command text files for GUI and AFF4/APFS testing.
-- Kept AFF4/APFS and Raw IMG/DD source-type paths visible as staged/experimental workflows rather than hiding them.
-
-## V1.0.0 decision rule
-
-Do not make broad APFS reconstruction changes from the old V0_8_69 external-compare bundle alone. First run a fresh V1.0.0 strict single-AFF4 diagnostic against:
-
-`O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4`
-
-Then review the new thin upload to classify the next fix as one of:
-
-- AFF4 container/virtual read access,
-- APFS checkpoint or object-map resolution,
-- APFS filesystem root-tree namespace traversal,
-- Spotlight target inode/xattr/extent correlation,
-- sparse/gap/zero-physical-block reconstruction policy,
-- decmpfs/resource-fork handling,
-- staged Store-V2 parsing/enrichment,
-- external-reference comparison,
-- macOS investigator views.
-
-## Validation performed in this package
-
-- Reviewed uploaded `V0_9_60_build.log`; it shows CLI, tests, and GUI linked successfully and the built binary reported `Vestigant Spotlight v0.9.60`.
-- Reviewed the old `Upload_Thin_V0_8_69_ExternalCompare.zip` enough to confirm historical AFF4/APFS extraction reached staged Store-V2 parsing/enrichment and external comparison, but it is old and should not be treated as current V1 truth.
-- Performed a Linux CMake build and ran the included self-test for V1.0.0 in this environment.
-- Performed static checks for common MSVC C2026 raw-string risk.
-
-Windows/MSVC GUI build and the live AFF4 image probe still require execution on the user's Windows machine with access to the standard O:, Q:, T:, and D: paths.
-
----
-
-# Vestigant Spotlight V0_9_60 Notes
-
-V0_9_60 is a V1 production-readiness cleanup after V0_9_57 compiled and ran on Windows. It improves the processing workflow and review workflow without changing parser interpretation logic.
-
-Key changes:
-- The Case Information bottom log is now the live processing log. It clears at run start, timestamps messages, mirrors run/progress status, and emits periodic heartbeat messages while processing continues.
-- View loading now shows an explicit marquee progress indicator above the investigation grid and a loading message in the details pane so long SQLite view loads are not mistaken for hangs.
-- The V1 GUI source selector now exposes only fully implemented Folder and ZIP intake paths. AFF4/APFS and raw image support remain roadmap items and are not presented as clickable V1 options.
-- Legacy V7-only schema tables/indexes were removed from new case initialization.
-- CLI/operator self-test mode is deprecated; the automated test executable uses an internal automated self-test path.
-- Duplicate AFF4/APFS child/descendant root-tree probe output writers were consolidated into one traversal-output writer.
-
-Validation summary:
-- Linux CMake configure/build passed.
-- VestigantSpotlightTests passed.
-- C++20 syntax checks passed for modified non-Windows translation units.
-- Windows/MSVC GUI compile and runtime validation remain required.
-
-# Vestigant Spotlight Project Roadmap and Continuation
-
-## V0_9_60 - Windows GUI forward-declaration compile hotfix
-
-V0_9_60 is a focused Windows/MSVC GUI build hotfix after V0_9_56 reached the GUI compile stage and failed with `C3861: setReviewSummary identifier not found` in `src\gui\win32_gui.cpp`. The fix adds a forward declaration for `setReviewSummary(const std::wstring&)` before the custom view-set helper functions that call it. No parser, ingest, cache, ZIP, FFS inventory, app DB, export, or forensic interpretation behavior was intentionally changed.
-
-Current baseline: V0_9_60.
-
-## V0_9_60 - Windows MSVC batch-label build hotfix
-
-V0_9_60 is a focused Windows build-stability hotfix after V0_9_55 failed with `The system cannot find the batch label specified - CompileCommon`. The no-CMake MSVC build script no longer uses `CALL :CompileCommon` batch subroutine labels. Common object compilation is now manifest-driven with a `FOR /F` loop and explicit object-existence checks. The batch file is packaged with CRLF line endings.
-
-No parser, ingest, GUI workflow, cache, ZIP, FFS inventory, app database classification, export, or forensic interpretation behavior was intentionally changed from V0_9_55.
-
+# V1.6.6.5 Continuation Handoff
 
 ## Current status
 
-V0_9_48 reuse-cache validation completed successfully. Normal Spotlight-first mode now parses targeted already-extracted high-value app databases and produced 525,409 parsed app records in the uploaded thin result. The investigator super timeline sample is populated and time-anomaly export produced rows. The remaining near-term V1 gap addressed by V0_9_55 is GUI usability when reviewing wide result tables.
+V1.6.6.5 is a narrow hotfix after the V1.6.6.3 Windows wrapper stopped at release-readiness with a generic `KNOWLEDGEC_EVENTS` communication/identity predicate warning.
 
-## V0_9_55 focus
+## What changed
 
-V0_9_55 adds a bottom details pane to the shared investigation grid. The pane displays every column for the selected row vertically, including long text and JSON-like metadata, so investigators do not need to scroll horizontally across wide Spotlight/app database views. The pane is read-only, scrollable, copy-friendly, and works for both macOS and iOS investigation views because those tabs share the review grid implementation.
+- Current build wrapper is `scripts/Build-V1_6_6_5.ps1` and validates CLI version `1.6.6.5`.
+- Build-wrapper preflight checks now run after extraction / clean extraction so stale extracted source is not checked before replacement.
+- `src/gui/win32_gui.cpp` bootstrap communication views now use `KNOWLEDGEC_COMMUNICATION_INTENT` and provenance markers rather than generic `KNOWLEDGEC_EVENTS`.
+- `tools/Verify-V1_6_6_5-ReleaseReadiness.ps1` now scans both `src/db/case_db.cpp` and `src/gui/win32_gui.cpp` and distinguishes allowed suppression guards from disallowed promotional predicates.
+- The main case schema still contains suppression guards that explicitly exclude `KNOWLEDGEC_EVENTS` / `KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY` rows unless communication-intent provenance is present.
 
-## Minimal testing loop now that reuse-cache and fresh-ZIP both complete
+## Required next artifacts
 
-1. Build the current version.
-2. Open an existing completed case in the GUI.
-3. Test view selection, row selection, arrow-key navigation, details pane scrolling/copying, search/filter, tags/checkmarks, and exports.
-4. Run reuse-cache only when a change creates new parser rows or changes app DB parsing.
-5. Run fresh-ZIP only when a change touches ZIP inventory, staging, FFS/app database extraction, cache creation, or source/container handling.
+- `V1_6_6_5_build.log`
+- `Upload_Thin_iOS_CoreSpotlight_V1_6_6_5.zip`
 
-## Near-term V1 priorities
+## Build and thin commands
 
-1. Validate V0_9_55 Windows/MSVC GUI build.
-2. Open the latest successful completed case and test the details pane against wide iOS views such as text context, parsed app records, super timeline, Missing From FFS text detail, and bplist/NSKeyedArchiver detail.
-3. Continue refining V1 review surfaces: direct messages, contact/thread summaries, super timeline, Missing From FFS text context, KnowledgeC correlation, parser diagnostics, and provenance warnings.
-4. Keep normal mode compact and Spotlight-first. Do not reintroduce broad FFS materialization or broad app DB materialization by default.
-5. Add full NSKeyedArchiver object graph decoding only after bounded diagnostics identify useful target classes.
-6. Resume macOS AFF4/APFS work after iOS V1 investigator workflows remain stable.
+```powershell
+Set-Location D:\Downloads
+Get-FileHash .\VestigantSpotlightInv_V1_6_6_5.zip -Algorithm SHA256
+Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_6_6_5" -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_6_6_5.zip -DestinationPath T:\ -Force
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Build-V1_6_6_5.ps1
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_5\scripts\Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
+```
 
-## Deferred / requires external source validation
+## Test scope decision
 
-- LZFSE/LZVN integration requires vetted codec source and build-system/license validation.
-- Broad Win32 MainWindow/global-state refactor remains deferred unless needed to fix active defects.
-- Litigation/eDiscovery load-file exports, NSRL/hashset filtering, and broad architectural refactors remain staged after V1 usability/stability.
+Run Windows/MSVC build first because V1.6.6.5 directly fixes the wrapper/readiness stop observed in V1.6.6.3.
 
-## Next upload needed
+Run iOS thin after build passes because V1.6.6.3 still needs validation that the three timeout-prone exports no longer time out, and V1.6.6.5 also updates GUI bootstrap communication predicates.
 
-For the next review, upload `V0_9_55_build.log` and either screenshots/notes from opening an existing case or a thin upload only if an ingest/export was run.
-
-## V0_9_60 - Staged AFF4/raw source restoration and MB telemetry
-
-V0_9_60 restores AFF4/APFS image and Raw IMG/DD image choices in the GUI source-type selector as staged image workflows. Folder and ZIP remain the production intake paths; AFF4/APFS is kept visible for macOS forensic images, and Raw IMG/DD is kept visible for raw/external media such as exFAT devices attached to Macs that may contain Spotlight indexes. Processing telemetry now displays throughput in decimal MB and MB/s rather than MiB/MiB/s for investigator readability. No parser interpretation logic was intentionally changed.
-
-
-## V1.0.25
-
-- Added shared GUI view/export helper module (`src/gui/gui_view_helpers.h/.cpp`) to remove duplicated SQL/view helper logic between the Win32 GUI and `GuiExportWorker`.
-- No APFS traversal, Store-V2 parsing, iOS parsing, schema, or GUI view behavior was intentionally changed.
-- Windows/MSVC validation is pending.
+Do not run AFF4/APFS thin/full for V1.6.6.5 unless the Windows build or shared schema/view initialization regresses. This release does not change AFF4/APFS traversal, copy-out, decompression, source-reader, APFS filesystem reading, or Store-V2 staging behavior.

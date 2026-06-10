@@ -1,3 +1,51 @@
+## V1.6.6.5 - iOS native CoreSpotlight probe review bridge
+
+V1.6.6.5 was built after review of the uploaded V1.6.6.4 Windows build log and iOS thin bundle. The Windows build log showed a completed V1.6.6.4 build. The iOS thin bundle reached `complete_success`, with 6 valid stores, 344,445 raw records, 22,569 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events.
+
+The V1.6.6.4 thin run showed that timeout-prone V1.6.6.2 exports were fixed, but compact native probe strings were still not flowing into the main iOS text-context and communication review surfaces. `ios_string_probe_category_summary.csv` contained 9,591 message/app string probes and 933 email/account probes, while message/text-context review exports remained empty.
+
+Implemented:
+- high-signal `__native_core_probe_string_*` values can now feed same-record text context;
+- iOS text-context review exposes `source_field_name` and classifies native SMS/iMessage/mail/account/file-reference probes;
+- iOS communication/message review views expose `native_probe_context_count` and `native_probe_context_sample`;
+- new communication buckets identify `SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE` and `SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE`;
+- `vw_ios_spotlight_investigator_overview` now uses lightweight base/probe counts to avoid the V1.6.6.4 46-second slow overview export;
+- self-test coverage now includes native CoreSpotlight probe-to-text-context and communication-review checks.
+
+Validation performed here:
+- Linux CMake build: PASS.
+- CLI version: `Vestigant Spotlight v1.6.6.5`.
+- Self-test: PASS.
+- Windows/MSVC build: not run here.
+
+## V1_6_6_5
+
+- Reviewed the V1.6.6.3 wrapper/readiness failure reported from the Windows build output before source changes.
+- Fixed current Windows build wrapper versioning and moved preflight checks after source extraction / clean extraction to avoid validating stale extracted source.
+- Updated Win32 GUI bootstrap communication/identity/frequency views so generic `KNOWLEDGEC_EVENTS` is not a positive communication predicate; `KNOWLEDGEC_COMMUNICATION_INTENT` and provenance markers are used instead.
+- Reworked release-readiness checks to scan both `src/db/case_db.cpp` and `src/gui/win32_gui.cpp`, while permitting explicit suppression guards that exclude generic KnowledgeC/device-app rows.
+- Local validation: Linux CMake build PASS; CLI version reports `Vestigant Spotlight v1.6.6.5`; self-test PASS; static current-wrapper/text and KnowledgeC promotional predicate audits PASS.
+- Test determination: run Windows/MSVC build first, then iOS thin; AFF4/APFS thin/full is not required unless build/shared schema behavior regresses.
+
+## V1_6_6_3
+
+- Reviewed uploaded `Upload_Thin_iOS_CoreSpotlight_V1_6_6_2.zip` before source changes.
+- The V1.6.6.2 thin run reached `complete_success`, but three identity/communication exports timed out: `ios_identity_pivot_frequency.csv`, `ios_communication_candidate_promotion_sample.csv`, and `ios_spotlight_communication_not_observed_native_sample.csv`.
+- V1.6.6.3 makes those outputs thin-safe in minimal mode: direct base-table summaries/samples replace timeout-prone joined graph materialization, while support/full profiles retain the richer joined views under timeout protection.
+- Corrected the current Windows build wrapper CLI-version validation to expect `1.6.6.3`.
+- Local validation: Linux CMake build PASS; CLI version reports `Vestigant Spotlight v1.6.6.3`; self-test PASS.
+- Test determination: run iOS thin for V1.6.6.3; AFF4/APFS thin/full is not required unless build/shared schema behavior regresses.
+
+## V1_6_6_2
+
+- Reviewed all 63 `.md` and `.txt` files from the uploaded V1.6.6.1 source package before making source changes.
+- Hardened iOS KnowledgeC/CoreDuet parsing so fallback device/app state streams no longer populate `contact_or_participant`; they are classified as `KNOWLEDGEC_DEVICE_OR_APP_ACTIVITY` and marked with `IDENTITY_PROMOTION_SUPPRESSED=True`.
+- Updated communication/identity SQLite view predicates so generic `KNOWLEDGEC_EVENTS` no longer auto-promotes into communication, identity, or frequency evidence. Communication-intent rows remain surfaced through `KNOWLEDGEC_COMMUNICATION_INTENT` and explicit provenance markers.
+- Added `runKnowledgeCIdentitySuppressionSmokeTest` to validate synthetic KnowledgeC device/generic/communication-intent rows against generated SQLite views.
+- Updated current build/run wrappers, release-readiness checks, release notes, quick start, continuation handoff, and `ai_context.md` to V1.6.6.2.
+- Local validation: Linux CMake build PASS; CLI version reports `Vestigant Spotlight v1.6.6.2`; self-test PASS. Windows/MSVC build and iOS thin validation remain required.
+- Test determination: iOS thin required; AFF4/APFS thin/full not required unless shared schema initialization or build behavior regresses, because no AFF4/APFS code changed.
+
 ## V1_6_3
 
 - Documentation/context bootstrap release.

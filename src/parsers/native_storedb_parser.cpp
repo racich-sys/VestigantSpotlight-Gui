@@ -1180,7 +1180,7 @@ bool isLikelyUsefulSpotlightTextContext(const std::string& field, const std::str
     if (dateField || value.empty()) return false;
     const auto f = lowerAscii(field);
     if (field == "__decode_error") return false;
-    if (field.rfind("__native_core_probe_string_", 0) == 0) return false;
+    const bool coreProbeField = field.rfind("__native_core_probe_string_", 0) == 0;
     if (field == "__spotlight_investigator_text_context") return false;
     if (isLowSignalNativeField(f)) return false;
     if (f.find("date") != std::string::npos || f.find("time") != std::string::npos) return false;
@@ -1199,6 +1199,7 @@ bool isLikelyUsefulSpotlightTextContext(const std::string& field, const std::str
     });
     if (contextField) return true;
     if (looksLikeEmailAddress(vl)) return true;
+    if (coreProbeField && looksLikeForensicReferenceValue(vl)) return true;
     if (hasAnyToken(vl, {"whatsapp", "imessage", "mobilesms", "facetime", "calendar", "contact", "mail", "safari", "chrome"})) return true;
     return false;
 }
@@ -1696,7 +1697,9 @@ std::string buildIosSpotlightInvestigatorTextContext(const std::map<std::string,
         if (v.size() > 240) v = v.substr(0, 240) + "...[truncated]";
         if (std::find(seenValues.begin(), seenValues.end(), v) != seenValues.end()) continue;
         seenValues.push_back(v);
-        std::string piece = rf.second + "=" + v;
+        std::string fieldLabel = rf.second;
+        if (fieldLabel.rfind("__native_core_probe_string_", 0) == 0) fieldLabel = "__native_core_probe_string";
+        std::string piece = fieldLabel + "=" + v;
         if (!out.empty()) piece = " | " + piece;
         if (out.size() + piece.size() > MaxContextBytes) break;
         out += piece;
