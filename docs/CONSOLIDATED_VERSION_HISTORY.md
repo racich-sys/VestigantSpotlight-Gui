@@ -1,3 +1,18 @@
+## V1.6.6.6 - Thin result review and GUI bootstrap native-DB mismatch view audit
+
+V1.6.6.6 was built after review of the uploaded V1.6.6.5 iOS thin bundle. The thin run reached `complete_success` and reported 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events. No slow or incomplete exports were reported above the thin-performance threshold.
+
+Source inspection of V1.6.6.5 found that the requested APFS guided traversal cycle guards, bounded bplist/NSKeyedArchiver resolver, and `tel:` / `mailto:` identity fallback were already present. The actionable gap was that `vw_ios_spotlight_comms_missing_from_ffs` existed in the case schema and registry, but not in the lightweight GUI bootstrap SQL.
+
+Changes:
+
+- Added `vw_ios_spotlight_comms_missing_from_ffs` to `src/gui/win32_gui.cpp` GUI bootstrap SQL.
+- Prioritized `iOS - Spotlight Comms Missing From Native DB` in both GUI sort lists.
+- Added V1.6.6.6 forensic-directive and release-readiness checks requiring the view in `case_db.cpp`, `win32_gui.cpp`, and `view_registry.cpp`.
+- Bumped current wrappers, version metadata, and current documentation to V1.6.6.6.
+
+Test determination: run Windows/MSVC build and iOS thin. AFF4/APFS thin/full is not required unless Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
+
 ## V1.6.6.5 - iOS native CoreSpotlight probe review bridge
 
 V1.6.6.5 was built after review of the uploaded V1.6.6.4 Windows build log and iOS thin bundle. The Windows build log showed a completed V1.6.6.4 build. The iOS thin bundle reached `complete_success`, with 6 valid stores, 344,445 raw records, 22,569 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events.

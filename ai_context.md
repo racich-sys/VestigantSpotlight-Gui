@@ -1,3 +1,11 @@
+# Current Context - V1.6.6.6
+
+- Always verify claimed missing code against the actual source before changing or claiming implementation.
+- V1.6.6.5 thin completed successfully: 6 valid stores; 344,445 raw records; 42,799 raw key/value rows; 344,445 artifacts; 228,699 usage evidence rows; 277,823 timeline events; no slow/incomplete exports above threshold.
+- V1.6.6.5 source already contained APFS guided traversal cycle detection, bounded bplist/NSKeyedArchiver recovery helpers, and `tel:` / `mailto:` communication identity fallback.
+- V1.6.6.6 adds the missing GUI bootstrap copy of `vw_ios_spotlight_comms_missing_from_ffs` and prioritizes that view in iOS GUI sorting.
+- Next validation: Windows/MSVC build and iOS thin. AFF4/APFS thin/full only if build/schema/APFS checks regress.
+
 # ai_context.md - V1.6.6.5 current state
 
 ## Current version

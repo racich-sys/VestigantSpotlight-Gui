@@ -515,6 +515,31 @@ WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_
 )SQL" R"SQL(   OR provenance LIKE '%COMMUNICATION_INTENT_STREAM%'
    OR provenance LIKE '%INTENT_TARGET%';
 
+DROP VIEW IF EXISTS vw_ios_spotlight_comms_missing_from_ffs;
+CREATE VIEW vw_ios_spotlight_comms_missing_from_ffs AS
+SELECT
+    s.record_timestamp_utc,
+    s.communication_thread_id AS spotlight_thread_id,
+    s.identity_hint AS recovered_identity,
+    s.app_hint AS source_app,
+    s.title,
+    s.text_snippet_sample AS recovered_message_text,
+    s.file_path AS original_spotlight_path,
+    'COMMUNICATION_PRESENT_IN_SPOTLIGHT_NOT_MATCHED_TO_NATIVE_APP_DB' AS forensic_status,
+)SQL" R"SQL(    'This communication-related record is present in CoreSpotlight/index-derived data and was not matched to a parsed native app database row by thread/source key. This may indicate deletion, app removal, encryption/inaccessibility, parser coverage limits, or an unmatched identifier; review source provenance before drawing conclusions.' AS interpretation_note
+FROM vw_ios_communication_existence_evidence s
+WHERE s.database_name LIKE '%index.db%'
+  AND s.existence_basis IN ('communication_related_parsed_record','domain_identifier_or_thread_marker','author_recipient_or_identity_marker','deleted_or_recoverable_message_table_or_spotlight_marker')
+  AND COALESCE(s.communication_thread_id, '') <> ''
+  AND NOT EXISTS (
+      SELECT 1
+      FROM ios_app_parsed_records app
+      WHERE app.database_name NOT LIKE '%index.db%'
+        AND COALESCE(s.communication_thread_id,'') <> ''
+        AND (app.item_identifier = s.communication_thread_id OR app.source_primary_key = s.communication_thread_id OR app.contact_or_participant = s.identity_hint)
+  )
+ORDER BY s.record_timestamp_utc DESC;
+
 DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
 CREATE VIEW vw_ios_communication_identity_frequency AS
 SELECT
@@ -537,7 +562,7 @@ WHERE record_category IN ('MESSAGE_RECORDS','CHAT_RECORDS','MAIL_RECORDS','CALL_
 GROUP BY COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), '(no explicit identity)'), database_category, app_hint, record_category
 ORDER BY related_record_count DESC, last_seen_utc DESC;
 
-DROP VIEW IF EXISTS vw_ios_communication_temporal_frequency;
+)SQL" R"SQL(DROP VIEW IF EXISTS vw_ios_communication_temporal_frequency;
 CREATE VIEW vw_ios_communication_temporal_frequency AS
 SELECT
   substr(record_timestamp_utc,1,10) AS communication_date_utc,
@@ -675,6 +700,7 @@ int iosReviewViewSortRank(const ViewSpec& v) {
         L"iOS - Spotlight Message Body Review",
         L"iOS - Spotlight Message Text Review",
         L"iOS - Spotlight Communications Investigator Review",
+        L"iOS - Spotlight Comms Missing From Native DB",
         L"iOS - Communications Review Records",
         L"iOS - KnowledgeC Interaction Events",
         L"iOS - Parsed App Records",

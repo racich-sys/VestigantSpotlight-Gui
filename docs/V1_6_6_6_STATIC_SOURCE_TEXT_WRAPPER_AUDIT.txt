@@ -1,0 +1,39 @@
+files_scanned=189
+lines_scanned=69464
+md_txt_files_scanned=68
+md_txt_lines_scanned=15128
+PASS: VERSION
+PASS: VERSION.txt
+PASS: CMakeLists version
+PASS: app_info version
+PASS: current build wrapper paths
+PASS: current build wrapper CLI regex
+PASS: current build wrapper release readiness
+PASS: current iOS wrapper exists and exposes NoCsvExports
+PASS: APFS inode guided cycle guard
+PASS: APFS extent guided cycle guard
+PASS: bplist printable fallback
+PASS: bounded bplist UID/object resolver
+PASS: bplist trailer/object table decoder
+PASS: tel scheme identity fallback
+PASS: mailto scheme identity fallback
+PASS: regex recovery provenance
+PASS: zcontent payload catcher
+PASS: payload column catcher
+PASS: Notes routing
+PASS: Location routing
+PASS: case_db missing-native schema view
+PASS: win32 GUI bootstrap missing-native schema view
+PASS: view_registry missing-native registration
+PASS: GUI priority includes missing-native view
+raw_string_max_bytes=4992
+raw_string_max_location=src/db/case_db.cpp
+PASS: raw string max below 5000-byte MSVC guard
+PASS: BUILD_INSTRUCTIONS.md references V1_6_6_6
+PASS: docs/QUICK_START.md references V1_6_6_6
+PASS: docs/CONTINUATION_HANDOFF.md references V1_6_6_6
+PASS: docs/NEW_CHAT_CONTINUATION_GUIDE.md references V1_6_6_6
+PASS: docs/PROJECT_ROADMAP_AND_CONTINUATION.md references V1_6_6_6
+PASS: uploaded V1.6.6.5 thin reached complete_success - 2026-06-10T19:54:17Z complete_success
+PASS: uploaded thin reports no slow/incomplete exports above threshold
+STATIC_AUDIT_RESULT=PASS

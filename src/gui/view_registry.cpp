@@ -58,6 +58,7 @@ int inferViewSortPriority(const wchar_t* displayName, ViewPlatform platform) {
             L"iOS - Spotlight Message Body Review",
             L"iOS - Spotlight Message Text Review",
             L"iOS - Spotlight Communications Investigator Review",
+            L"iOS - Spotlight Comms Missing From Native DB",
             L"iOS - Communications Review Records",
             L"iOS - KnowledgeC Interaction Events",
             L"iOS - Parsed App Records",
