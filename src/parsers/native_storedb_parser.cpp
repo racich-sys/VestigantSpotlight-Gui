@@ -152,11 +152,23 @@ std::string lowerAscii(std::string s) {
 bool looksDateField(const std::string& field) {
     const auto f = lowerAscii(field);
 
-    // V0.6.5: keep raw_date_candidates focused on fields that can represent
-    // actual date/time events.  Earlier diagnostics intentionally captured broad
-    // names such as DurationSeconds, ExposureTimeSeconds, and per-component
-    // DateYear/DateMonth fields; those are useful as raw key/value rows but
-    // should not inflate timeline rows as if they were timestamps.
+    // Keep raw_date_candidates focused on fields that can represent actual
+    // date/time events.  The V1.6.9 semantic raw-probe aliases intentionally use
+    // names such as __native_probe_url_candidate_01 and
+    // __native_probe_basename_candidate_01.  The word "candidate" contains the
+    // substring "date", so those aliases must be excluded before the broad
+    // date-key test below; otherwise URL/path/basename/plist probe strings are
+    // incorrectly inserted into raw_date_candidates with blank parsed_utc.
+    if (f.rfind("__native_probe_", 0) == 0) return false;
+    if (f.rfind("__native_core_probe_string_", 0) == 0) return false;
+    if (f.find("_candidate_") != std::string::npos &&
+        f.find("date_candidate") == std::string::npos &&
+        f.find("time_candidate") == std::string::npos) return false;
+
+    // Earlier diagnostics intentionally captured broad names such as
+    // DurationSeconds, ExposureTimeSeconds, and per-component DateYear/DateMonth
+    // fields; those are useful as raw key/value rows but should not inflate
+    // timeline rows as if they were timestamps.
     static const char* excluded[] = {
         "duration", "exposuretime", "timestamp",
         "dateday", "datehour", "datemonth", "dateweek",
@@ -1119,15 +1131,233 @@ bool looksLikeEmailAddress(const std::string& valueLower) {
     return valueLower.find('.', at + 1) != std::string::npos;
 }
 
+bool isEmailLocalPartChar(char ch) {
+    const auto c = static_cast<unsigned char>(ch);
+    return std::isalnum(c) || ch == '.' || ch == '_' || ch == '%' || ch == '+' || ch == '-';
+}
+
+bool isEmailDomainChar(char ch) {
+    const auto c = static_cast<unsigned char>(ch);
+    return std::isalnum(c) || ch == '.' || ch == '-';
+}
+
+bool isLikelyEmailCandidate(const std::string& candidate) {
+    const auto at = candidate.find('@');
+    if (at == std::string::npos || at == 0 || at + 1 >= candidate.size()) return false;
+    if (candidate.find('@', at + 1) != std::string::npos) return false;
+    const auto local = candidate.substr(0, at);
+    const auto domain = candidate.substr(at + 1);
+    if (local.empty() || domain.empty() || local.front() == '.' || local.back() == '.') return false;
+    if (domain.front() == '.' || domain.back() == '.' || domain.front() == '-' || domain.back() == '-') return false;
+    const auto dot = domain.rfind('.');
+    if (dot == std::string::npos || dot == 0 || dot + 2 > domain.size()) return false;
+    const auto tld = domain.substr(dot + 1);
+    if (tld.size() < 2 || tld.size() > 24) return false;
+    for (char ch : tld) {
+        if (!std::isalpha(static_cast<unsigned char>(ch))) return false;
+    }
+    for (char ch : local) {
+        if (!isEmailLocalPartChar(ch)) return false;
+    }
+    for (char ch : domain) {
+        if (!isEmailDomainChar(ch)) return false;
+    }
+    return true;
+}
+
+std::string extractFirstEmailCandidate(const std::string& value) {
+    const auto clean = cleanDecodedString(trimAscii(value));
+    if (clean.empty()) return {};
+    std::size_t searchFrom = 0;
+    while (true) {
+        const auto at = clean.find('@', searchFrom);
+        if (at == std::string::npos) break;
+        std::size_t begin = at;
+        while (begin > 0 && isEmailLocalPartChar(clean[begin - 1])) --begin;
+        std::size_t end = at + 1;
+        while (end < clean.size() && isEmailDomainChar(clean[end])) ++end;
+        auto candidate = clean.substr(begin, end - begin);
+        while (!candidate.empty() && (candidate.back() == '.' || candidate.back() == ',' || candidate.back() == ';' || candidate.back() == ')' || candidate.back() == ']' || candidate.back() == '"' || candidate.back() == '\'')) {
+            candidate.pop_back();
+        }
+        if (isLikelyEmailCandidate(candidate)) return candidate;
+        searchFrom = at + 1;
+    }
+    return {};
+}
+
 bool looksLikeForensicReferenceValue(const std::string& value) {
     if (value.empty()) return false;
     const auto v = lowerAscii(value);
     if (v.find("http://") != std::string::npos || v.find("https://") != std::string::npos || v.find("www.") != std::string::npos) return true;
     if (v.find("file://") != std::string::npos || v.find("/private/var/") != std::string::npos || v.find("/var/mobile/") != std::string::npos) return true;
     if (v.find("/mobile/") != std::string::npos || v.find("/containers/") != std::string::npos || v.find("/library/") != std::string::npos) return true;
-    if (looksLikeEmailAddress(v)) return true;
+    if (!extractFirstEmailCandidate(value).empty()) return true;
     if (hasAnyToken(v, {"whatsapp", "imessage", "mobilesms", "sms", "facetime", "mail", "safari", "chrome", "calendar", "contact", "icloud", "onedrive", "sharepoint", "dropbox", "google drive", "drive.google"})) return true;
     return false;
+}
+
+
+std::string basenameFromSpotlightPath(std::string p);
+
+std::string twoDigitProbeSuffix(int n) {
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0') << n;
+    return oss.str();
+}
+
+std::string extractFirstUrlCandidate(const std::string& value) {
+    const auto lower = lowerAscii(value);
+    std::size_t pos = lower.find("https://");
+    if (pos == std::string::npos) pos = lower.find("http://");
+    if (pos == std::string::npos) pos = lower.find("file://");
+    if (pos == std::string::npos) return {};
+    std::size_t end = pos;
+    while (end < value.size()) {
+        if (end > pos &&
+            (lower.compare(end, 8, "https://") == 0 ||
+             lower.compare(end, 7, "http://") == 0 ||
+             lower.compare(end, 7, "file://") == 0)) {
+            break;
+        }
+        const unsigned char c = static_cast<unsigned char>(value[end]);
+        if (c <= 0x20 || value[end] == '"' || value[end] == '\'' || value[end] == '<' || value[end] == '>') break;
+        ++end;
+    }
+    auto out = cleanDecodedString(trimAscii(value.substr(pos, end - pos)));
+    while (!out.empty() && (out.back() == ',' || out.back() == ';' || out.back() == ')' || out.back() == ']' || out.back() == '}')) out.pop_back();
+    return out;
+}
+
+std::string extractFirstFilePathCandidate(const std::string& value) {
+    const auto lower = lowerAscii(value);
+    std::array<std::string, 8> anchors = {"file:///", "/users/", "/private/", "/volumes/", "/library/", "/system/", "/applications/", "/var/"};
+    std::size_t best = std::string::npos;
+    for (const auto& a : anchors) {
+        const auto p = lower.find(a);
+        if (p != std::string::npos && (best == std::string::npos || p < best)) best = p;
+    }
+    if (best == std::string::npos) return {};
+    std::size_t end = best;
+    while (end < value.size()) {
+        if (end > best &&
+            (lower.compare(end, 8, "https://") == 0 ||
+             lower.compare(end, 7, "http://") == 0 ||
+             lower.compare(end, 7, "file://") == 0)) {
+            break;
+        }
+        const unsigned char c = static_cast<unsigned char>(value[end]);
+        if (c <= 0x20 || value[end] == '"' || value[end] == '\'' || value[end] == '<' || value[end] == '>') break;
+        ++end;
+    }
+    auto out = cleanDecodedString(trimAscii(value.substr(best, end - best)));
+    if (lowerAscii(out).rfind("file://", 0) == 0) out = out.substr(7);
+    while (!out.empty() && (out.back() == ',' || out.back() == ';' || out.back() == ')' || out.back() == ']')) out.pop_back();
+    return out;
+}
+
+std::string basenameFromReferenceValue(const std::string& value) {
+    auto p = extractFirstFilePathCandidate(value);
+    if (p.empty()) {
+        auto u = extractFirstUrlCandidate(value);
+        const auto q = u.find_first_of("?#");
+        if (q != std::string::npos) u = u.substr(0, q);
+        p = u;
+    }
+    return basenameFromSpotlightPath(p);
+}
+
+
+bool isUsefulDerivedBasenameCandidate(const std::string& value) {
+    // V1.6.17: derived basename aliases are investigative conveniences only.
+    // Keep raw __native_core_probe_string_## evidence untouched, but reject
+    // binary/escaped/noisy basename derivations before they become aliases.
+    const auto clean = cleanDecodedString(trimAscii(value));
+    if (clean.size() < 3 || clean.size() > 255) return false;
+    const auto lower = lowerAscii(clean);
+    if (lower.find("\\x") != std::string::npos) return false;
+    if (lower.find("%5cx") != std::string::npos) return false;
+    if (lower.find("\ufffd") != std::string::npos) return false;
+    if (lower == "url" || lower == "uri" || lower == "zip" || lower == "http" || lower == "https" || lower == "www") return false;
+    if (lower == "download" || lower == "downloads" || lower == "login" || lower == "signin") return false;
+    if (lower == "file" || lower == "files" || lower == "index" || lower == "data" || lower == "tmp") return false;
+
+    int alnum = 0;
+    int alpha = 0;
+    int digit = 0;
+    int highBytes = 0;
+    int controlBytes = 0;
+    int filenameSafe = 0;
+    int punctuationNoise = 0;
+    int longestAlphaRun = 0;
+    int currentAlphaRun = 0;
+    bool hasDot = false;
+    bool hasWordSeparator = false;
+
+    for (char ch : clean) {
+        const auto c = static_cast<unsigned char>(ch);
+        if (c <= 0x1F || c == 0x7F) {
+            ++controlBytes;
+            currentAlphaRun = 0;
+            continue;
+        }
+        if (c >= 0x80) {
+            ++highBytes;
+            currentAlphaRun = 0;
+            continue;
+        }
+        if (std::isalnum(c)) {
+            ++alnum;
+            ++filenameSafe;
+        } else if (ch == '.' || ch == '_' || ch == '-' || ch == ' ' || ch == '%' || ch == '+' || ch == '(' || ch == ')' || ch == '[' || ch == ']') {
+            ++filenameSafe;
+            if (ch == '.') hasDot = true;
+            if (ch == '_' || ch == '-' || ch == ' ') hasWordSeparator = true;
+        } else {
+            ++punctuationNoise;
+        }
+        if (std::isalpha(c)) {
+            ++alpha;
+            ++currentAlphaRun;
+            if (currentAlphaRun > longestAlphaRun) longestAlphaRun = currentAlphaRun;
+        } else {
+            currentAlphaRun = 0;
+        }
+        if (std::isdigit(c)) ++digit;
+    }
+
+    if (controlBytes > 0) return false;
+    // V1.6.17: do not promote high-byte or Unicode-separator fragments into basename aliases.
+    // Raw probe rows still retain those bytes for evidence review.
+    if (highBytes > 0) return false;
+    if (alnum < 2) return false;
+    if (alpha == 0) return false;
+    if (filenameSafe * 2 < static_cast<int>(clean.size())) return false;
+    if (punctuationNoise * 3 > static_cast<int>(clean.size())) return false;
+    if (clean.size() <= 4 && alpha == 0) return false;
+    if (digit > 0 && alpha == 0 && !hasDot) return false;
+    if (longestAlphaRun < 3 && !hasDot && !hasWordSeparator) return false;
+    return true;
+}
+
+std::vector<std::pair<std::string, std::string>> deriveNativeProbeAliases(const std::string& value, int sequence) {
+    std::vector<std::pair<std::string, std::string>> out;
+    const auto suffix = twoDigitProbeSuffix(sequence);
+    const auto clean = cleanDecodedString(trimAscii(value));
+    if (clean.empty()) return out;
+    const auto lower = lowerAscii(clean);
+    const auto url = extractFirstUrlCandidate(clean);
+    if (!url.empty()) out.emplace_back("__native_probe_url_candidate_" + suffix, url);
+    const auto filePath = extractFirstFilePathCandidate(clean);
+    if (!filePath.empty()) out.emplace_back("__native_probe_file_path_candidate_" + suffix, filePath);
+    const auto email = extractFirstEmailCandidate(clean);
+    if (!email.empty()) out.emplace_back("__native_probe_email_candidate_" + suffix, email);
+    const auto base = basenameFromReferenceValue(clean);
+    if (!base.empty() && isUsefulDerivedBasenameCandidate(base)) out.emplace_back("__native_probe_basename_candidate_" + suffix, base);
+    if (lower.find("<!doctype plist") != std::string::npos || lower.find("<?xml") != std::string::npos || lower.find("<plist") != std::string::npos) {
+        out.emplace_back("__native_probe_plist_xml_candidate_" + suffix, clean.size() > 512 ? clean.substr(0, 512) + "...[truncated]" : clean);
+    }
+    return out;
 }
 
 bool isLowSignalNativeField(const std::string& fieldLower) {
@@ -1890,7 +2120,12 @@ void addCoreProbeMetadata(ParsedItem& item, const std::vector<std::uint8_t>& dat
             name.clear();
             name << "__native_core_probe_string_" << std::setw(2) << std::setfill('0') << i++;
         } while (item.metadata.find(name.str()) != item.metadata.end());
-        item.metadata[name.str()] = p;
+        const auto primaryName = name.str();
+        item.metadata[primaryName] = p;
+        const auto aliases = deriveNativeProbeAliases(p, i - 1);
+        for (const auto& alias : aliases) {
+            if (item.metadata.find(alias.first) == item.metadata.end()) item.metadata[alias.first] = alias.second;
+        }
         if (lowerAscii(p).find("/volumes/") != std::string::npos && item.metadata.find("__native_probe_mounted_volume_path") == item.metadata.end()) {
             item.metadata["__native_probe_mounted_volume_path"] = p;
         }
@@ -2306,11 +2541,84 @@ std::string meta(const ParsedItem& item, const std::string& key) {
     auto it = item.metadata.find(key);
     return it == item.metadata.end() ? std::string() : it->second;
 }
+
+std::string firstMetadataValue(const ParsedItem& item, std::initializer_list<const char*> keys) {
+    for (const auto* key : keys) {
+        auto v = cleanDecodedString(meta(item, key));
+        if (!trimAscii(v).empty()) return v;
+    }
+    return {};
+}
+
+std::string basenameFromSpotlightPath(std::string p) {
+    p = cleanDecodedString(trimAscii(std::move(p)));
+    if (p.empty() || p == "/") return {};
+    while (!p.empty() && (p.back() == '/' || p.back() == '\\')) p.pop_back();
+    const auto pos = p.find_last_of("/\\");
+    std::string base = (pos == std::string::npos) ? p : p.substr(pos + 1);
+    base = cleanDecodedString(trimAscii(std::move(base)));
+    if (base.empty() || base == "." || base == "..") return {};
+    return base;
+}
+
+std::string metadataFullPathOf(const ParsedItem& item) {
+    auto p = firstMetadataValue(item, {
+        "kMDItemPath", "_kMDItemPath", "kMDItemFilePath", "_kMDItemFilePath",
+        "kMDItemURL", "kMDItemContentURL", "contentURL", "URL", "path",
+        "__native_probe_file_path_candidate_01", "__native_probe_file_path_candidate_02", "__native_probe_file_path_candidate_03",
+        "__native_probe_file_path_candidate_04", "__native_probe_file_path_candidate_05", "__native_probe_file_path_candidate_06"
+    });
+    p = trimAscii(p);
+    if (p.empty()) return {};
+    const auto lower = lowerAscii(p);
+    if (lower.rfind("file://", 0) == 0) p = p.substr(7);
+    return p;
+}
+
+std::string displayNameOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {
+        "kMDItemDisplayName", "_kMDItemDisplayName", "displayName", "title",
+        "kMDItemTitle", "_kMDItemTitle", "kMDItemFSName", "_kMDItemFSName", "_kMDItemFileName",
+        "__native_probe_basename_candidate_01", "__native_probe_basename_candidate_02", "__native_probe_basename_candidate_03",
+        "__native_probe_basename_candidate_04", "__native_probe_basename_candidate_05", "__native_probe_basename_candidate_06"
+    });
+}
+
 std::string fileNameOf(const ParsedItem& item) {
     if (item.metadata.find("_kStoreMetadataVersion") != item.metadata.end()) return "------PLIST------";
-    auto name = cleanDecodedString(meta(item, "_kMDItemFileName"));
-    if (name.empty()) name = cleanDecodedString(meta(item, "kMDItemDisplayName"));
+    auto name = firstMetadataValue(item, {
+        "_kMDItemFileName", "kMDItemFSName", "_kMDItemFSName", "kMDItemFileName",
+        "kMDItemDisplayName", "_kMDItemDisplayName", "kMDItemTitle", "_kMDItemTitle",
+        "displayName", "title", "name",
+        "__native_probe_basename_candidate_01", "__native_probe_basename_candidate_02", "__native_probe_basename_candidate_03",
+        "__native_probe_basename_candidate_04", "__native_probe_basename_candidate_05", "__native_probe_basename_candidate_06"
+    });
+    if (name.empty()) name = basenameFromSpotlightPath(metadataFullPathOf(item));
     return name.empty() ? "------NONAME------" : name;
+}
+
+std::string contentTypeOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {"kMDItemContentType", "_kMDItemContentType", "contentType"});
+}
+
+std::string contentTypeTreeOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {"kMDItemContentTypeTree", "_kMDItemContentTypeTree", "contentTypeTree"});
+}
+
+std::string whereFromsOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {
+        "kMDItemWhereFroms", "_kMDItemWhereFroms", "whereFroms",
+        "__native_probe_url_candidate_01", "__native_probe_url_candidate_02", "__native_probe_url_candidate_03",
+        "__native_probe_url_candidate_04", "__native_probe_url_candidate_05", "__native_probe_url_candidate_06"
+    });
+}
+
+std::string logicalSizeOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {"kMDItemFSSize", "_kMDItemFSSize", "kMDItemLogicalSize", "_kMDItemLogicalSize", "kMDItemFileSize", "fileSize"});
+}
+
+std::string physicalSizeOf(const ParsedItem& item) {
+    return firstMetadataValue(item, {"kMDItemPhysicalSize", "_kMDItemPhysicalSize", "physicalSize"});
 }
 std::string reconstructPath(std::int64_t inode, const std::unordered_map<std::int64_t, std::pair<std::int64_t, std::string>>& nodes) {
     auto it0 = nodes.find(inode);
@@ -2328,6 +2636,7 @@ std::string reconstructPath(std::int64_t inode, const std::unordered_map<std::in
         if (current == 2 || it->second.first == 0 || it->second.first == 2) break;
         current = it->second.first;
     }
+    if (parts.empty()) return {};
     return "/" + join(parts, "/");
 }
 
@@ -2388,11 +2697,13 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
             const auto inode = std::to_string(item.inodeId);
             const auto parent = std::to_string(item.parentId);
             const auto fileName = fileNameOf(item);
-            const auto recordState = fullPath.empty() ? std::string("PARTIAL_OR_NO_PATH") : std::string("ACTIVE_OR_RESOLVED");
+            const auto metadataPath = metadataFullPathOf(item);
+            const auto effectiveFullPath = !fullPath.empty() ? fullPath : metadataPath;
+            const auto recordState = effectiveFullPath.empty() ? std::string("PARTIAL_OR_NO_PATH") : std::string("ACTIVE_OR_RESOLVED");
             recStmt.bind(1, source.sourceId); recStmt.bind(2, store.storeGuid); recStmt.bind(3, pathString(store.storePath.parent_path())); recStmt.bind(4, pathString(store.storePath));
             recStmt.bind(5, inode); recStmt.bind(6, std::to_string(item.itemId)); recStmt.bind(7, parent); recStmt.bind(8, ""); recStmt.bind(9, std::to_string(item.rawDateUpdated)); recStmt.bind(10, item.lastUpdatedUtc);
-            recStmt.bind(11, fileName); recStmt.bind(12, meta(item, "kMDItemContentType")); recStmt.bind(13, meta(item, "kMDItemContentTypeTree")); recStmt.bind(14, meta(item, "kMDItemWhereFroms")); recStmt.bind(15, cleanDecodedString(meta(item, "kMDItemDisplayName")));
-            recStmt.bind(16, fullPath); recStmt.bind(17, recordState); recStmt.bind(18, meta(item, "kMDItemFSSize")); recStmt.bind(19, meta(item, "kMDItemPhysicalSize")); recStmt.stepDone(); recStmt.reset();
+            recStmt.bind(11, fileName); recStmt.bind(12, contentTypeOf(item)); recStmt.bind(13, contentTypeTreeOf(item)); recStmt.bind(14, whereFromsOf(item)); recStmt.bind(15, cleanDecodedString(displayNameOf(item)));
+            recStmt.bind(16, effectiveFullPath); recStmt.bind(17, recordState); recStmt.bind(18, logicalSizeOf(item)); recStmt.bind(19, physicalSizeOf(item)); recStmt.stepDone(); recStmt.reset();
             ++counts.rawRecords;
 
             const bool iosDefaultFilteredKvMode = isLikelyIosCoreSpotlightStorePath(store.storePath) && !persistAllNativeKeyValues_;
@@ -2405,7 +2716,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                 const bool persistKeyValue = !iosDefaultFilteredKvMode || shouldPersistDefaultIosKeyValue(field, value, dateField, persistedKeyValuesForRecord);
                 if (persistKeyValue) {
                     const std::string storedValue = iosDefaultFilteredKvMode ? trimStoredNativeValue(field, value) : value;
-                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, fullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, field); kvStmt.bind(11, storedValue); kvStmt.stepDone(); kvStmt.reset();
+                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, field); kvStmt.bind(11, storedValue); kvStmt.stepDone(); kvStmt.reset();
                     ++counts.rawKeyValues;
                     ++persistedKeyValuesForRecord;
                     if (iosDefaultFilteredKvMode && looksLikeForensicReferenceValue(value)) persistedReferenceForRecord = true;
@@ -2423,13 +2734,13 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                 }
             }
             if (iosDefaultFilteredKvMode && persistedReferenceForRecord && !spotlightTextContext.empty()) {
-                kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, fullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_investigator_text_context"); kvStmt.bind(11, spotlightTextContext); kvStmt.stepDone(); kvStmt.reset();
+                kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_investigator_text_context"); kvStmt.bind(11, spotlightTextContext); kvStmt.stepDone(); kvStmt.reset();
                 ++counts.rawKeyValues;
             }
             if (iosDefaultFilteredKvMode) {
                 const std::string bplistContext = buildIosBplistNsKeyedArchiverContext(item.metadata);
                 if (!bplistContext.empty()) {
-                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, fullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_bplist_nskeyedarchiver_context"); kvStmt.bind(11, bplistContext); kvStmt.stepDone(); kvStmt.reset();
+                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_bplist_nskeyedarchiver_context"); kvStmt.bind(11, bplistContext); kvStmt.stepDone(); kvStmt.reset();
                     ++counts.rawKeyValues;
                 }
             }
@@ -2618,11 +2929,14 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                                     if (decodeMode_ == NativeDecodeMode::HeaderOnly) throw;
                                     MetadataItemParser fallbackParser(payload, itemStart, itemEnd, properties, categories, indexes1, indexes2);
                                     item = (h.version == 1) ? fallbackParser.parseV1HeaderOnly(v1RawId) : fallbackParser.parseV2HeaderOnly();
-                                    if (isLikelyIosCoreSpotlightStorePath(store.storePath)) addCoreProbeMetadata(item, payload, itemStart, itemEnd);
+                                    addCoreProbeMetadata(item, payload, itemStart, itemEnd);
                                     ++counts.fallbackHeaderOnlyItems;
                                     insertFailure(db, source, store, "metadata_item_decode_fallback", std::string("block=") + std::to_string(blockOrdinal) + " offset=" + std::to_string(pos) + " error=" + decodeEx.what());
                                 }
-                                if (decodeMode_ == NativeDecodeMode::FullValues && isLikelyIosCoreSpotlightStorePath(store.storePath) && item.metadata.empty()) {
+                                if (decodeMode_ == NativeDecodeMode::FullValues && item.metadata.empty()) {
+                                    // Validation mode must remain evidence-preserving: if the private Store-V2 structured
+                                    // value decoder cannot promote named kMDItem/CSSearchableItem fields, keep the bounded
+                                    // raw string probes instead of emitting a record with no reviewable metadata.
                                     addCoreProbeMetadata(item, payload, itemStart, itemEnd);
                                 }
                                 auto name = fileNameOf(item);

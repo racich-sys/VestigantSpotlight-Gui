@@ -4,6 +4,8 @@
 #include "parsers/apfs_aff4_reader.h"
 #include "parsers/ios_app_db_parser.h"
 #include "codec/lzfse_codec.h"
+#include "enrich_sql/sqlite_enrichment.h"
+#include "core/logger.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -151,7 +153,9 @@ bool runSchemaSmokeTest(const fs::path& out) {
         "vw_ios_spotlight_timeline_month_summary",
         "vw_ios_spotlight_investigator_overview",
         "vw_ios_spotlight_missing_from_ffs_text_detail",
-        "vw_ios_spotlight_missing_from_ffs_text_coverage_summary"
+        "vw_ios_spotlight_missing_from_ffs_text_coverage_summary",
+        "vw_ios_spotlight_comms_missing_from_ffs",
+        "vw_ios_production_readiness_summary"
     };
     try {
         for (const char* view : views) {
@@ -233,6 +237,98 @@ INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,s
     return true;
 }
 
+
+bool runIosProductionReadinessSmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "ios_production_readiness" / "ios_production_readiness.case.sqlite";
+    std::error_code ec;
+    fs::create_directories(dbPath.parent_path(), ec);
+    fs::remove(dbPath, ec);
+    try {
+        CaseDatabase db;
+        db.open(dbPath);
+        db.initializeSchema();
+        db.ensureGuiReviewViews();
+        RunOptions opt;
+        opt.profile = "ios";
+        opt.exportProfile = "investigator";
+        opt.decodeCoreNativeValues = true;
+        opt.forceContainerHash = true;
+        db.insertCaseInfo(opt);
+        db.exec(R"SQL(
+INSERT INTO preserved_evidence_sets(source_id,archive_path,archive_format,archive_sha256,archive_size_bytes,created_utc,tool_used,tool_version,original_root_path,preserved_root_path,file_count,total_original_bytes,preservation_status,integrity_status,notes) VALUES
+('s','/evidence/ios.zip','zip','0123456789abcdef',123,'2025-01-01T00:00:00Z','test','1.6.7.1','/evidence/ios.zip','/case/staged',1,123,'ORIGINAL_CONTAINER_REGISTERED_NO_REARCHIVE','HASHED','test hash');
+INSERT INTO native_decode_attempts(source_id,store_guid,source_db,decode_mode,spotlight_version,properties_count,categories_count,metadata_blocks,decompressed_blocks,raw_records,raw_key_values,raw_date_candidates,fallback_header_only_items,failures,started_utc,finished_utc,status,message) VALUES
+('s','ios_store','store.db','CoreFields',0,0,0,0,0,1,1,0,0,0,'2025-01-01T00:00:00Z','2025-01-01T00:00:00Z','ok','test');
+INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,flags,last_updated_raw,last_updated_utc,file_name,content_type,content_type_tree,where_froms,display_name,full_path,record_state,logical_size_bytes,physical_size_bytes) VALUES
+('s','ios_store','/private/var/mobile/Library/Spotlight/CoreSpotlight/index.spotlightV2','store.db','1','1','0','','','2025-01-01T00:00:00Z','message','public.message','','','','/private/var/mobile/Library/SMS/test','PARTIAL_OR_NO_PATH','','');
+INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,full_path,record_state,field_name,field_value) VALUES
+('s','ios_store','/private/var/mobile/Library/Spotlight/CoreSpotlight/index.spotlightV2','store.db','1','1','0','/private/var/mobile/Library/SMS/test','PARTIAL_OR_NO_PATH','__spotlight_investigator_text_context','message body context');
+)SQL");
+        auto scalar = [&](const std::string& sql) -> long long {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return -1;
+            return st.colInt64(0);
+        };
+        if (scalar("SELECT COUNT(*) FROM vw_ios_production_readiness_summary WHERE readiness_area='source_container_hash' AND status='PRODUCTION_READY_HASH_RECORDED'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_production_readiness_summary WHERE readiness_area='export_profile' AND status='PRODUCTION_REVIEW_PROFILE'") != 1) return false;
+        if (scalar("SELECT COUNT(*) FROM vw_ios_production_readiness_summary WHERE readiness_area='native_decode_mode' AND status='CORE_OR_FULL_NATIVE_DECODE_PRESENT'") != 1) return false;
+    } catch (const std::exception& ex) {
+        std::cerr << "iOS production readiness smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
+
+bool runParentInodePathReconstructionSmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "parent_inode_path_reconstruction" / "parent_inode_path_reconstruction.case.sqlite";
+    std::error_code ec;
+    fs::create_directories(dbPath.parent_path(), ec);
+    fs::remove(dbPath, ec);
+    try {
+        CaseDatabase db;
+        db.open(dbPath);
+        db.initializeSchema();
+        EvidenceSource source;
+        source.sourceId = "s";
+        source.profile = "macos";
+        source.inputPath = "/synthetic/spotlight";
+        source.sourceKind = "synthetic_storev2_smoke";
+        Logger log(dbPath.parent_path(), false);
+        db.exec(R"SQL(
+INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,flags,last_updated_raw,last_updated_utc,file_name,content_type,content_type_tree,where_froms,display_name,full_path,record_state,logical_size_bytes,physical_size_bytes) VALUES
+('s','storeA','/staged/storeA','/staged/storeA/store.db','2','2','0','','','2025-01-01T00:00:00Z','------NONAME------','','','','','/','ACTIVE_OR_RESOLVED','',''),
+('s','storeA','/staged/storeA','/staged/storeA/store.db','10','10','2','','','2025-01-01T00:00:01Z','ParentFolder','','','','','','PARTIAL_OR_NO_PATH','',''),
+('s','storeA','/staged/storeA','/staged/storeA/store.db','20','20','10','','','2025-01-01T00:00:02Z','target.txt','','','','','','PARTIAL_OR_NO_PATH','','');
+)SQL");
+        SqliteEnrichment enrichment;
+        enrichment.run(db, source, log);
+        auto textScalar = [&](const std::string& sql) -> std::string {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return {};
+            return st.colText(0);
+        };
+        auto intScalar = [&](const std::string& sql) -> long long {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return -1;
+            return st.colInt64(0);
+        };
+        if (textScalar("SELECT best_path FROM artifacts WHERE source_id='s' AND inode_num='20'") != "/ParentFolder/target.txt") return false;
+        if (textScalar("SELECT path_source FROM artifacts WHERE source_id='s' AND inode_num='20'") != "PARENT_INODE_CHAIN_RECONSTRUCTION") return false;
+        if (textScalar("SELECT reconstructed_path_candidate FROM parent_inode_links WHERE source_id='s' AND child_inode_num='20'") != "/ParentFolder/target.txt") return false;
+        if (textScalar("SELECT path_candidate_status FROM vw_path_reconstruction WHERE source_id='s' AND inode_num='20'") != "APPLIED_PARENT_INODE_RECONSTRUCTION") return false;
+        if (intScalar("SELECT new_reconstructed_path FROM vw_path_reconstruction WHERE source_id='s' AND inode_num='20'") != 1) return false;
+        if (intScalar("SELECT applied_to_artifact_path FROM vw_path_reconstruction WHERE source_id='s' AND inode_num='20'") != 1) return false;
+        if (intScalar("SELECT COUNT(*) FROM parent_inode_links WHERE source_id='s' AND COALESCE(reconstructed_path_candidate,'')<>''") < 2) return false;
+        if (intScalar("SELECT CAST(metric_value AS INTEGER) FROM parser_coverage_summary WHERE source_id='s' AND metric_name='parent_inode_links_with_new_reconstructed_path'") < 1) return false;
+        if (intScalar("SELECT CAST(metric_value AS INTEGER) FROM parser_coverage_summary WHERE source_id='s' AND metric_name='parent_inode_artifacts_updated_from_reconstruction'") < 1) return false;
+    } catch (const std::exception& ex) {
+        std::cerr << "Parent-inode path reconstruction smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
@@ -242,6 +338,8 @@ int main(int argc, char** argv) {
     if (!runSchemaSmokeTest(out)) { std::cerr << "Schema smoke test failed\n"; ok = false; }
     if (!runKnowledgeCIdentitySuppressionSmokeTest(out)) { std::cerr << "KnowledgeC identity suppression smoke test failed\n"; ok = false; }
     if (!runIosCoreProbeTextContextSmokeTest(out)) { std::cerr << "iOS core probe text context smoke test failed\n"; ok = false; }
+    if (!runIosProductionReadinessSmokeTest(out)) { std::cerr << "iOS production readiness smoke test failed\n"; ok = false; }
+    if (!runParentInodePathReconstructionSmokeTest(out)) { std::cerr << "Parent-inode path reconstruction smoke test failed\n"; ok = false; }
     if (!runIosAppDbParserSmokeTest()) { std::cerr << "iOS app DB parser smoke test failed\n"; ok = false; }
     if (!runApfsModuleSmokeTest()) { std::cerr << "APFS module smoke test failed\n"; ok = false; }
     if (!runLzfseCodecSmokeTest()) { std::cerr << "Apple/lzfse codec smoke test failed\n"; ok = false; }

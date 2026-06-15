@@ -1044,6 +1044,16 @@ ORDER BY source_id, apfs_volume_name, full_path, image_file_id;
 
 DROP VIEW IF EXISTS vw_active_file_comparison_readiness;
 CREATE VIEW vw_active_file_comparison_readiness AS
+WITH latest_active_runs AS (
+  SELECT r.*
+  FROM active_file_comparison_runs r
+  JOIN (
+    SELECT source_id, MAX(comparison_run_id) AS comparison_run_id
+    FROM active_file_comparison_runs
+    WHERE COALESCE(run_status,'')<>'READINESS_ONLY'
+    GROUP BY source_id
+  ) m ON m.comparison_run_id=r.comparison_run_id
+)
 SELECT s.image_inventory_source_id,
        s.created_utc,
 )SQL" R"SQL(       s.source_id,
@@ -1053,15 +1063,16 @@ SELECT s.image_inventory_source_id,
        s.partition_reader_status,
        s.filesystem_reader_status,
        s.spotlight_locator_status,
-       s.active_comparison_status,
-       s.inventory_file_count,
-       s.comparison_candidate_count,
-       s.comparison_ready,
+       COALESCE(lr.run_status, s.active_comparison_status) AS active_comparison_status,
+       CASE WHEN COALESCE(lr.image_file_count,0)>0 THEN lr.image_file_count ELSE s.inventory_file_count END AS inventory_file_count,
+       CASE WHEN lr.comparison_run_id IS NOT NULL THEN COALESCE(lr.path_match_count,0)+COALESCE(lr.missing_candidate_count,0) ELSE s.comparison_candidate_count END AS comparison_candidate_count,
+       CASE WHEN COALESCE(lr.run_status,'') LIKE 'COMPLETED_%' THEN 1 ELSE s.comparison_ready END AS comparison_ready,
        COALESCE((SELECT COUNT(*) FROM artifacts a WHERE a.source_id=s.source_id),0) AS spotlight_artifact_count,
        COALESCE((SELECT COUNT(*) FROM image_file_inventory f WHERE f.source_id=s.source_id),0) AS image_inventory_rows,
-       s.next_action,
-       s.notes
+       CASE WHEN COALESCE(lr.run_status,'') LIKE 'COMPLETED_IOS_FFS%' THEN 'Review active_file_comparison_runs, active_file_comparison_validation_checks, active_file_comparison_candidate_summary, and orphaned_deleted_candidates. Missing rows are leads only, not deletion proof.' ELSE s.next_action END AS next_action,
+       CASE WHEN lr.comparison_run_id IS NOT NULL THEN COALESCE(lr.notes,'') ELSE s.notes END AS notes
 FROM image_inventory_sources s
+LEFT JOIN latest_active_runs lr ON lr.source_id=s.source_id
 ORDER BY s.created_utc DESC, s.image_inventory_source_id DESC;
 
 DROP VIEW IF EXISTS vw_spotlight_active_file_comparison;
@@ -1110,20 +1121,25 @@ SELECT a.artifact_id,
        a.usage_field_summary,
        COALESCE(ic.image_file_rows,0) AS image_inventory_rows,
        bm.image_file_id,
-       f.full_path AS matched_image_path,
+       COALESCE(f.full_path, a.matched_filesystem_path) AS matched_image_path,
        f.file_name AS matched_image_file_name,
        f.filesystem_type AS matched_filesystem_type,
        f.apfs_volume_name AS matched_apfs_volume_name,
        f.filesystem_object_id AS matched_filesystem_object_id,
        f.logical_size_bytes AS matched_logical_size_bytes,
-       bm.match_basis,
+       CASE WHEN COALESCE(a.existence_status,'')='PRESENT_IN_IOS_FFS_EXACT_PATH' THEN 'IOS_FFS_EXACT_PATH_LOOKUP'
+            WHEN COALESCE(a.existence_status,'')='MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE' THEN 'IOS_FFS_EXACT_PATH_ABSENT'
+            ELSE bm.match_basis END AS match_basis,
 )SQL" R"SQL(       CASE
+         WHEN COALESCE(a.existence_status,'') IN ('PRESENT_IN_IOS_FFS_EXACT_PATH','MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE') THEN a.existence_status
          WHEN COALESCE(ic.image_file_rows,0)=0 THEN 'IMAGE_FILE_INVENTORY_NOT_AVAILABLE'
          WHEN bm.image_file_id IS NOT NULL THEN 'ACTIVE_FILE_PRESENT_IN_IMAGE_INVENTORY'
          WHEN COALESCE(NULLIF(a.best_path,''),'')='' AND COALESCE(NULLIF(a.inode_num,''),'')='' THEN 'SPOTLIGHT_ARTIFACT_HAS_NO_COMPARABLE_PATH_OR_INODE'
          ELSE 'SPOTLIGHT_INDEXED_NOT_FOUND_IN_IMAGE_INVENTORY'
        END AS active_file_comparison_status,
        CASE
+         WHEN COALESCE(a.existence_status,'')='PRESENT_IN_IOS_FFS_EXACT_PATH' THEN 'Matched against iOS FFS inventory/path lookup by exact normalized path.'
+         WHEN COALESCE(a.existence_status,'')='MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE' THEN 'Spotlight absolute device path was not found in iOS FFS lookup; investigative lead only, not deletion proof.'
          WHEN COALESCE(ic.image_file_rows,0)=0 THEN 'No APFS/HFS image inventory has been loaded for this source yet.'
          WHEN bm.image_file_id IS NOT NULL THEN 'Matched against image_file_inventory using the recorded match basis.'
          ELSE 'Spotlight artifact did not match current image_file_inventory by inode/parent or exact path.'
@@ -1132,6 +1148,124 @@ FROM artifacts a
 LEFT JOIN image_counts ic ON ic.source_id=a.source_id
 LEFT JOIN best_match bm ON bm.artifact_id=a.artifact_id
 LEFT JOIN image_file_inventory f ON f.image_file_id=bm.image_file_id;
+)SQL");
+
+    exec(R"SQL(
+DROP VIEW IF EXISTS vw_active_file_comparison_candidate_summary;
+CREATE VIEW vw_active_file_comparison_candidate_summary AS
+SELECT source_id,
+       existence_status,
+       content_type AS candidate_category,
+       COUNT(*) AS candidate_count,
+       COUNT(DISTINCT best_path) AS distinct_path_count,
+       SUM(CASE WHEN orphan_reason LIKE '%not deletion proof%' THEN 1 ELSE 0 END) AS lead_only_language_count,
+       SUM(CASE WHEN orphan_reason LIKE '%deletion proof%' AND orphan_reason NOT LIKE '%not deletion proof%' THEN 1 ELSE 0 END) AS unsafe_deletion_language_count,
+       MIN(best_path) AS min_path_sample,
+       MAX(best_path) AS max_path_sample,
+       MIN(orphan_reason) AS min_reason_sample,
+       MAX(orphan_reason) AS max_reason_sample
+FROM orphaned_deleted_candidates
+GROUP BY source_id, existence_status, content_type;
+
+DROP VIEW IF EXISTS vw_active_file_comparison_validation_checks;
+CREATE VIEW vw_active_file_comparison_validation_checks AS
+WITH latest_runs AS (
+  SELECT r.*
+  FROM active_file_comparison_runs r
+  JOIN (
+    SELECT source_id, MAX(comparison_run_id) AS comparison_run_id
+    FROM active_file_comparison_runs
+    WHERE COALESCE(run_status,'')<>'READINESS_ONLY'
+    GROUP BY source_id
+  ) m ON m.comparison_run_id=r.comparison_run_id
+), candidate_stats AS (
+  SELECT source_id,
+         COUNT(*) AS candidate_rows,
+         SUM(CASE WHEN orphan_reason LIKE '%not deletion proof%' THEN 1 ELSE 0 END) AS lead_only_rows,
+         SUM(CASE WHEN existence_status='MISSING_FROM_IOS_FFS_REFERENCE_CANDIDATE' THEN 1 ELSE 0 END) AS reference_candidate_rows,
+         SUM(CASE WHEN existence_status='MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE' THEN 1 ELSE 0 END) AS exact_path_candidate_rows
+  FROM orphaned_deleted_candidates
+  GROUP BY source_id
+), reference_view_stats AS (
+  SELECT source_id,
+         COUNT(*) AS reference_view_rows,
+         SUM(CASE WHEN COALESCE(ffs_lookup_source,'')<>'' THEN 1 ELSE 0 END) AS reference_rows_with_lookup_source,
+         SUM(CASE WHEN COALESCE(interpretation_note,'') LIKE '%does not by itself prove user deletion%' THEN 1 ELSE 0 END) AS reference_rows_with_guardrail_note
+  FROM vw_ios_spotlight_missing_from_ffs_candidates
+  GROUP BY source_id
+), candidate_summary_stats AS (
+  SELECT source_id,
+         COUNT(*) AS summary_rows,
+         COALESCE(SUM(candidate_count),0) AS summary_candidate_count,
+         COALESCE(SUM(lead_only_language_count),0) AS summary_lead_only_count,
+         COALESCE(SUM(unsafe_deletion_language_count),0) AS summary_unsafe_deletion_language_count,
+         COALESCE(SUM(CASE WHEN candidate_category='MESSAGE_ATTACHMENT_REFERENCE' THEN candidate_count ELSE 0 END),0) AS message_attachment_candidate_count,
+         COALESCE(SUM(CASE WHEN candidate_category='LOW_APP_THUMBNAIL_OR_CACHE_REFERENCE' THEN candidate_count ELSE 0 END),0) AS low_cache_candidate_count
+  FROM vw_active_file_comparison_candidate_summary
+  GROUP BY source_id
+)
+SELECT lr.source_id,
+       'latest_active_run_status' AS check_name,
+       CASE WHEN COALESCE(lr.run_status,'') LIKE 'COMPLETED_IOS_FFS%' THEN 'PASS' ELSE 'REVIEW' END AS check_status,
+       COALESCE(lr.run_status,'') AS observed_value,
+       'Expected a completed iOS FFS active-comparison run after enrichment.' AS expected_or_note
+FROM latest_runs lr
+UNION ALL
+SELECT lr.source_id,
+       'missing_candidate_count_matches_materialized_rows',
+       CASE WHEN COALESCE(lr.missing_candidate_count,0)=COALESCE(cs.candidate_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'run_missing_candidate_count=' || COALESCE(CAST(lr.missing_candidate_count AS TEXT),'') || '; materialized_candidate_rows=' || COALESCE(CAST(cs.candidate_rows AS TEXT),'0'),
+       'active_file_comparison_runs.missing_candidate_count should match orphaned_deleted_candidates rows for this source.'
+FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'lead_only_language_present',
+       CASE WHEN COALESCE(cs.candidate_rows,0)=COALESCE(cs.lead_only_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'candidate_rows=' || COALESCE(CAST(cs.candidate_rows AS TEXT),'0') || '; lead_only_rows=' || COALESCE(CAST(cs.lead_only_rows AS TEXT),'0'),
+       'Every materialized missing candidate should say it is not deletion proof.'
+FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'candidate_summary_matches_materialized_rows',
+       CASE WHEN COALESCE(css.summary_candidate_count,0)=COALESCE(cs.candidate_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'summary_candidate_count=' || COALESCE(CAST(css.summary_candidate_count AS TEXT),'0') || '; materialized_candidate_rows=' || COALESCE(CAST(cs.candidate_rows AS TEXT),'0'),
+       'Grouped candidate summary should reconcile to orphaned_deleted_candidates rows.'
+FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id LEFT JOIN candidate_summary_stats css ON css.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'candidate_summary_no_unsafe_deletion_language',
+       CASE WHEN COALESCE(css.summary_unsafe_deletion_language_count,0)=0 THEN 'PASS' ELSE 'REVIEW' END,
+       'unsafe_deletion_language_count=' || COALESCE(CAST(css.summary_unsafe_deletion_language_count AS TEXT),'0'),
+       'Candidate summary should not contain deletion-proof wording.'
+FROM latest_runs lr LEFT JOIN candidate_summary_stats css ON css.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'message_attachment_reference_candidates_present',
+       CASE WHEN COALESCE(css.message_attachment_candidate_count,0)>0 THEN 'PASS' ELSE 'REVIEW' END,
+       'message_attachment_candidate_count=' || COALESCE(CAST(css.message_attachment_candidate_count AS TEXT),'0') || '; low_cache_candidate_count=' || COALESCE(CAST(css.low_cache_candidate_count AS TEXT),'0'),
+       'High-value message attachment reference candidates should be visible separately from low-value cache/thumbnail candidates when present.'
+FROM latest_runs lr LEFT JOIN candidate_summary_stats css ON css.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'reference_candidate_rows_materialized_from_reference_view',
+       CASE WHEN COALESCE(cs.reference_candidate_rows,0)>0 AND COALESCE(cs.reference_candidate_rows,0)<=COALESCE(rv.reference_view_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'reference_candidate_rows=' || COALESCE(CAST(cs.reference_candidate_rows AS TEXT),'0') || '; reference_view_rows=' || COALESCE(CAST(rv.reference_view_rows AS TEXT),'0'),
+       'Materialized reference candidates should derive from the larger Missing-from-FFS reference view without exceeding it.'
+FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id LEFT JOIN reference_view_stats rv ON rv.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'reference_view_lookup_source_populated',
+       CASE WHEN COALESCE(rv.reference_view_rows,0)=COALESCE(rv.reference_rows_with_lookup_source,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'reference_rows=' || COALESCE(CAST(rv.reference_view_rows AS TEXT),'0') || '; lookup_source_populated=' || COALESCE(CAST(rv.reference_rows_with_lookup_source AS TEXT),'0'),
+       'Missing-from-FFS reference rows should preserve the lookup source used for absence testing.'
+FROM latest_runs lr LEFT JOIN reference_view_stats rv ON rv.source_id=lr.source_id
+UNION ALL
+SELECT lr.source_id,
+       'reference_view_guardrail_note_present',
+       CASE WHEN COALESCE(rv.reference_view_rows,0)=COALESCE(rv.reference_rows_with_guardrail_note,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'reference_rows=' || COALESCE(CAST(rv.reference_view_rows AS TEXT),'0') || '; guarded_rows=' || COALESCE(CAST(rv.reference_rows_with_guardrail_note AS TEXT),'0'),
+       'Reference view rows should preserve the no-deletion-proof interpretation note.'
+FROM latest_runs lr LEFT JOIN reference_view_stats rv ON rv.source_id=lr.source_id;
 )SQL");
 
     exec(R"SQL(
@@ -1489,8 +1623,18 @@ SELECT pl.link_id,
        pl.parent_file_name,
        pl.parent_best_path,
        pl.reconstructed_path_candidate,
-       CASE WHEN COALESCE(a.path_source,'')='PARENT_INODE_RECONSTRUCTION' THEN 1 ELSE 0 END AS applied_to_artifact_path,
+       CASE WHEN COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW') THEN 1 ELSE 0 END AS applied_to_artifact_path,
 )SQL" R"SQL(       CASE WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(pl.reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END AS candidate_matches_artifact_path,
+       CASE WHEN COALESCE(pl.reconstructed_path_candidate,'')=''
+            THEN 'NO_PATH_CANDIDATE'
+            WHEN COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')
+            THEN 'APPLIED_PARENT_INODE_RECONSTRUCTION'
+            WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'')
+            THEN 'EXISTING_SPOTLIGHT_PATH_CONTEXT'
+            ELSE 'NEW_PARENT_INODE_REVIEW_CANDIDATE'
+       END AS path_candidate_status,
+       CASE WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND COALESCE(a.path_source,'') NOT IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW') THEN 1 ELSE 0 END AS existing_path_context_only,
+       CASE WHEN COALESCE(pl.reconstructed_path_candidate,'')<>'' AND (COALESCE(a.best_path,'')<>COALESCE(pl.reconstructed_path_candidate,'') OR COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')) THEN 1 ELSE 0 END AS new_reconstructed_path,
        pl.sibling_group_key,
        pl.sibling_count,
        pl.relationship_status,
@@ -1511,12 +1655,15 @@ SELECT source_id,
        MAX(CASE WHEN COALESCE(NULLIF(trim(parent_best_path),''),'') NOT IN ('/','------NONAME------','(null)','NULL','.') THEN parent_best_path ELSE '' END) AS parent_best_path,
        COUNT(*) AS child_count,
        SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END) AS resolved_parent_link_count,
-       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END) AS path_context_candidate_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')=COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END) AS existing_path_context_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
        SUM(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN 1 ELSE 0 END) AS child_name_count,
        MIN(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS first_child_name,
        MAX(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS last_child_name,
        CASE
-         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END)>0 THEN 'RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'NEW_RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')=COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'EXISTING_SPOTLIGHT_PATH_CONTEXT_PRESENT'
          WHEN SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END)>0 THEN 'PARENT_LINKS_WITHOUT_RECONSTRUCTED_PATH'
          ELSE 'SAME_PARENT_INODE_GROUP_ONLY'
        END AS folder_group_status,
@@ -1587,7 +1734,7 @@ WITH probe AS (
 ), categorized AS (
   SELECT CASE
     WHEN v LIKE '%http://%' OR v LIKE '%https://%' OR v LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-    WHEN v LIKE '%@%' AND v LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+    WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (v LIKE '%@%' AND v LIKE '%.%' AND v NOT LIKE '%file:%' AND v NOT LIKE '%/%' AND v NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
     WHEN v LIKE '%imessage%' OR v LIKE '%sms%' OR v LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
     WHEN v LIKE '%icloud%' OR v LIKE '%onedrive%' OR v LIKE '%dropbox%' OR v LIKE '%google drive%' OR v LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
 )SQL" R"SQL(    WHEN v LIKE '%calendar%' OR v LIKE '%invite%' OR v LIKE '%rsvp%' OR v LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -1611,7 +1758,7 @@ DROP VIEW IF EXISTS vw_ios_string_probe_values;
     exec(R"SQL(CREATE VIEW vw_ios_string_probe_values AS
 SELECT CASE
     WHEN LOWER(field_value) LIKE '%http://%' OR LOWER(field_value) LIKE '%https://%' OR LOWER(field_value) LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-    WHEN LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+    WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' AND LOWER(field_value) NOT LIKE '%file:%' AND LOWER(field_value) NOT LIKE '%/%' AND LOWER(field_value) NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
     WHEN LOWER(field_value) LIKE '%imessage%' OR LOWER(field_value) LIKE '%sms%' OR LOWER(field_value) LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
     WHEN LOWER(field_value) LIKE '%icloud%' OR LOWER(field_value) LIKE '%onedrive%' OR LOWER(field_value) LIKE '%dropbox%' OR LOWER(field_value) LIKE '%google drive%' OR LOWER(field_value) LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
     WHEN LOWER(field_value) LIKE '%calendar%' OR LOWER(field_value) LIKE '%invite%' OR LOWER(field_value) LIKE '%rsvp%' OR LOWER(field_value) LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -1631,7 +1778,7 @@ WITH kv AS (
   SELECT source_id, store_guid, source_db, inode_num, store_id, parent_inode_num,
          CASE
            WHEN LOWER(field_value) LIKE '%http://%' OR LOWER(field_value) LIKE '%https://%' OR LOWER(field_value) LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-           WHEN LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+           WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' AND LOWER(field_value) NOT LIKE '%file:%' AND LOWER(field_value) NOT LIKE '%/%' AND LOWER(field_value) NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
            WHEN LOWER(field_value) LIKE '%imessage%' OR LOWER(field_value) LIKE '%sms%' OR LOWER(field_value) LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
            WHEN LOWER(field_value) LIKE '%icloud%' OR LOWER(field_value) LIKE '%onedrive%' OR LOWER(field_value) LIKE '%dropbox%' OR LOWER(field_value) LIKE '%google drive%' OR LOWER(field_value) LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
            WHEN LOWER(field_value) LIKE '%calendar%' OR LOWER(field_value) LIKE '%invite%' OR LOWER(field_value) LIKE '%rsvp%' OR LOWER(field_value) LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -1912,7 +2059,7 @@ WITH refs AS (
          CASE WHEN COALESCE(ctx.spotlight_text_context_sample,'')<>'' THEN 'TEXT_CONTEXT_RECOVERED_FROM_SAME_SPOTLIGHT_RECORD' ELSE 'NO_TEXT_CONTEXT_RECOVERED_IN_COMPACT_MODE' END AS spotlight_text_context_status,
          COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
 )VSQLFIX" R"VSQLFIX(         COALESCE(f.protection_class_hint,'') AS matched_protection_class,COALESCE(f.app_container_hint,'') AS matched_app_container,COALESCE(f.domain_hint,'') AS matched_domain,
-         COALESCE(f.lookup_source,la.lookup_source,'lookup_available_no_matching_path') AS ffs_lookup_source,
+         COALESCE(NULLIF(f.lookup_source,''),NULLIF(la.lookup_source,''),'lookup_available_no_matching_path') AS ffs_lookup_source,
          CASE
            WHEN r.field_name LIKE '%Thumbnail%' OR r.normalized_ios_path LIKE '%/brandthumbs/%' OR r.normalized_ios_path LIKE '%/thumbnail%' OR r.normalized_ios_path LIKE '%/thumbnails/%' THEN 'LOW_APP_THUMBNAIL_OR_CACHE_REFERENCE'
            WHEN r.field_name='kMDItemAttachmentPaths' OR r.field_name LIKE 'com_apple_mobilesms_%' OR r.normalized_ios_path LIKE '%/sms/attachments/%' OR r.normalized_ios_path LIKE '%/messages/%' THEN 'HIGH_MESSAGE_ATTACHMENT_OR_PLUGIN_REFERENCE'
@@ -1953,7 +2100,7 @@ SELECT reference_id,source_id,store_guid,source_db,inode_num,store_id,parent_ino
        missing_candidate_category,investigative_priority,investigative_priority_sort,investigative_reason,
        spotlight_text_context_sample,spotlight_text_context_status,
        matched_file_name,matched_size_bytes,matched_zip_modified_utc,matched_protection_class,matched_app_container,matched_domain,
-       ffs_lookup_source,'FFS_LOOKUP_AVAILABLE' AS ffs_lookup_status,
+       COALESCE(NULLIF(ffs_lookup_source,''),'lookup_available_no_matching_path') AS ffs_lookup_source,'FFS_LOOKUP_AVAILABLE' AS ffs_lookup_status,
        'SPOTLIGHT_ONLY_FILE_MISSING_OR_UNRESOLVED' AS residency_status,
        CASE WHEN investigative_priority='HIGH_INVESTIGATIVE_VALUE' THEN 'HIGH_PATH_ABSENT_FROM_FFS_LOOKUP'
             WHEN investigative_priority='LOW_INVESTIGATIVE_VALUE' THEN 'LOW_APP_CACHE_OR_THUMBNAIL_PATH_ABSENT_FROM_FFS_LOOKUP'
@@ -6072,6 +6219,7 @@ UNION ALL SELECT '03_text_context','communications','iOS - Spotlight Text Contex
 UNION ALL SELECT '04_message_bodies','communications','iOS - Spotlight Message Body Review','vw_ios_spotlight_message_body_review',
        CAST((SELECT COUNT(*) FROM raw_key_values WHERE lower(field_value) LIKE '%imessage%' OR lower(field_value) LIKE '%mobilesms%' OR lower(field_value) LIKE '%mobilemail%' OR lower(field_value) LIKE '%mailto:%') AS TEXT),
        'Broader message/mail/call/body review including mail subjects, calls, media, and message-adjacent records. Count is a lightweight compact-probe estimate.'
+)VSQL32", R"VSQL32(
 UNION ALL SELECT '05_missing_from_ffs','residency','iOS - High-Value Missing From FFS','vw_ios_spotlight_missing_from_ffs_high_value_candidates',
        CAST((SELECT COUNT(*) FROM raw_key_values WHERE COALESCE(field_value,'')<>'' AND (lower(field_value) LIKE '%file://%' OR lower(field_value) LIKE '%/var/mobile/%' OR lower(field_value) LIKE '%/private/var/mobile/%')) AS TEXT),
        'Spotlight path/reference candidates that did not match available FFS lookup; lightweight count is compact iOS file/path reference rows.'
@@ -6216,6 +6364,128 @@ SELECT database_category,
        'KnowledgeC/CoreDuet summary. Rows are available only when targeted database extraction and app DB record materialization are enabled.' AS interpretation_note
 FROM vw_ios_knowledgec_interaction_events
 GROUP BY database_category,app_hint,knowledge_stream_name,app_bundle_id,parse_status;
+
+DROP VIEW IF EXISTS vw_ios_coreduet_interactionc_database_status;
+CREATE VIEW vw_ios_coreduet_interactionc_database_status AS
+WITH dbs AS (
+  SELECT ios_db_id,source_id,normalized_path,database_name,database_category,app_hint,parse_status,record_inventory_status,extracted_path,
+         CASE WHEN lower(COALESCE(database_name,''))='interactionc.db' OR lower(COALESCE(normalized_path,'')) LIKE '%/coreduet/people/%' OR database_category='COREDUET_INTERACTIONS' THEN 1 ELSE 0 END AS is_interactionc
+  FROM ios_app_database_inventory
+  WHERE lower(COALESCE(database_name,''))='interactionc.db'
+     OR lower(COALESCE(normalized_path,'')) LIKE '%/coreduet/people/%'
+     OR database_category='COREDUET_INTERACTIONS'
+), ri AS (
+  SELECT ios_db_id,COUNT(*) AS table_count,COALESCE(SUM(row_count),0) AS inventoried_row_count,
+         substr(group_concat(table_name || ':' || COALESCE(row_count,0), ' | '),1,2000) AS table_row_sample
+  FROM ios_app_database_record_inventory
+  WHERE ios_db_id IN (SELECT ios_db_id FROM dbs)
+  GROUP BY ios_db_id
+), pr AS (
+  SELECT ios_db_id,COUNT(*) AS parsed_record_count,
+         MIN(NULLIF(record_timestamp_utc,'')) AS earliest_parsed_record_utc,
+         MAX(NULLIF(record_timestamp_utc,'')) AS latest_parsed_record_utc,
+         substr(group_concat(DISTINCT record_category),1,1000) AS parsed_record_categories
+  FROM ios_app_parsed_records
+  WHERE ios_db_id IN (SELECT ios_db_id FROM dbs)
+  GROUP BY ios_db_id
+)
+SELECT d.ios_db_id,d.source_id,d.normalized_path,d.database_name,d.database_category,d.app_hint,d.parse_status,d.record_inventory_status,d.extracted_path,
+       COALESCE(ri.table_count,0) AS inventoried_table_count,
+       COALESCE(ri.inventoried_row_count,0) AS inventoried_row_count,
+       COALESCE(pr.parsed_record_count,0) AS parsed_record_count,
+       pr.earliest_parsed_record_utc,pr.latest_parsed_record_utc,pr.parsed_record_categories,ri.table_row_sample,
+       CASE WHEN d.is_interactionc=1 THEN 'INTERACTIONC_DB_OR_COREDUET_PEOPLE_PATH' ELSE 'COREDUET_CONTEXT' END AS coreduet_interactionc_status,
+       'CoreDuet People/interactionC workflow status. Review SHM/WAL preservation, table inventory, parsed rows, and timestamp coverage before drawing people/interaction conclusions.' AS interpretation_note
+FROM dbs d
+LEFT JOIN ri ON ri.ios_db_id=d.ios_db_id
+LEFT JOIN pr ON pr.ios_db_id=d.ios_db_id
+ORDER BY d.normalized_path,d.ios_db_id;
+
+DROP VIEW IF EXISTS vw_ios_coreduet_interactionc_event_review;
+CREATE VIEW vw_ios_coreduet_interactionc_event_review AS
+SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,
+       record_timestamp_utc,timestamp_source,app_bundle_id AS parsed_app_or_participant_hint,interaction_type,knowledge_stream_name,text_snippet,parse_status,provenance,created_utc,
+       CASE WHEN database_category='COREDUET_INTERACTIONS' OR lower(COALESCE(database_normalized_path,'')) LIKE '%/coreduet/people/%' THEN 'INTERACTIONC_OR_COREDUET_PEOPLE' ELSE 'KNOWLEDGEC_OR_COREDUET_CONTEXT' END AS coreduet_surface,
+       'Record-level CoreDuet/interactionC review row. Treat as contextual activity/people evidence unless communication-intent provenance and source fields support a narrower interpretation.' AS interpretation_note
+FROM vw_ios_knowledgec_interaction_events
+WHERE database_category='COREDUET_INTERACTIONS'
+   OR lower(COALESCE(database_normalized_path,'')) LIKE '%/coreduet/people/%'
+   OR lower(COALESCE(database_name,''))='interactionc.db';
+
+DROP VIEW IF EXISTS vw_ios_coreduet_interactionc_summary;
+CREATE VIEW vw_ios_coreduet_interactionc_summary AS
+SELECT database_category,app_hint,coreduet_surface,knowledge_stream_name,parsed_app_or_participant_hint,parse_status,
+       COUNT(*) AS event_count,
+       MIN(record_timestamp_utc) AS earliest_event_utc,
+       MAX(record_timestamp_utc) AS latest_event_utc,
+       substr(MIN(NULLIF(text_snippet,'')),1,1200) AS min_event_sample,
+       substr(MAX(NULLIF(text_snippet,'')),1,1200) AS max_event_sample,
+       'CoreDuet People/interactionC summary. Use with database-status view and Spotlight/app communication views; absence of rows may reflect parser/materialization scope.' AS interpretation_note
+FROM vw_ios_coreduet_interactionc_event_review
+GROUP BY database_category,app_hint,coreduet_surface,knowledge_stream_name,parsed_app_or_participant_hint,parse_status;
+
+DROP VIEW IF EXISTS vw_ios_coreduet_interactionc_validation_checks;
+CREATE VIEW vw_ios_coreduet_interactionc_validation_checks AS
+WITH dbs AS (
+  SELECT ios_db_id,source_id,database_name,normalized_path,parse_status
+  FROM ios_app_database_inventory
+  WHERE lower(COALESCE(database_name,''))='interactionc.db'
+     OR lower(COALESCE(normalized_path,'')) LIKE '%/coreduet/people/%'
+     OR database_category='COREDUET_INTERACTIONS'
+), inv AS (
+  SELECT ios_db_id,source_id,
+         SUM(CASE WHEN table_name='ZINTERACTIONS' THEN row_count ELSE 0 END) AS zinteractions_rows,
+         SUM(CASE WHEN table_name LIKE 'Z%INTERACTION%' AND table_name<>'ZINTERACTIONS' THEN row_count ELSE 0 END) AS join_interaction_rows,
+         SUM(row_count) AS inventoried_rows,
+         COUNT(*) AS inventoried_tables
+  FROM ios_app_database_record_inventory
+  WHERE ios_db_id IN (SELECT ios_db_id FROM dbs)
+  GROUP BY ios_db_id,source_id
+), ev AS (
+  SELECT ios_db_id,source_id,
+         COUNT(*) AS event_rows,
+         SUM(CASE WHEN table_name='ZINTERACTIONS' THEN 1 ELSE 0 END) AS canonical_event_rows,
+         SUM(CASE WHEN table_name<>'ZINTERACTIONS' THEN 1 ELSE 0 END) AS noncanonical_event_rows,
+         SUM(CASE WHEN parsed_app_or_participant_hint LIKE 'Phone:%' THEN 1 ELSE 0 END) AS phone_label_rows,
+         SUM(CASE WHEN interpretation_note LIKE '%contextual activity/people evidence%' THEN 1 ELSE 0 END) AS guardrail_note_rows
+  FROM vw_ios_coreduet_interactionc_event_review
+  GROUP BY ios_db_id,source_id
+)
+SELECT d.source_id,
+       d.ios_db_id,
+       'interactionc_db_inventoried' AS check_name,
+       CASE WHEN COALESCE(inv.inventoried_tables,0)>0 AND COALESCE(inv.zinteractions_rows,0)>0 THEN 'PASS' ELSE 'REVIEW' END AS check_status,
+       'inventoried_tables=' || COALESCE(CAST(inv.inventoried_tables AS TEXT),'0') || '; zinteractions_rows=' || COALESCE(CAST(inv.zinteractions_rows AS TEXT),'0') AS observed_value,
+       'interactionC.db should have table inventory and canonical ZINTERACTIONS rows before event review is trusted.' AS expected_or_note
+FROM dbs d LEFT JOIN inv ON inv.ios_db_id=d.ios_db_id
+UNION ALL
+SELECT d.source_id,d.ios_db_id,
+       'parsed_rows_match_canonical_zinteractions',
+       CASE WHEN COALESCE(ev.event_rows,0)=COALESCE(inv.zinteractions_rows,0) AND COALESCE(ev.event_rows,0)>0 THEN 'PASS' ELSE 'REVIEW' END,
+       'event_rows=' || COALESCE(CAST(ev.event_rows AS TEXT),'0') || '; zinteractions_rows=' || COALESCE(CAST(inv.zinteractions_rows AS TEXT),'0'),
+       'Parsed interactionC events should reconcile to canonical ZINTERACTIONS rows.'
+FROM dbs d LEFT JOIN inv ON inv.ios_db_id=d.ios_db_id LEFT JOIN ev ON ev.ios_db_id=d.ios_db_id
+UNION ALL
+SELECT d.source_id,d.ios_db_id,
+       'join_tables_not_promoted_to_events',
+       CASE WHEN COALESCE(ev.noncanonical_event_rows,0)=0 THEN 'PASS' ELSE 'REVIEW' END,
+       'noncanonical_event_rows=' || COALESCE(CAST(ev.noncanonical_event_rows AS TEXT),'0') || '; join_interaction_rows=' || COALESCE(CAST(inv.join_interaction_rows AS TEXT),'0'),
+       'Join/link tables such as Z_1INTERACTIONS should not be promoted to standalone events.'
+FROM dbs d LEFT JOIN inv ON inv.ios_db_id=d.ios_db_id LEFT JOIN ev ON ev.ios_db_id=d.ios_db_id
+UNION ALL
+SELECT d.source_id,d.ios_db_id,
+       'phone_label_promotion_suppressed',
+       CASE WHEN COALESCE(ev.phone_label_rows,0)=0 THEN 'PASS' ELSE 'REVIEW' END,
+       'phone_label_rows=' || COALESCE(CAST(ev.phone_label_rows AS TEXT),'0'),
+       'Generic CoreDuet numeric identifiers should not be relabeled as phone numbers without stronger provenance.'
+FROM dbs d LEFT JOIN ev ON ev.ios_db_id=d.ios_db_id
+UNION ALL
+SELECT d.source_id,d.ios_db_id,
+       'contextual_guardrail_note_present',
+       CASE WHEN COALESCE(ev.event_rows,0)=COALESCE(ev.guardrail_note_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+       'event_rows=' || COALESCE(CAST(ev.event_rows AS TEXT),'0') || '; guarded_rows=' || COALESCE(CAST(ev.guardrail_note_rows AS TEXT),'0'),
+       'CoreDuet event rows should preserve the contextual-evidence guardrail note.'
+FROM dbs d LEFT JOIN ev ON ev.ios_db_id=d.ios_db_id;
 
 DROP VIEW IF EXISTS vw_investigator_super_timeline;
 CREATE VIEW vw_investigator_super_timeline AS
@@ -6484,8 +6754,18 @@ SELECT pl.link_id,
        pl.parent_file_name,
        pl.parent_best_path,
        pl.reconstructed_path_candidate,
-       CASE WHEN COALESCE(a.path_source,'')='PARENT_INODE_RECONSTRUCTION' THEN 1 ELSE 0 END AS applied_to_artifact_path,
+       CASE WHEN COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW') THEN 1 ELSE 0 END AS applied_to_artifact_path,
 )SQL" R"SQL(       CASE WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(pl.reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END AS candidate_matches_artifact_path,
+       CASE WHEN COALESCE(pl.reconstructed_path_candidate,'')=''
+            THEN 'NO_PATH_CANDIDATE'
+            WHEN COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')
+            THEN 'APPLIED_PARENT_INODE_RECONSTRUCTION'
+            WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'')
+            THEN 'EXISTING_SPOTLIGHT_PATH_CONTEXT'
+            ELSE 'NEW_PARENT_INODE_REVIEW_CANDIDATE'
+       END AS path_candidate_status,
+       CASE WHEN COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND COALESCE(a.path_source,'') NOT IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW') THEN 1 ELSE 0 END AS existing_path_context_only,
+       CASE WHEN COALESCE(pl.reconstructed_path_candidate,'')<>'' AND (COALESCE(a.best_path,'')<>COALESCE(pl.reconstructed_path_candidate,'') OR COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')) THEN 1 ELSE 0 END AS new_reconstructed_path,
        pl.sibling_group_key,
        pl.sibling_count,
        pl.relationship_status,
@@ -6506,12 +6786,15 @@ SELECT source_id,
        MAX(CASE WHEN COALESCE(NULLIF(trim(parent_best_path),''),'') NOT IN ('/','------NONAME------','(null)','NULL','.') THEN parent_best_path ELSE '' END) AS parent_best_path,
        COUNT(*) AS child_count,
        SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END) AS resolved_parent_link_count,
-       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END) AS path_context_candidate_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')=COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END) AS existing_path_context_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
        SUM(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN 1 ELSE 0 END) AS child_name_count,
        MIN(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS first_child_name,
        MAX(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS last_child_name,
        CASE
-         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END)>0 THEN 'RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'NEW_RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')=COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'EXISTING_SPOTLIGHT_PATH_CONTEXT_PRESENT'
          WHEN SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END)>0 THEN 'PARENT_LINKS_WITHOUT_RECONSTRUCTED_PATH'
          ELSE 'SAME_PARENT_INODE_GROUP_ONLY'
        END AS folder_group_status,
@@ -6665,7 +6948,7 @@ WITH probe AS (
 ), categorized AS (
   SELECT CASE
     WHEN v LIKE '%http://%' OR v LIKE '%https://%' OR v LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-    WHEN v LIKE '%@%' AND v LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+    WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (v LIKE '%@%' AND v LIKE '%.%' AND v NOT LIKE '%file:%' AND v NOT LIKE '%/%' AND v NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
     WHEN v LIKE '%imessage%' OR v LIKE '%sms%' OR v LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
     WHEN v LIKE '%icloud%' OR v LIKE '%onedrive%' OR v LIKE '%dropbox%' OR v LIKE '%google drive%' OR v LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
     WHEN v LIKE '%calendar%' OR v LIKE '%invite%' OR v LIKE '%rsvp%' OR v LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -6690,7 +6973,7 @@ DROP VIEW IF EXISTS vw_ios_string_probe_values;
         R"VSGUI(CREATE VIEW vw_ios_string_probe_values AS
 SELECT CASE
     WHEN LOWER(field_value) LIKE '%http://%' OR LOWER(field_value) LIKE '%https://%' OR LOWER(field_value) LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-    WHEN LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+    WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' AND LOWER(field_value) NOT LIKE '%file:%' AND LOWER(field_value) NOT LIKE '%/%' AND LOWER(field_value) NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
     WHEN LOWER(field_value) LIKE '%imessage%' OR LOWER(field_value) LIKE '%sms%' OR LOWER(field_value) LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
     WHEN LOWER(field_value) LIKE '%icloud%' OR LOWER(field_value) LIKE '%onedrive%' OR LOWER(field_value) LIKE '%dropbox%' OR LOWER(field_value) LIKE '%google drive%' OR LOWER(field_value) LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
     WHEN LOWER(field_value) LIKE '%calendar%' OR LOWER(field_value) LIKE '%invite%' OR LOWER(field_value) LIKE '%rsvp%' OR LOWER(field_value) LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -6707,7 +6990,7 @@ WITH kv AS (
   SELECT source_id, store_guid, source_db, inode_num, store_id, parent_inode_num,
          CASE
            WHEN LOWER(field_value) LIKE '%http://%' OR LOWER(field_value) LIKE '%https://%' OR LOWER(field_value) LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-           WHEN LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+           WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (LOWER(field_value) LIKE '%@%' AND LOWER(field_value) LIKE '%.%' AND LOWER(field_value) NOT LIKE '%file:%' AND LOWER(field_value) NOT LIKE '%/%' AND LOWER(field_value) NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
            WHEN LOWER(field_value) LIKE '%imessage%' OR LOWER(field_value) LIKE '%sms%' OR LOWER(field_value) LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
            WHEN LOWER(field_value) LIKE '%icloud%' OR LOWER(field_value) LIKE '%onedrive%' OR LOWER(field_value) LIKE '%dropbox%' OR LOWER(field_value) LIKE '%google drive%' OR LOWER(field_value) LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
            WHEN LOWER(field_value) LIKE '%calendar%' OR LOWER(field_value) LIKE '%invite%' OR LOWER(field_value) LIKE '%rsvp%' OR LOWER(field_value) LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -6965,7 +7248,9 @@ WITH refs AS (
   FROM ios_ffs_path_lookup l
   WHERE NOT EXISTS (SELECT 1 FROM ios_ffs_file_inventory f WHERE f.source_id=l.source_id LIMIT 1)
 ), lookup_sources AS (
-  SELECT DISTINCT source_id FROM files
+  SELECT source_id, COALESCE(NULLIF(MIN(lookup_source),''),'lookup_available_no_matching_path') AS lookup_source
+  FROM files
+  GROUP BY source_id
 ), ctx AS (
   SELECT source_id,store_guid,source_db,inode_num,store_id,
          substr(MAX(field_value),1,4000) AS spotlight_text_context_sample
@@ -7006,7 +7291,7 @@ SELECT r.reference_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_i
        CASE WHEN COALESCE(ctx.spotlight_text_context_sample,'')<>'' THEN 'TEXT_CONTEXT_RECOVERED_FROM_SAME_SPOTLIGHT_RECORD' ELSE 'NO_TEXT_CONTEXT_RECOVERED_IN_COMPACT_MODE' END AS spotlight_text_context_status,
 )VSGUI" R"VSGUI(       COALESCE(f.file_name,'') AS matched_file_name,COALESCE(f.size_bytes,0) AS matched_size_bytes,COALESCE(f.zip_modified_utc,'') AS matched_zip_modified_utc,
        COALESCE(f.protection_class_hint,'') AS matched_protection_class,COALESCE(f.app_container_hint,'') AS matched_app_container,COALESCE(f.domain_hint,'') AS matched_domain,
-       COALESCE(f.lookup_source,'') AS ffs_lookup_source,
+       COALESCE(NULLIF(f.lookup_source,''),NULLIF(ls.lookup_source,''),'lookup_available_no_matching_path') AS ffs_lookup_source,
        'FFS_LOOKUP_AVAILABLE' AS ffs_lookup_status,
        'SPOTLIGHT_ONLY_FILE_MISSING_OR_UNRESOLVED' AS residency_status,
        CASE
@@ -10346,6 +10631,46 @@ WHERE c.source_surface='CORESPOTLIGHT_KEY_VALUE'
       AND (app.item_identifier=c.thread_or_record_id OR app.source_primary_key=c.thread_or_record_id OR app.contact_or_participant=c.identity_hint)
   );
 
+)SQL");
+
+
+    exec(R"SQL(
+DROP VIEW IF EXISTS vw_ios_production_readiness_summary;
+CREATE VIEW vw_ios_production_readiness_summary AS
+SELECT '01_source_hash' AS readiness_order,
+       'source_container_hash' AS readiness_area,
+       CASE
+         WHEN EXISTS (SELECT 1 FROM preserved_evidence_sets WHERE COALESCE(archive_sha256,'')<>'' AND integrity_status='HASHED') THEN 'PRODUCTION_READY_HASH_RECORDED'
+         WHEN (SELECT value FROM case_info WHERE key='force_container_hash')='true' THEN 'REVIEW_HASH_REQUESTED_BUT_NOT_RECORDED'
+         WHEN (SELECT value FROM case_info WHERE key='skip_container_hash')='true' THEN 'NOT_PRODUCTION_READY_HASH_SKIPPED'
+         ELSE 'REVIEW_HASH_STATUS_NOT_RECORDED'
+       END AS status,
+       COALESCE((SELECT MAX(integrity_status || ':' || COALESCE(archive_sha256,'')) FROM preserved_evidence_sets),'no preserved_evidence_sets row') AS evidence,
+       'Production/final iOS ZIP runs should use --force-container-hash or attach an external source hash; thin iteration may intentionally defer it.' AS recommended_action
+UNION ALL SELECT '02_export_profile','export_profile',
+       CASE WHEN (SELECT value FROM case_info WHERE key='export_profile') IN ('investigator','support','full') THEN 'PRODUCTION_REVIEW_PROFILE' ELSE 'THIN_OR_DIAGNOSTIC_PROFILE' END,
+       COALESCE((SELECT value FROM case_info WHERE key='export_profile'),'not_recorded'),
+       'Use investigator profile for production review after thin validation; support/full only for bounded correlation or diagnostic needs.'
+UNION ALL SELECT '03_native_decode','native_decode_mode',
+       CASE WHEN COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'') LIKE '%CoreFields%' OR COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'') LIKE '%FullValues%' THEN 'CORE_OR_FULL_NATIVE_DECODE_PRESENT' ELSE 'HEADER_ONLY_OR_NOT_RECORDED' END,
+       COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'not_recorded'),
+       'Production iOS review should include --decode-core-native-values at minimum; full native DB mode is for bounded support runs only.'
+UNION ALL SELECT '04_record_counts','core_spotlight_records',
+       CASE WHEN (SELECT COUNT(*) FROM raw_records)>0 THEN 'RAW_RECORDS_PRESENT' ELSE 'NO_RAW_RECORDS_REVIEW_REQUIRED' END,
+       'raw_records=' || (SELECT COUNT(*) FROM raw_records) || '; raw_key_values=' || (SELECT COUNT(*) FROM raw_key_values) || '; timeline_events=' || (SELECT COUNT(*) FROM timeline_events),
+       'If counts are zero, review store discovery and native_decode_attempts before relying on the run.'
+UNION ALL SELECT '05_text_context','ios_text_context',
+       CASE WHEN (SELECT COUNT(*) FROM vw_ios_spotlight_text_context_review)>0 THEN 'TEXT_CONTEXT_PRESENT' ELSE 'TEXT_CONTEXT_NOT_OBSERVED' END,
+       'text_context_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_text_context_review) || '; string_probe_rows=' || (SELECT COUNT(*) FROM vw_ios_string_probe_values),
+       'Text context rows are review surfaces. Validate source field/value locators before reporting message or OCR content.'
+UNION ALL SELECT '06_missing_from_ffs','spotlight_missing_from_ffs',
+       CASE WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type='view' AND name='vw_ios_spotlight_missing_from_ffs_high_value_candidates') THEN 'MISSING_FFS_REVIEW_SURFACE_PRESENT' ELSE 'MISSING_FFS_VIEW_MISSING' END,
+       'high_value_missing_ffs_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates),
+       'Missing-from-FFS is a lead based on available lookup/path matching, not a standalone deletion conclusion.'
+UNION ALL SELECT '07_native_db_mismatch','spotlight_not_matched_to_native_db',
+       CASE WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type='view' AND name='vw_ios_spotlight_comms_missing_from_ffs') THEN 'NATIVE_DB_MISMATCH_VIEW_PRESENT' ELSE 'NATIVE_DB_MISMATCH_VIEW_MISSING' END,
+       'spotlight_not_matched_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_comms_missing_from_ffs),
+       'Treat as a lead only; possible explanations include deletion, app removal, encryption/inaccessibility, parser coverage limits, or unmatched identifiers.';
 )SQL");
 
 }

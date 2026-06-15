@@ -177,6 +177,8 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
     IosCommunicationDerivedFields out{recordCategory, contactOrParticipant, itemIdentifier, title, parseStatus, provenance};
     const std::string combined = title + " " + textSnippet + " " + itemIdentifier + " " + contactOrParticipant + " " + provenance;
     const std::string lower = lowerCopy(combined);
+    const bool suppressIdentityRecovery = lower.find("coreduet_interactionc_generic_row=true") != std::string::npos ||
+                                          lower.find("no_direct_communication_conclusion=true") != std::string::npos;
     auto addProv = [&](const std::string& token) {
         if (out.provenance.find(token) == std::string::npos) out.provenance += (out.provenance.empty() ? "" : "; ") + token;
     };
@@ -205,11 +207,11 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
             addProv("SPOTLIGHT_DELETED_OR_EXPIRED_COMMUNICATION=True");
         }
     }
-    if (lower.find("personhandle") != std::string::npos || lower.find("emailaddress") != std::string::npos || lower.find("insendmessageintent") != std::string::npos) {
+    if (!suppressIdentityRecovery && (lower.find("personhandle") != std::string::npos || lower.find("emailaddress") != std::string::npos || lower.find("insendmessageintent") != std::string::npos)) {
         addProv("INTENT_TARGET_HINT_PRESENT=True");
         if (out.contact.empty()) out.contact = "Extracted_Intent_Target: " + firstMetadataWindow(combined, {"personHandle", "emailAddress", "name"}, 96);
     }
-    if (out.contact.empty()) {
+    if (!suppressIdentityRecovery && out.contact.empty()) {
         std::string hardMatch;
         const std::size_t telPos = lower.find("tel:");
         if (telPos != std::string::npos) hardMatch += "Phone: " + printableWindow(combined, telPos + 4U, 32) + " ";
@@ -220,19 +222,22 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
             addProv("IDENTITY_REGEX_RECOVERY=True");
         }
     }
-    if (out.contact.empty()) {
+    if (!suppressIdentityRecovery && out.contact.empty()) {
         const std::string genericIdentity = identityRecoveryHintFromText(combined);
         if (!genericIdentity.empty()) {
             out.contact = genericIdentity;
             addProv("IDENTITY_TEXT_PATTERN_RECOVERY=True");
         }
     }
-    if (out.itemIdentifier.empty()) {
+    if (!suppressIdentityRecovery && out.itemIdentifier.empty()) {
         const std::string domainLike = firstMetadataWindow(combined, {"domainidentifier", "thread", "chat", "conversation", "message_guid", "guid"}, 128);
         if (!domainLike.empty()) {
             out.itemIdentifier = domainLike;
             addProv("THREAD_OR_IDENTIFIER_TEXT_PATTERN_RECOVERY=True");
         }
+    }
+    if (suppressIdentityRecovery) {
+        addProv("IDENTITY_PROMOTION_SUPPRESSED_FOR_COREDUET_INTERACTIONC=True");
     }
     return out;
 }
@@ -417,6 +422,8 @@ std::string iosAppDbRecordCategory(const std::string& databaseCategory,
     if (contains(c, "knowledgec") || contains(c, "coreduet")) {
         if (t == "zobject") return "KNOWLEDGEC_EVENTS";
         if (t == "zstructuredmetadata") return "KNOWLEDGEC_METADATA";
+        if (t == "zinteractions") return "COREDUET_INTERACTIONS";
+        if (t == "zcontacts") return "COREDUET_CONTACTS";
         if (contains(t, "zobject") || contains(cols, "zstreamname")) return "KNOWLEDGEC_EVENTS";
         return "KNOWLEDGEC_SUPPORT_TABLE";
     }
@@ -483,7 +490,7 @@ bool iosAppDbIsTargetRecordCategory(const std::string& category) {
         "CALL_RECORDS", "CALL_PARTICIPANTS",
         "WEB_HISTORY", "WEB_VISITS", "WEB_CACHE", "WEB_DOWNLOADS",
         "MAIL_RECORDS", "CALENDAR_RECORDS", "CONTACT_RECORDS",
-        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS",
+        "CHAT_RECORDS", "KNOWLEDGEC_EVENTS", "COREDUET_INTERACTIONS",
         "NOTES_RECORDS", "LOCATION_RECORDS"
     };
     return target.find(category) != target.end();
@@ -621,6 +628,48 @@ std::string columnValue(sqlite3_stmt* st, int index, std::size_t maxLen = 2000) 
     std::string v = sqliteColumnText(st, index);
     if (v.size() > maxLen) v.resize(maxLen);
     return v;
+}
+
+std::string summarizeSqliteRowValues(sqlite3_stmt* st,
+                                     const std::vector<std::string>& preferredColumns,
+                                     std::size_t maxLen = 2000) {
+    const int colCount = sqlite3_column_count(st);
+    std::set<int> used;
+    std::string out;
+    auto appendCol = [&](int i) {
+        if (i < 0 || i >= colCount || used.find(i) != used.end()) return;
+        const int typ = sqlite3_column_type(st, i);
+        if (typ == SQLITE_NULL || typ == SQLITE_BLOB) return;
+        const char* namePtr = sqlite3_column_name(st, i);
+        if (!namePtr) return;
+        const std::string name = namePtr;
+        if (name == "__rowid__") return;
+        std::string value = columnValue(st, i, 512);
+        value = trim(value);
+        if (value.empty()) return;
+        if (!out.empty()) out += "; ";
+        out += name + "=" + value;
+        used.insert(i);
+        if (out.size() > maxLen) out.resize(maxLen);
+    };
+    std::map<std::string,int> lowerCols;
+    for (int i = 0; i < colCount; ++i) {
+        const char* namePtr = sqlite3_column_name(st, i);
+        if (namePtr) lowerCols[toLower(namePtr)] = i;
+    }
+    for (const auto& pref : preferredColumns) {
+        const std::string lp = toLower(pref);
+        auto it = lowerCols.find(lp);
+        if (it != lowerCols.end()) appendCol(it->second);
+    }
+    for (int i = 0; i < colCount && out.size() < maxLen; ++i) {
+        const char* namePtr = sqlite3_column_name(st, i);
+        if (!namePtr) continue;
+        const std::string lname = toLower(namePtr);
+        if (lname.find("data") != std::string::npos || lname.find("blob") != std::string::npos || lname.find("cache") != std::string::npos) continue;
+        appendCol(i);
+    }
+    return out;
 }
 
 
@@ -1241,6 +1290,34 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
         const std::string dateRaw = columnValue(st, dateCol, 128);
         const char* dateNamePtr = dateCol >= 0 ? sqlite3_column_name(st, dateCol) : "";
         const auto ts = normalizeIosAppTimestamp(dateRaw, dateNamePtr ? std::string(dateNamePtr) : std::string());
+        if (recordCategory == "COREDUET_INTERACTIONS") {
+            const int participantCol = findColumnIndex(cols, {"zsender", "zrecipient", "zrecipients", "zcontact", "zperson", "zdisplayname", "zname", "zaccount", "zhandle", "zaddress"}, true);
+            const int bundleCol = findColumnIndex(cols, {"zbundleid", "zbundleidentifier", "zapplication", "zapp", "zdomainidentifier", "zdirection"}, true);
+            const int typeCol = findColumnIndex(cols, {"zinteractiontype", "ztype", "zmechanism", "zdirection", "zverb", "zkind", "zcontext"}, true);
+            const int urlLikeCol = findColumnIndex(cols, {"zcontenturl", "zurl", "url", "zwebpageurl"}, true);
+            const int identifierCol = findColumnIndex(cols, {"zidentifier", "zuniqueidentifier", "zuuid", "zguid", "zcontentidentifier", "zexternalidentifier", "z_pk"}, true);
+            const int titleLikeCol = findColumnIndex(cols, {"ztitle", "zdisplayname", "zsummary", "zcontenttext", "zcontentdescription", "zdomainidentifier"}, true);
+            const std::string participant = columnValue(st, participantCol, 512);
+            const std::string bundleHint = columnValue(st, bundleCol, 512);
+            const std::string typeHint = columnValue(st, typeCol, 256);
+            const std::string urlHint = columnValue(st, urlLikeCol, 1000);
+            const std::string identifier = columnValue(st, identifierCol, 512);
+            std::string title = columnValue(st, titleLikeCol, 1000);
+            if (title.empty()) title = typeHint.empty() ? "CoreDuet interactionC row" : "CoreDuet interactionC row: " + typeHint;
+            std::string snippet = summarizeSqliteRowValues(st, {"ZSTARTDATE", "ZENDDATE", "ZCREATIONDATE", "ZBUNDLEID", "ZBUNDLEIDENTIFIER", "ZDOMAINIDENTIFIER", "ZINTERACTIONTYPE", "ZTYPE", "ZDIRECTION", "ZSENDER", "ZRECIPIENT", "ZRECIPIENTS", "ZCONTACT", "ZPERSON", "ZCONTENTURL", "ZTITLE", "ZDISPLAYNAME"}, 2000);
+            if (!bundleHint.empty()) snippet = (snippet.empty() ? std::string() : snippet + "; ") + "app_or_domain_hint=" + bundleHint;
+            std::string contactHint = participant;
+            std::string provenance = "read_only_sqlite_dynamic_schema table=" + table + "; COREDUET_INTERACTIONC_GENERIC_ROW=True; no_direct_communication_conclusion=True; schema_tolerant_v1_6_24";
+            if (snippet.empty()) provenance += "; row_had_no_textual_previewable_columns=True";
+            bindIosParsedRecord(parsedIns, sourceId, inv, table, recordCategory,
+                                columnValue(st, pkCol, 256), ts.first, ts.second,
+                                contactHint, urlHint, title, "", identifier,
+                                snippet,
+                                "parsed_coreduet_interactionc_generic_row",
+                                provenance);
+            ++rows;
+            continue;
+        }
         if (recordCategory == "KNOWLEDGEC_EVENTS") {
             const int streamNameCol = findColumnIndex(cols, {"zstreamname"}, true);
             const int valueStringCol = findColumnIndex(cols, {"zvaluestring"}, true);

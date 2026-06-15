@@ -1,28 +1,36 @@
-# V1.6.6.6 Continuation Guide
+# V1.6.28 Release Notes
 
-Upload or reference these files in a new chat:
+## Purpose
 
-- `VestigantSpotlightInv_V1_6_6_6.zip`
-- `VestigantSpotlightInv_V1_6_6_6.zip.sha256`
-- `V1_6_6_5_to_V1_6_6_6.patch`
-- `V1_6_6_6_linux_validation.log`
-- `V1_6_6_6_static_audit.log`
-- `Upload_Thin_iOS_CoreSpotlight_V1_6_6_6.zip` when available
-- `V1_6_6_6_build.log` when available
+V1.6.28 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.28 limitation language.
 
-Current state:
+## Triggering evidence from V1.6.22.1 thin
 
-V1.6.6.6 was produced after reviewing the V1.6.6.5 iOS thin bundle. The thin run completed successfully. Source inspection found that most queued forensic directives were already present in V1.6.6.5; the concrete gap fixed in V1.6.6.6 was the missing GUI bootstrap copy of `vw_ios_spotlight_comms_missing_from_ffs`.
+- `run_status.txt` ended in `complete_success`.
+- `VestigantSpotlight_tail250.log` reported active filesystem comparison was tabled and that `existence_status` would remain `NOT_CHECKED`-style.
+- `active_file_comparison_readiness.csv` reported `comparison_ready=0` and `comparison_status=ZIP_PARSED_FOR_SPOTLIGHT_NOT_IMAGE_FILE_INVENTORY`.
 
-Run next:
+## Changed in V1.6.28
 
-```powershell
-Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V1_6_6_6.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_6_6_6" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_6_6_6.zip -DestinationPath T:\ -Force
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_6\scripts\Build-V1_6_6_6.ps1
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_6\scripts\Run-V1_6_6_6-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
-```
+- Added `docs/ACTIVE_FILESYSTEM_COMPARISON_ROADMAP.md`.
+- Updated continuation docs to make active filesystem comparison the next queued implementation target.
+- Replaced stale `v0.6.4` active-comparison log strings in current source files.
+- Kept V1.6.22.1 thin diagnostic-wrapper behavior.
+- Kept V1.6.22 interactionC precision behavior.
 
-AFF4/APFS thin/full is not required unless the Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
+## Not implemented yet
+
+V1.6.28 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
+
+
+# Continuation Handoff - V1.6.18
+
+Current package: `VestigantSpotlightInv_V1_6_18.zip`.
+
+Immediate next action: build V1.6.18 on Windows/MSVC and visually validate the compact Case Information / Build Processing top section and Investigation Results action bar.
+
+Upload after build: `V1_6_18_build.log`.
+
+If the build passes and GUI layout is acceptable, run the iOS CoreSpotlight thin wrapper and upload `Upload_Thin_iOS_CoreSpotlight_V1_6_18.zip`.
+
+V1.6.18 is a validation-follow-up release. It closes the targeted V1.6.17 iOS email-category regression review and moves forward on the GUI top-section crowding issue.

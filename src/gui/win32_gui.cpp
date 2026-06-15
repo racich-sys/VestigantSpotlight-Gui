@@ -540,6 +540,40 @@ WHERE s.database_name LIKE '%index.db%'
   )
 ORDER BY s.record_timestamp_utc DESC;
 
+DROP VIEW IF EXISTS vw_ios_production_readiness_summary;
+CREATE VIEW vw_ios_production_readiness_summary AS
+SELECT '01_source_hash' AS readiness_order, 'source_container_hash' AS readiness_area,
+       CASE WHEN EXISTS (SELECT 1 FROM preserved_evidence_sets WHERE COALESCE(archive_sha256,'')<>'' AND integrity_status='HASHED') THEN 'PRODUCTION_READY_HASH_RECORDED'
+            WHEN (SELECT value FROM case_info WHERE key='force_container_hash')='true' THEN 'REVIEW_HASH_REQUESTED_BUT_NOT_RECORDED'
+            WHEN (SELECT value FROM case_info WHERE key='skip_container_hash')='true' THEN 'NOT_PRODUCTION_READY_HASH_SKIPPED'
+            ELSE 'REVIEW_HASH_STATUS_NOT_RECORDED' END AS status,
+       COALESCE((SELECT MAX(integrity_status || ':' || COALESCE(archive_sha256,'')) FROM preserved_evidence_sets),'no preserved_evidence_sets row') AS evidence,
+       'Production iOS ZIP runs should use forced container hashing or an externally documented source hash.' AS recommended_action
+UNION ALL SELECT '02_export_profile','export_profile',
+       CASE WHEN (SELECT value FROM case_info WHERE key='export_profile') IN ('investigator','support','full') THEN 'PRODUCTION_REVIEW_PROFILE' ELSE 'THIN_OR_DIAGNOSTIC_PROFILE' END,
+       COALESCE((SELECT value FROM case_info WHERE key='export_profile'),'not_recorded'),
+       'Use investigator profile for production review after thin validation.'
+UNION ALL SELECT '03_native_decode','native_decode_mode',
+       CASE WHEN COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'') LIKE '%CoreFields%' OR COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'') LIKE '%FullValues%' THEN 'CORE_OR_FULL_NATIVE_DECODE_PRESENT' ELSE 'HEADER_ONLY_OR_NOT_RECORDED' END,
+       COALESCE((SELECT GROUP_CONCAT(DISTINCT decode_mode) FROM native_decode_attempts),'not_recorded'),
+       'Production iOS review should include native CoreSpotlight value decoding.'
+)SQL" R"SQL(UNION ALL SELECT '04_record_counts','core_spotlight_records',
+       CASE WHEN (SELECT COUNT(*) FROM raw_records)>0 THEN 'RAW_RECORDS_PRESENT' ELSE 'NO_RAW_RECORDS_REVIEW_REQUIRED' END,
+       'raw_records=' || (SELECT COUNT(*) FROM raw_records) || '; raw_key_values=' || (SELECT COUNT(*) FROM raw_key_values) || '; timeline_events=' || (SELECT COUNT(*) FROM timeline_events),
+       'If counts are zero, review store discovery and native_decode_attempts before relying on the run.'
+UNION ALL SELECT '05_text_context','ios_text_context',
+       CASE WHEN (SELECT COUNT(*) FROM vw_ios_spotlight_text_context_review)>0 THEN 'TEXT_CONTEXT_PRESENT' ELSE 'TEXT_CONTEXT_NOT_OBSERVED' END,
+       'text_context_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_text_context_review) || '; string_probe_rows=' || (SELECT COUNT(*) FROM vw_ios_string_probe_values),
+       'Text context rows are review surfaces requiring source validation.'
+UNION ALL SELECT '06_missing_from_ffs','spotlight_missing_from_ffs',
+       CASE WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type='view' AND name='vw_ios_spotlight_missing_from_ffs_high_value_candidates') THEN 'MISSING_FFS_REVIEW_SURFACE_PRESENT' ELSE 'MISSING_FFS_VIEW_MISSING' END,
+       'high_value_missing_ffs_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_missing_from_ffs_high_value_candidates),
+       'Missing-from-FFS is a lead, not a standalone deletion conclusion.'
+UNION ALL SELECT '07_native_db_mismatch','spotlight_not_matched_to_native_db',
+       CASE WHEN EXISTS (SELECT 1 FROM sqlite_master WHERE type='view' AND name='vw_ios_spotlight_comms_missing_from_ffs') THEN 'NATIVE_DB_MISMATCH_VIEW_PRESENT' ELSE 'NATIVE_DB_MISMATCH_VIEW_MISSING' END,
+       'spotlight_not_matched_rows=' || (SELECT COUNT(*) FROM vw_ios_spotlight_comms_missing_from_ffs),
+       'Treat as a lead; possible explanations include deletion, app removal, encryption/inaccessibility, parser coverage limits, or unmatched identifiers.';
+
 DROP VIEW IF EXISTS vw_ios_communication_identity_frequency;
 CREATE VIEW vw_ios_communication_identity_frequency AS
 SELECT
@@ -687,6 +721,7 @@ int iosReviewViewSortRank(const ViewSpec& v) {
     // V0_9_57: expose all existing iOS views, but keep the most useful V1
     // investigative surfaces at the top so they are easy to find in mature cases.
     static const wchar_t* kV1PriorityNames[] = {
+        L"iOS - Production Readiness Summary",
         L"iOS - Investigator Overview",
         L"iOS - Investigator Super Timeline",
         L"iOS - Investigator Time Anomalies",
@@ -2900,55 +2935,58 @@ void showTab(int index) {
 
 void createProcessControls(HWND hwnd) {
     const int y0 = 58;
-    gLogo = addProcess(CreateWindowW(L"STATIC", nullptr, WS_CHILD | WS_VISIBLE | SS_BITMAP | SS_CENTERIMAGE, 16, y0, 72, 72, hwnd, nullptr, gInst, nullptr));
+    // V1.6.18 compact Case Information / Build Processing header: keep the same controls, but reduce
+    // row heights, drop-down extents, explanatory text height, and action-row
+    // button sizes so the ingest log/table area starts materially higher.
+    gLogo = addProcess(CreateWindowW(L"STATIC", nullptr, WS_CHILD | WS_VISIBLE | SS_BITMAP | SS_CENTERIMAGE, 16, y0, 56, 56, hwnd, nullptr, gInst, nullptr));
     const std::wstring logoPath = logoBitmapPath();
     if (!logoPath.empty()) {
-        gLogoBitmap = static_cast<HBITMAP>(LoadImageW(nullptr, logoPath.c_str(), IMAGE_BITMAP, 72, 72, LR_LOADFROMFILE));
+        gLogoBitmap = static_cast<HBITMAP>(LoadImageW(nullptr, logoPath.c_str(), IMAGE_BITMAP, 56, 56, LR_LOADFROMFILE));
         if (gLogoBitmap) SendMessageW(gLogo, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(gLogoBitmap));
     }
-    gBrandTitle = addProcess(CreateWindowW(L"STATIC", L"Vestigant Spotlight", WS_CHILD | WS_VISIBLE | SS_LEFT, 104, y0, 420, 28, hwnd, nullptr, gInst, nullptr));
-    gBrandSubtitle = addProcess(CreateWindowW(L"STATIC", L"Forensic Spotlight/CoreSpotlight investigation workflow", WS_CHILD | WS_VISIBLE | SS_LEFT, 104, y0 + 28, 720, 22, hwnd, nullptr, gInst, nullptr));
+    gBrandTitle = addProcess(CreateWindowW(L"STATIC", L"Vestigant Spotlight", WS_CHILD | WS_VISIBLE | SS_LEFT, 88, y0, 420, 24, hwnd, nullptr, gInst, nullptr));
+    gBrandSubtitle = addProcess(CreateWindowW(L"STATIC", L"Forensic Spotlight/CoreSpotlight investigation workflow", WS_CHILD | WS_VISIBLE | SS_LEFT, 88, y0 + 24, 720, 20, hwnd, nullptr, gInst, nullptr));
 
-    addProcess(CreateWindowW(L"STATIC", L"Case Information", WS_CHILD | WS_VISIBLE, 16, y0 + 82, 720, 24, hwnd, nullptr, gInst, nullptr));
-    labelP(hwnd, L"Case Name", 16, y0 + 116, 120, 22); gCaseName = editP(hwnd, 140, y0 + 112, 330, 26, L"Spotlight Case"); SetWindowLongPtrW(gCaseName, GWLP_ID, ID_CASE_NAME_EDIT);
-    labelP(hwnd, L"Case Number", 490, y0 + 116, 120, 22); gCaseNumber = editP(hwnd, 612, y0 + 112, 220, 26); SetWindowLongPtrW(gCaseNumber, GWLP_ID, ID_CASE_NUMBER_EDIT);
-    labelP(hwnd, L"Investigator", 16, y0 + 152, 120, 22); gInvestigator = editP(hwnd, 140, y0 + 148, 330, 26); SetWindowLongPtrW(gInvestigator, GWLP_ID, ID_INVESTIGATOR_EDIT);
-    labelP(hwnd, L"Company", 490, y0 + 152, 120, 22); gCompany = editP(hwnd, 612, y0 + 148, 220, 26); SetWindowLongPtrW(gCompany, GWLP_ID, ID_COMPANY_EDIT);
-    labelP(hwnd, L"Case Location", 16, y0 + 188, 120, 22); gOut = editP(hwnd, 140, y0 + 184, 692, 26); SetWindowLongPtrW(gOut, GWLP_ID, ID_CASE_LOCATION_EDIT); gBrowseOut = buttonP(hwnd, L"Browse", ID_BROWSE_OUT, 842, y0 + 184, 90, 28);
-    labelP(hwnd, L"Case Database", 16, y0 + 224, 120, 22); gCaseDbPath = editP(hwnd, 140, y0 + 220, 650, 26); SetWindowLongPtrW(gCaseDbPath, GWLP_ID, ID_CASE_DB_EDIT); gBrowseCase = buttonP(hwnd, L"Browse", ID_BROWSE_CASE, 800, y0 + 220, 90, 28); gOpenCase = openCaseButtonP(hwnd, 898, y0 + 218, 96, 32);
-    gSaveCaseInfo = buttonP(hwnd, L"Save Case Info", ID_SAVE_CASE_INFO, 140, y0 + 254, 140, 28);
-    gCaseAutosaveStatus = addProcess(CreateWindowW(L"STATIC", L"Autosave ready", WS_CHILD | WS_VISIBLE | SS_LEFT, 292, y0 + 258, 420, 22, hwnd, nullptr, gInst, nullptr));
+    addProcess(CreateWindowW(L"STATIC", L"Case Information", WS_CHILD | WS_VISIBLE, 16, y0 + 58, 720, 20, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Case Name", 16, y0 + 84, 112, 20); gCaseName = editP(hwnd, 128, y0 + 80, 330, 22, L"Spotlight Case"); SetWindowLongPtrW(gCaseName, GWLP_ID, ID_CASE_NAME_EDIT);
+    labelP(hwnd, L"Case Number", 478, y0 + 84, 112, 20); gCaseNumber = editP(hwnd, 590, y0 + 80, 220, 22); SetWindowLongPtrW(gCaseNumber, GWLP_ID, ID_CASE_NUMBER_EDIT);
+    labelP(hwnd, L"Investigator", 16, y0 + 112, 112, 20); gInvestigator = editP(hwnd, 128, y0 + 108, 330, 22); SetWindowLongPtrW(gInvestigator, GWLP_ID, ID_INVESTIGATOR_EDIT);
+    labelP(hwnd, L"Company", 478, y0 + 112, 112, 20); gCompany = editP(hwnd, 590, y0 + 108, 220, 22); SetWindowLongPtrW(gCompany, GWLP_ID, ID_COMPANY_EDIT);
+    labelP(hwnd, L"Case Location", 16, y0 + 140, 112, 20); gOut = editP(hwnd, 128, y0 + 136, 704, 22); SetWindowLongPtrW(gOut, GWLP_ID, ID_CASE_LOCATION_EDIT); gBrowseOut = buttonP(hwnd, L"Browse", ID_BROWSE_OUT, 842, y0 + 135, 90, 24);
+    labelP(hwnd, L"Case Database", 16, y0 + 168, 112, 20); gCaseDbPath = editP(hwnd, 128, y0 + 164, 662, 22); SetWindowLongPtrW(gCaseDbPath, GWLP_ID, ID_CASE_DB_EDIT); gBrowseCase = buttonP(hwnd, L"Browse", ID_BROWSE_CASE, 800, y0 + 163, 90, 24); gOpenCase = openCaseButtonP(hwnd, 898, y0 + 161, 96, 28);
+    gSaveCaseInfo = buttonP(hwnd, L"Save Case Info", ID_SAVE_CASE_INFO, 128, y0 + 192, 132, 24);
+    gCaseAutosaveStatus = addProcess(CreateWindowW(L"STATIC", L"Autosave ready", WS_CHILD | WS_VISIBLE | SS_LEFT, 272, y0 + 195, 420, 20, hwnd, nullptr, gInst, nullptr));
 
-    addProcess(CreateWindowW(L"STATIC", L"Build / Processing", WS_CHILD | WS_VISIBLE, 16, y0 + 292, 720, 24, hwnd, nullptr, gInst, nullptr));
-    labelP(hwnd, L"Source type", 16, y0 + 328, 90, 22); gSourceType = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 112, y0 + 324, 180, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_TYPE)), gInst, nullptr));
+    addProcess(CreateWindowW(L"STATIC", L"Build / Processing", WS_CHILD | WS_VISIBLE, 16, y0 + 224, 720, 20, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Source type", 16, y0 + 252, 86, 20); gSourceType = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 104, y0 + 248, 168, 96, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SOURCE_TYPE)), gInst, nullptr));
     for (const wchar_t* s : {L"Folder", L"ZIP", L"AFF4/APFS image (staged)", L"Raw IMG/DD image (staged)"}) SendMessageW(gSourceType, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gSourceType, CB_SETCURSEL, 0, 0);
-    labelP(hwnd, L"Raw Spotlight evidence source", 300, y0 + 328, 190, 22); gInput = editP(hwnd, 492, y0 + 324, 380, 26); gBrowseInput = buttonP(hwnd, L"Browse", ID_BROWSE_INPUT, 882, y0 + 324, 100, 28);
-    labelP(hwnd, L"Evidence root / iOS cache case", 16, y0 + 364, 220, 22); gEvidenceRoot = editP(hwnd, 236, y0 + 360, 636, 26); gBrowseRoot = buttonP(hwnd, L"Browse", ID_BROWSE_ROOT, 882, y0 + 360, 100, 28);
-    labelP(hwnd, L"7z.exe path (optional)", 16, y0 + 400, 210, 22); gSevenZip = editP(hwnd, 236, y0 + 396, 636, 26); gBrowse7z = buttonP(hwnd, L"Browse", ID_BROWSE_7Z, 882, y0 + 396, 100, 28);
-    addProcess(CreateWindowW(L"STATIC", L"Source support: Folder and ZIP are production intake paths; AFF4/APFS and Raw IMG/DD are staged image workflows for macOS images and external Mac-attached media with Spotlight indexes.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 430, 966, 38, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Raw evidence source", 282, y0 + 252, 136, 20); gInput = editP(hwnd, 420, y0 + 248, 452, 22); gBrowseInput = buttonP(hwnd, L"Browse", ID_BROWSE_INPUT, 882, y0 + 247, 100, 24);
+    labelP(hwnd, L"Evidence root / iOS cache", 16, y0 + 282, 208, 20); gEvidenceRoot = editP(hwnd, 224, y0 + 278, 648, 22); gBrowseRoot = buttonP(hwnd, L"Browse", ID_BROWSE_ROOT, 882, y0 + 277, 100, 24);
+    labelP(hwnd, L"7z.exe path", 16, y0 + 312, 204, 20); gSevenZip = editP(hwnd, 224, y0 + 308, 648, 22); gBrowse7z = buttonP(hwnd, L"Browse", ID_BROWSE_7Z, 882, y0 + 307, 100, 24);
+    addProcess(CreateWindowW(L"STATIC", L"Source support: Folder/ZIP are production intake; AFF4/APFS and Raw IMG/DD are staged macOS image workflows.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 336, 966, 26, hwnd, nullptr, gInst, nullptr));
 
-    labelP(hwnd, L"Profile", 16, y0 + 464, 90, 22); gProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 106, y0 + 460, 180, 160, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Profile", 16, y0 + 374, 70, 20); gProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 88, y0 + 370, 160, 96, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Auto", L"Standard macOS", L"iOS/CoreSpotlight"}) SendMessageW(gProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gProfile, CB_SETCURSEL, 0, 0);
-    labelP(hwnd, L"Mode", 300, y0 + 464, 56, 22); gMode = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 356, y0 + 460, 270, 140, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Mode", 258, y0 + 374, 48, 20); gMode = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 306, y0 + 370, 246, 96, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Process Raw Spotlight Evidence", L"Diagnostics / Bounded Native Parse", L"Discover Stores Only"}) SendMessageW(gMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gMode, CB_SETCURSEL, 0, 0);
-    gRun = buttonP(hwnd, L"Build / Process Case", ID_RUN, 650, y0 + 456, 190, 36);
-    gCancelIngestButton = buttonP(hwnd, L"Cancel Ingest", ID_CANCEL_INGEST, 852, y0 + 456, 130, 36);
+    gRun = buttonP(hwnd, L"Build / Process", ID_RUN, 570, y0 + 367, 172, 30);
+    gCancelIngestButton = buttonP(hwnd, L"Cancel", ID_CANCEL_INGEST, 750, y0 + 367, 116, 30);
     EnableWindow(gCancelIngestButton, FALSE);
-    addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 420, y0 + 500, 540, 24, hwnd, nullptr, gInst, nullptr));
-    gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 106, y0 + 530, 120, 24, hwnd, nullptr, gInst, nullptr));
+    addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 404, 560, 20, hwnd, nullptr, gInst, nullptr));
+    gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 16, y0 + 428, 110, 22, hwnd, nullptr, gInst, nullptr));
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
-    labelP(hwnd, L"Export profile", 715, y0 + 534, 100, 22); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 815, y0 + 530, 154, 130, hwnd, nullptr, gInst, nullptr));
+    gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"SQLite only", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 136, y0 + 428, 110, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
+    labelP(hwnd, L"Export profile", 590, y0 + 430, 92, 20); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 684, y0 + 426, 144, 92, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Minimal", L"Investigator", L"Diagnostics", L"Full CSV"}) SendMessageW(gExportProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gExportProfile, CB_SETCURSEL, 1, 0);
-    gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"SQLite only (no CSV dump)", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 244, y0 + 530, 260, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
 
-    labelP(hwnd, L"Ingest status", 16, y0 + 568, 120, 22);
-    gIngestStatus = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"Waiting: choose/create a case location and evidence source, then run ingest. Progress, elapsed time, and throughput estimates appear here and in the processing log below.", WS_CHILD | WS_VISIBLE | SS_LEFT, 140, y0 + 564, 842, 64, hwnd, nullptr, gInst, nullptr));
-    labelP(hwnd, L"Progress", 16, y0 + 640, 120, 22);
-    gIngestProgress = addProcess(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE | PBS_SMOOTH, 140, y0 + 636, 842, 26, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Ingest status", 16, y0 + 462, 112, 20);
+    gIngestStatus = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"Waiting: choose/create a case location and evidence source, then run ingest. Progress, elapsed time, and throughput estimates appear here and in the processing log below.", WS_CHILD | WS_VISIBLE | SS_LEFT, 128, y0 + 456, 854, 42, hwnd, nullptr, gInst, nullptr));
+    labelP(hwnd, L"Progress", 16, y0 + 508, 112, 20);
+    gIngestProgress = addProcess(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE | PBS_SMOOTH, 128, y0 + 504, 854, 20, hwnd, nullptr, gInst, nullptr));
     SendMessageW(gIngestProgress, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
     SendMessageW(gIngestProgress, PBM_SETPOS, 0, 0);
-    gLog = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 16, y0 + 672, 966, 184, hwnd, nullptr, gInst, nullptr));
-    appendLog(L"V0_9_60 V1 GUI polish: staged AFF4/raw image source selection restored, processing telemetry in MB, custom view sets, and repaired tag-management schema handling.");
+    gLog = addProcess(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 16, y0 + 532, 966, 224, hwnd, nullptr, gInst, nullptr));
+    appendLog(L"V1.6.18 compact GUI layout: case/build controls use shorter rows, smaller action buttons, and reduced combo drop-down extents.");
     appendLog(L"Processing log mirrors status/progress updates with elapsed time; ZIP/image/file source throughput is estimated in MB when measurable.");
 }
 
@@ -3023,9 +3061,9 @@ LRESULT CALLBACK ReviewDetailsSplitterSubclassProc(HWND hwnd, UINT msg, WPARAM w
 
 void createReviewControls(HWND hwnd) {
     const int y0 = 58;
-    addReview(CreateWindowW(L"STATIC", L"Investigation Results Grid: choose a platform-scoped review view from the left, then search/filter/sort/export database-backed results.", WS_CHILD | WS_VISIBLE, 16, y0, 960, 22, hwnd, nullptr, gInst, nullptr));
-    labelR(hwnd, L"View Set", 16, y0 + 32, 64, 22);
-    gReviewViewProfile = addReview(CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 96, y0 + 28, 160, 160, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW_PROFILE)), gInst, nullptr));
+    addReview(CreateWindowW(L"STATIC", L"Investigation Results Grid: choose a platform-scoped review view from the left, then search/filter/sort/export database-backed results.", WS_CHILD | WS_VISIBLE, 16, y0, 960, 20, hwnd, nullptr, gInst, nullptr));
+    labelR(hwnd, L"View Set", 16, y0 + 26, 64, 20);
+    gReviewViewProfile = addReview(CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 96, y0 + 22, 150, 96, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW_PROFILE)), gInst, nullptr));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Recommended V1"));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Timeline / Activity"));
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Text / Content"));
@@ -3035,48 +3073,48 @@ void createReviewControls(HWND hwnd) {
     SendMessageW(gReviewViewProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Custom"));
     SendMessageW(gReviewViewProfile, CB_SETCURSEL, 0, 0);
     applyUiFont(gReviewViewProfile);
-    labelR(hwnd, L"Views", 16, y0 + 62, 220, 22);
-    gReviewView = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 88, 230, 580, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW)), gInst, nullptr));
+    labelR(hwnd, L"Views", 16, y0 + 50, 220, 20);
+    gReviewView = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 72, 220, 580, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW)), gInst, nullptr));
     SetWindowSubclass(gReviewView, ReviewViewListSubclassProc, 2, 0);
-    gViewSetUp = buttonR(hwnd, L"Move Up", ID_VIEWSET_UP, 16, y0 + 674, 70, 26);
-    gViewSetDown = buttonR(hwnd, L"Move Down", ID_VIEWSET_DOWN, 92, y0 + 674, 80, 26);
-    gViewSetHide = buttonR(hwnd, L"Hide", ID_VIEWSET_HIDE, 178, y0 + 674, 68, 26);
-    gViewSetSave = buttonR(hwnd, L"Save Set", ID_VIEWSET_SAVE, 16, y0 + 706, 92, 26);
-    gViewSetReset = buttonR(hwnd, L"Reset Set", ID_VIEWSET_RESET, 114, y0 + 706, 92, 26);
+    gViewSetUp = buttonR(hwnd, L"Move Up", ID_VIEWSET_UP, 16, y0 + 674, 70, 24);
+    gViewSetDown = buttonR(hwnd, L"Move Down", ID_VIEWSET_DOWN, 92, y0 + 674, 80, 24);
+    gViewSetHide = buttonR(hwnd, L"Hide", ID_VIEWSET_HIDE, 178, y0 + 674, 58, 24);
+    gViewSetSave = buttonR(hwnd, L"Save Set", ID_VIEWSET_SAVE, 16, y0 + 704, 86, 24);
+    gViewSetReset = buttonR(hwnd, L"Reset Set", ID_VIEWSET_RESET, 108, y0 + 704, 86, 24);
     // V0_9_17: do not create balloon tooltips for the view list. Hover updates
     // the help/summary panel above the table instead, which is less intrusive.
     populateViewList();
 
-    labelR(hwnd, L"Search", 262, y0 + 34, 60, 22); gSearch = editR(hwnd, 326, y0 + 30, 250, 26);
-    gRefresh = buttonR(hwnd, L"Update", ID_REVIEW_REFRESH, 586, y0 + 29, 86, 28);
-    gCancelLoad = buttonR(hwnd, L"Cancel Load", ID_REVIEW_CANCEL_LOAD, 680, y0 + 29, 104, 28);
+    labelR(hwnd, L"Search", 248, y0 + 26, 54, 20); gSearch = editR(hwnd, 304, y0 + 22, 250, 22);
+    gRefresh = buttonR(hwnd, L"Update", ID_REVIEW_REFRESH, 564, y0 + 21, 80, 24);
+    gCancelLoad = buttonR(hwnd, L"Cancel Load", ID_REVIEW_CANCEL_LOAD, 650, y0 + 21, 96, 24);
     EnableWindow(gCancelLoad, FALSE);
-    labelR(hwnd, L"Rows", 794, y0 + 34, 42, 22); gPageSize = editR(hwnd, 838, y0 + 30, 60, 26, L"250");
-    gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 262, y0 + 66, 104, 30);
-    gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 372, y0 + 66, 104, 30);
-    gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 482, y0 + 66, 112, 30);
-    gExportFiltered = buttonR(hwnd, L"Export Filtered", ID_EXPORT_FILTERED, 600, y0 + 66, 126, 30);
-    gExportVisible = buttonR(hwnd, L"Export Views", ID_EXPORT_VISIBLE_VIEWS, 732, y0 + 66, 112, 30);
-    gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 850, y0 + 66, 126, 30);
-    gClearChecked = buttonR(hwnd, L"Clear Checked", ID_CLEAR_CHECKED, 864, y0 + 66, 116, 30);
-    gManageTags = buttonR(hwnd, L"Tags", ID_CTX_MANAGE_TAGS, 986, y0 + 66, 68, 30);
-    gOpenCaseFolder = buttonR(hwnd, L"Case Folder", ID_OPEN_CASE_FOLDER, 262, y0 + 102, 116, 26);
-    gOpenUploadFolder = buttonR(hwnd, L"Upload Folder", ID_OPEN_UPLOAD_FOLDER, 384, y0 + 102, 128, 26);
-    gOpenLogsFolder = buttonR(hwnd, L"Logs", ID_OPEN_LOGS_FOLDER, 518, y0 + 102, 76, 26);
-    gOpenDashboard = buttonR(hwnd, L"Dashboard", ID_OPEN_DASHBOARD, 732, y0 + 102, 116, 26);
-    gOpenReviewIndex = buttonR(hwnd, L"Review Index", ID_OPEN_REVIEW_INDEX, 854, y0 + 102, 126, 26);
-    gReviewSummary = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"No case opened. Open a database from the Case Information tab.", WS_CHILD | WS_VISIBLE | SS_LEFT, 262, y0 + 136, 720, 58, hwnd, nullptr, gInst, nullptr));
-    gReviewBusy = addReview(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | PBS_MARQUEE, 262, y0 + 198, 720, 6, hwnd, nullptr, gInst, nullptr));
+    labelR(hwnd, L"Rows", 756, y0 + 26, 42, 20); gPageSize = editR(hwnd, 798, y0 + 22, 56, 22, L"250");
+    gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 248, y0 + 52, 96, 24);
+    gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 350, y0 + 52, 88, 24);
+    gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 444, y0 + 52, 104, 24);
+    gExportFiltered = buttonR(hwnd, L"Export Filtered", ID_EXPORT_FILTERED, 554, y0 + 52, 118, 24);
+    gExportVisible = buttonR(hwnd, L"Export Views", ID_EXPORT_VISIBLE_VIEWS, 678, y0 + 52, 106, 24);
+    gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 790, y0 + 52, 118, 24);
+    gClearChecked = buttonR(hwnd, L"Clear Checked", ID_CLEAR_CHECKED, 248, y0 + 80, 108, 24);
+    gManageTags = buttonR(hwnd, L"Tags", ID_CTX_MANAGE_TAGS, 362, y0 + 80, 60, 24);
+    gOpenCaseFolder = buttonR(hwnd, L"Case Folder", ID_OPEN_CASE_FOLDER, 428, y0 + 80, 106, 24);
+    gOpenUploadFolder = buttonR(hwnd, L"Upload Folder", ID_OPEN_UPLOAD_FOLDER, 540, y0 + 80, 118, 24);
+    gOpenLogsFolder = buttonR(hwnd, L"Logs", ID_OPEN_LOGS_FOLDER, 664, y0 + 80, 70, 24);
+    gOpenDashboard = buttonR(hwnd, L"Dashboard", ID_OPEN_DASHBOARD, 740, y0 + 80, 108, 24);
+    gOpenReviewIndex = buttonR(hwnd, L"Review Index", ID_OPEN_REVIEW_INDEX, 854, y0 + 80, 118, 24);
+    gReviewSummary = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"No case opened. Open a database from the Case Information tab.", WS_CHILD | WS_VISIBLE | SS_LEFT, 248, y0 + 110, 734, 44, hwnd, nullptr, gInst, nullptr));
+    gReviewBusy = addReview(CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | PBS_MARQUEE, 248, y0 + 158, 734, 6, hwnd, nullptr, gInst, nullptr));
     if (gReviewBusy) ShowWindow(gReviewBusy, SW_HIDE);
-    gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS, 262, y0 + 206, 720, 462, hwnd, nullptr, gInst, nullptr));
+    gList = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS, 248, y0 + 168, 734, 500, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     SetWindowSubclass(gList, ReviewListSubclassProc, 1, 0);
-    gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"", WS_CHILD | SS_ETCHEDHORZ | SS_NOTIFY, 262, y0 + 666, 720, 8, hwnd, nullptr, gInst, nullptr));
+    gRowDetailsSplitter = addReview(CreateWindowW(L"STATIC", L"", WS_CHILD | SS_ETCHEDHORZ | SS_NOTIFY, 248, y0 + 666, 734, 8, hwnd, nullptr, gInst, nullptr));
     SetWindowSubclass(gRowDetailsSplitter, ReviewDetailsSplitterSubclassProc, 1, 0);
-    gRowDetailsLabel = addReview(CreateWindowW(L"STATIC", L"Selected Row Details - true two-column Field / Metadata table", WS_CHILD, 262, y0 + 674, 720, 20, hwnd, nullptr, gInst, nullptr));
+    gRowDetailsLabel = addReview(CreateWindowW(L"STATIC", L"Selected Row Details - true two-column Field / Metadata table", WS_CHILD, 248, y0 + 674, 734, 20, hwnd, nullptr, gInst, nullptr));
     gRowDetails = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr,
         WS_CHILD | WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS,
-        262, y0 + 696, 720, 130, hwnd, nullptr, gInst, nullptr));
+        248, y0 + 696, 734, 130, hwnd, nullptr, gInst, nullptr));
     if (gRowDetails) {
         ListView_SetExtendedListViewStyle(gRowDetails, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
         ensureDetailsListColumns();
@@ -3175,63 +3213,65 @@ void layoutControls(HWND hwnd) {
     const int browseW = 98;
     const int rightBrowseX = right - browseW;
 
-    moveIf(gLogo, 16, y0, 72, 72);
-    moveIf(gBrandTitle, 104, y0, 420, 28);
-    moveIf(gBrandSubtitle, 104, y0 + 28, std::max(400, right - 120), 22);
-    moveIf(gCaseName, 140, y0 + 112, 330, 26);
-    moveIf(gCaseNumber, 612, y0 + 112, std::max(220, right - 612 - 150), 26);
-    moveIf(gInvestigator, 140, y0 + 148, 330, 26);
-    moveIf(gCompany, 612, y0 + 148, std::max(220, right - 612 - 150), 26);
-    moveIf(gBrowseOut, rightBrowseX, y0 + 184, browseW, 28);
-    moveIf(gOut, 140, y0 + 184, std::max(250, rightBrowseX - 150), 26);
-    moveIf(gOpenCase, right - 96, y0 + 218, 96, 32);
-    moveIf(gBrowseCase, right - 198, y0 + 220, 90, 28);
-    moveIf(gCaseDbPath, 140, y0 + 220, std::max(250, right - 350), 26);
-    moveIf(gCaseAutosaveStatus, 292, y0 + 258, right - 308, 22);
+    moveIf(gLogo, 16, y0, 56, 56);
+    moveIf(gBrandTitle, 88, y0, 420, 24);
+    moveIf(gBrandSubtitle, 88, y0 + 24, std::max(400, right - 104), 20);
+    moveIf(gCaseName, 128, y0 + 80, 330, 22);
+    moveIf(gCaseNumber, 590, y0 + 80, std::max(220, right - 590 - 150), 22);
+    moveIf(gInvestigator, 128, y0 + 108, 330, 22);
+    moveIf(gCompany, 590, y0 + 108, std::max(220, right - 590 - 150), 22);
+    moveIf(gBrowseOut, rightBrowseX, y0 + 135, browseW, 24);
+    moveIf(gOut, 128, y0 + 136, std::max(250, rightBrowseX - 138), 22);
+    moveIf(gOpenCase, right - 96, y0 + 161, 96, 28);
+    moveIf(gBrowseCase, right - 198, y0 + 163, 90, 24);
+    moveIf(gCaseDbPath, 128, y0 + 164, std::max(250, right - 338), 22);
+    moveIf(gCaseAutosaveStatus, 272, y0 + 195, right - 288, 20);
 
-    // Keep Build and Cancel in a dedicated right-aligned action row so the
-    // buttons do not overlap at standard 100%/125% Windows scaling.
-    moveIf(gCancelIngestButton, right - 130, y0 + 456, 130, 36);
-    moveIf(gRun, right - 332, y0 + 456, 190, 36);
-    moveIf(gBrowseInput, rightBrowseX, y0 + 324, browseW, 28);
-    moveIf(gInput, 492, y0 + 324, std::max(220, rightBrowseX - 502), 26);
-    moveIf(gBrowseRoot, rightBrowseX, y0 + 360, browseW, 28);
-    moveIf(gEvidenceRoot, 236, y0 + 360, std::max(220, rightBrowseX - 246), 26);
-    moveIf(gBrowse7z, rightBrowseX, y0 + 396, browseW, 28);
-    moveIf(gSevenZip, 236, y0 + 396, std::max(220, rightBrowseX - 246), 26);
-    moveIf(gSuppressCsvExports, 244, y0 + 530, 270, 24);
-    moveIf(gExportProfile, right - 154, y0 + 530, 154, 130);
-    moveIf(gIngestStatus, 140, y0 + 564, right - 140, 64);
-    moveIf(gIngestProgress, 140, y0 + 636, right - 140, 26);
-    moveIf(gLog, 16, y0 + 672, right - 16, std::max(120, bottom - (y0 + 672)));
+    // V1.6.18: compact, right-aligned build action row. Keep the controls
+    // smaller than the previous 36-pixel action buttons to reduce top crowding.
+    moveIf(gCancelIngestButton, right - 116, y0 + 367, 116, 30);
+    moveIf(gRun, right - 296, y0 + 367, 172, 30);
+    moveIf(gBrowseInput, rightBrowseX, y0 + 247, browseW, 24);
+    moveIf(gInput, 420, y0 + 248, std::max(220, rightBrowseX - 430), 22);
+    moveIf(gBrowseRoot, rightBrowseX, y0 + 277, browseW, 24);
+    moveIf(gEvidenceRoot, 224, y0 + 278, std::max(220, rightBrowseX - 234), 22);
+    moveIf(gBrowse7z, rightBrowseX, y0 + 307, browseW, 24);
+    moveIf(gSevenZip, 224, y0 + 308, std::max(220, rightBrowseX - 234), 22);
+    moveIf(gSuppressCsvExports, 136, y0 + 428, 110, 22);
+    moveIf(gExportProfile, right - 144, y0 + 426, 144, 92);
+    moveIf(gIngestStatus, 128, y0 + 456, right - 128, 42);
+    moveIf(gIngestProgress, 128, y0 + 504, right - 128, 20);
+    moveIf(gLog, 16, y0 + 532, right - 16, std::max(120, bottom - (y0 + 532)));
 
-    moveIf(gReviewViewProfile, 96, y0 + 28, 160, 160);
-    const int viewSetButtonsY = bottom - 72;
-    moveIf(gReviewView, 16, y0 + 88, 230, std::max(220, viewSetButtonsY - (y0 + 88) - 8));
-    moveIf(gViewSetUp, 16, viewSetButtonsY, 70, 26);
-    moveIf(gViewSetDown, 92, viewSetButtonsY, 80, 26);
-    moveIf(gViewSetHide, 178, viewSetButtonsY, 68, 26);
-    moveIf(gViewSetSave, 16, viewSetButtonsY + 32, 92, 26);
-    moveIf(gViewSetReset, 114, viewSetButtonsY + 32, 92, 26);
-    const int reviewX = 262;
+    moveIf(gReviewViewProfile, 96, y0 + 22, 150, 96);
+    const int viewSetButtonsY = bottom - 64;
+    moveIf(gReviewView, 16, y0 + 72, 220, std::max(220, viewSetButtonsY - (y0 + 72) - 8));
+    moveIf(gViewSetUp, 16, viewSetButtonsY, 70, 24);
+    moveIf(gViewSetDown, 92, viewSetButtonsY, 80, 24);
+    moveIf(gViewSetHide, 178, viewSetButtonsY, 58, 24);
+    moveIf(gViewSetSave, 16, viewSetButtonsY + 30, 86, 24);
+    moveIf(gViewSetReset, 108, viewSetButtonsY + 30, 86, 24);
+    const int reviewX = 248;
     const int reviewW = right - reviewX;
-    // Keep the search box from expanding over the Update/Cancel/Rows controls on wide windows.
-    moveIf(gSearch, 326, y0 + 30, 250, 26);
-    // Review export action bar: two rows prevent overlap on narrower/DPI-scaled systems.
-    moveIf(gPrev, reviewX, y0 + 66, 104, 30);
-    moveIf(gNext, reviewX + 110, y0 + 66, 104, 30);
-    moveIf(gExportPage, reviewX + 220, y0 + 66, 112, 30);
-    moveIf(gExportFiltered, reviewX + 338, y0 + 66, 126, 30);
-    moveIf(gExportVisible, reviewX + 470, y0 + 66, 118, 30);
-    moveIf(gExportChecked, reviewX + 596, y0 + 66, 126, 30);
-    moveIf(gClearChecked, reviewX + 220, y0 + 100, 116, 28);
-    moveIf(gManageTags, reviewX + 342, y0 + 100, 74, 28);
-    moveIf(gOpenCaseFolder, reviewX + 426, y0 + 102, 116, 26);
-    moveIf(gOpenUploadFolder, reviewX + 548, y0 + 102, 128, 26);
-    moveIf(gOpenLogsFolder, reviewX + 682, y0 + 102, 76, 26);
-    moveIf(gReviewSummary, reviewX, y0 + 136, reviewW, 58);
-    moveIf(gReviewBusy, reviewX, y0 + 198, reviewW, 6);
-    const int reviewBodyY = y0 + 206;
+    // Compact review action bar: two short rows, kept clear of Dashboard/Index.
+    moveIf(gSearch, 304, y0 + 22, 250, 22);
+    moveIf(gRefresh, 564, y0 + 21, 80, 24);
+    moveIf(gCancelLoad, 650, y0 + 21, 96, 24);
+    moveIf(gPageSize, 798, y0 + 22, 56, 22);
+    moveIf(gPrev, reviewX, y0 + 52, 96, 24);
+    moveIf(gNext, reviewX + 102, y0 + 52, 88, 24);
+    moveIf(gExportPage, reviewX + 196, y0 + 52, 104, 24);
+    moveIf(gExportFiltered, reviewX + 306, y0 + 52, 118, 24);
+    moveIf(gExportVisible, reviewX + 430, y0 + 52, 106, 24);
+    moveIf(gExportChecked, reviewX + 542, y0 + 52, 118, 24);
+    moveIf(gClearChecked, reviewX, y0 + 80, 108, 24);
+    moveIf(gManageTags, reviewX + 114, y0 + 80, 60, 24);
+    moveIf(gOpenCaseFolder, reviewX + 180, y0 + 80, 106, 24);
+    moveIf(gOpenUploadFolder, reviewX + 292, y0 + 80, 118, 24);
+    moveIf(gOpenLogsFolder, reviewX + 416, y0 + 80, 70, 24);
+    moveIf(gReviewSummary, reviewX, y0 + 110, reviewW, 44);
+    moveIf(gReviewBusy, reviewX, y0 + 158, reviewW, 6);
+    const int reviewBodyY = y0 + 168;
     const int reviewBodyH = std::max(300, bottom - reviewBodyY - 20);
     const int detailsLabelH = 20;
     const int detailGap = 12;
@@ -3247,8 +3287,9 @@ void layoutControls(HWND hwnd) {
     moveIf(gRowDetails, reviewX, splitterY + splitterH + detailsLabelH, reviewW, gReviewDetailsPaneHeight);
     resizeDetailsListColumns();
     enforceDetailsPaneTabVisibility();
-    moveIf(gOpenDashboard, right - 248, y0 + 102, 116, 26);
-    moveIf(gOpenReviewIndex, right - 126, y0 + 102, 126, 26);
+    moveIf(gOpenDashboard, right - 234, y0 + 80, 108, 24);
+    moveIf(gOpenReviewIndex, right - 118, y0 + 80, 118, 24);
+
 
     moveIf(gTagList, 16, y0 + 60, 230, std::max(190, bottom - (y0 + 60) - 370));
     moveIf(gTagNote, 262, y0 + 130, std::max(360, right - 262 - 250), 92);

@@ -1,11 +1,10 @@
-# Current Validation Status - V1.6.6.5
+# V1.6.28 Current Note
 
-- Linux CMake build: PASS.
-- CLI version: `Vestigant Spotlight v1.6.6.5`.
-- Self-test: PASS, including native CoreSpotlight probe text-context coverage.
-- Uploaded V1.6.6.4 Windows build log: completed with `Vestigant Spotlight v1.6.6.4`.
-- Uploaded V1.6.6.4 iOS thin bundle: `complete_success`.
-- Windows/MSVC build for V1.6.6.5: not run in this environment.
-- Required next validation: run `scripts\Build-V1_6_6_5.ps1`, then run iOS thin with `scripts\Run-V1_6_6_5-iOS-CoreSpotlight-AndZip.ps1 -CleanOut`.
+Current baseline is V1.6.28. Use `docs/START_CONTINUATION_CHAT.md` for handoff and `docs/IOS_INVESTIGATION_VALIDATION_WORKFLOW.md` for iOS validation. Guardrail retirement is tracked in `docs/GUARDRAIL_RETIREMENT_PLAN.md`.
 
-AFF4/APFS thin/full is not required for V1.6.6.5 unless Windows build/shared schema initialization regresses.
+# Validation Status - V1.6.28
+
+- Static source/package audit: completed.
+- Windows/MSVC build: not run in this environment.
+- GUI visual/DPI validation: not run in this environment.
+- Next required artifact: `D:\Downloads\V1_6_28_build.log`.

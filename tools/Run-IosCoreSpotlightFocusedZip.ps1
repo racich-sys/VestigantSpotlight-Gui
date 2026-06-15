@@ -1,11 +1,19 @@
 param(
     [Parameter(Mandatory=$true)][string]$InputZipOrFolder,
-    [string]$Out = "Q:\SpotlightCase\V0_8_75_iOS_CoreSpotlight",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_V0_8_75_iOS_CoreSpotlight.zip",
+    [string]$Out = "Q:\SpotlightCase\iOS_CoreSpotlight",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_iOS_CoreSpotlight.zip",
     [switch]$CleanOut,
     [switch]$NoClipboardOrExplorer,
     [switch]$FullDiagnostics,
-  [switch]$NoCsvExports
+    [ValidateSet("diagnostics","run")][string]$RunMode = "diagnostics",
+    [ValidateSet("minimal","investigator","diagnostics","support","full")][string]$ExportProfile = "",
+    [switch]$ForceContainerHash,
+    [switch]$FullNativeValues,
+    [switch]$DiagnosticFullNativeDb,
+    [int]$MaxNativeRecords = 0,
+    [int]$MaxNativeBlocks = 0,
+    [switch]$MaterializeIosSupportDb,
+    [switch]$NoCsvExports
 )
 
 $ErrorActionPreference = "Stop"
@@ -124,7 +132,7 @@ if (!(Test-Path -LiteralPath $InputZipOrFolder)) { throw "Input not found: $Inpu
 if ($CleanOut) { Remove-Item -LiteralPath $Out -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
-# V0_8_75: record what CoreSpotlight stores exist inside the submitted focused ZIP/folder
+# Record what CoreSpotlight stores exist inside the submitted focused ZIP/folder
 # before the CLI stages it. This makes discovery gaps visible in thin uploads.
 $InventoryPath = Join-Path $Out "ios_input_store_entry_inventory.csv"
 "entry_type,length,last_write_time,full_name" | Set-Content -LiteralPath $InventoryPath -Encoding UTF8
@@ -152,19 +160,30 @@ if (Test-Path -LiteralPath $InputZipOrFolder -PathType Leaf) {
 }
 
 
-$ExportProfile = if ($FullDiagnostics) { "diagnostics" } else { "minimal" }
-Write-Host "iOS export profile: $ExportProfile (FullDiagnostics=$($FullDiagnostics.IsPresent))"
+$EffectiveExportProfile = if (![string]::IsNullOrWhiteSpace($ExportProfile)) { $ExportProfile } elseif ($FullDiagnostics) { "diagnostics" } else { "minimal" }
+Write-Host "iOS run mode: $RunMode"
+Write-Host "iOS export profile: $EffectiveExportProfile (FullDiagnostics=$($FullDiagnostics.IsPresent))"
+Write-Host "iOS full native metadata values: $($FullNativeValues.IsPresent)"
+Write-Host "iOS diagnostic full native DB persistence: $($DiagnosticFullNativeDb.IsPresent)"
+if ($MaxNativeRecords -gt 0) { Write-Host "iOS max native records override: $MaxNativeRecords" }
+if ($MaxNativeBlocks -gt 0) { Write-Host "iOS max native blocks override: $MaxNativeBlocks" }
 
 $cliArgs = @(
-  "--mode", "diagnostics",
+  "--mode", $RunMode,
   "--profile", "ios",
   "--input", $InputZipOrFolder,
   "--out", $Out,
   "--full-scan",
   "--decode-core-native-values",
-  "--export-profile", $ExportProfile,
+  "--export-profile", $EffectiveExportProfile,
   "--verbose"
 )
+if ($ForceContainerHash) { $cliArgs += "--force-container-hash" }
+if ($FullNativeValues) { $cliArgs += "--experimental-full-native-values" }
+if ($DiagnosticFullNativeDb) { $cliArgs += "--diagnostic-full-native-db" }
+if ($MaxNativeRecords -gt 0) { $cliArgs += @("--max-native-records", [string]$MaxNativeRecords) }
+if ($MaxNativeBlocks -gt 0) { $cliArgs += @("--max-native-blocks", [string]$MaxNativeBlocks) }
+if ($MaterializeIosSupportDb) { $cliArgs += "--materialize-ios-support-db" }
 if ($NoCsvExports) { $cliArgs += "--no-csv-exports" }
 $cliExit = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $cliArgs -CaseRoot $Out -IntervalSeconds 60
 $global:LASTEXITCODE = $cliExit
@@ -172,19 +191,75 @@ if ($cliExit -ne 0) { Write-Warning "iOS CLI exited with code $cliExit; upload b
 
 try {
   $perfScript = Join-Path $ScriptRoot "Generate-ThinPerformanceSummary.ps1"
-  if (Test-Path -LiteralPath $perfScript) { & $perfScript -CaseRoot $Out -SlowExportSeconds 30 }
+  if (Test-Path -LiteralPath $perfScript) {
+    if ($RunMode -eq "run" -and $EffectiveExportProfile -eq "investigator") {
+      & $perfScript -CaseRoot $Out -SlowExportSeconds 30 -ReportTitle "Production Performance Summary" -OutputPrefix "production_performance_summary" -OutputMarkdownName "PRODUCTION_PERFORMANCE_SUMMARY.md"
+    } else {
+      & $perfScript -CaseRoot $Out -SlowExportSeconds 30
+    }
+  }
 } catch {
-  Write-Warning "Unable to generate thin performance summary: $($_.Exception.Message)"
+  Write-Warning "Unable to generate performance summary: $($_.Exception.Message)"
 }
 
 & $UploadScript `
   -CaseRoot $Out `
   -ZipPath $ZipPath `
-  -UploadWorkRoot "D:\Downloads\V0_8_75_iOS_UploadWork" `
+  -UploadWorkRoot "D:\Downloads\iOS_CoreSpotlight_UploadWork" `
   -IncludeLogsTailOnly
 
 Get-Item $ZipPath | Select-Object FullName,Length
 Get-FileHash $ZipPath -Algorithm SHA256
+
+# V1.6.17 iOS validation fix: fail fast if the focused thin ZIP omits bounded row-level upload samples.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$requiredUploadSamples = @(
+  "exports/upload_samples/upload_table_counts.csv",
+  "exports/upload_samples/upload_samples_manifest.csv",
+  "exports/upload_samples/artifacts_sample.csv",
+  "exports/upload_samples/raw_key_values_sample.csv",
+  "exports/upload_samples/timeline_events_sample.csv",
+  "exports/upload_samples/usage_evidence_sample.csv",
+  "exports/upload_samples/active_file_comparison_validation_checks_sample.csv",
+  "exports/upload_samples/active_file_comparison_candidate_summary_sample.csv",
+  "exports/upload_samples/orphaned_deleted_candidates_focus.csv",
+  "exports/upload_samples/ios_coreduet_interactionc_database_status_sample.csv",
+  "exports/upload_samples/ios_coreduet_interactionc_validation_checks_sample.csv",
+  "exports/upload_samples/ios_coreduet_interactionc_summary_sample.csv",
+  "exports/upload_samples/ios_coreduet_interactionc_events_sample.csv"
+)
+if ($EffectiveExportProfile -in @("support", "full", "diagnostics")) {
+  $requiredUploadSamples += "exports/upload_samples/parser_coverage_summary_sample.csv"
+  $requiredUploadSamples += "exports/upload_samples/ios_record_investigation_hints_sample.csv"
+}
+$zipForValidation = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+try {
+  $zipEntrySet = @{}
+  foreach ($entry in $zipForValidation.Entries) { $zipEntrySet[$entry.FullName.Replace('\','/')] = $true }
+  $missingRequiredUploadSamples = @()
+  foreach ($required in $requiredUploadSamples) {
+    if (!$zipEntrySet.ContainsKey($required)) { $missingRequiredUploadSamples += $required }
+  }
+  if ($missingRequiredUploadSamples.Count -gt 0) {
+    $missingMessage = "iOS thin upload ZIP is missing required bounded validation samples: $($missingRequiredUploadSamples -join ', ')"
+    if ($cliExit -ne 0) {
+      Write-Warning ("$missingMessage. CLI exit code was $cliExit, so this upload is being preserved as an incomplete-run diagnostic bundle instead of failing post-upload validation.")
+      try {
+        $diagnosticStatusPath = Join-Path $Out "focused_zip_validation_status.txt"
+        Set-Content -LiteralPath $diagnosticStatusPath -Value @(
+          "status=incomplete_run_diagnostic_bundle",
+          "cli_exit_code=$cliExit",
+          "missing_required_upload_samples=$($missingRequiredUploadSamples -join ';')",
+          "note=V1.6.28 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
+        ) -Encoding UTF8
+      } catch {}
+    } else {
+      throw $missingMessage
+    }
+  }
+} finally {
+  $zipForValidation.Dispose()
+}
 
 if (!$NoClipboardOrExplorer) {
     try { Set-Clipboard -Value $ZipPath } catch {}

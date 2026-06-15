@@ -1,59 +1,48 @@
-## V1.6.6.6 - Thin result review and GUI bootstrap native-DB mismatch view audit
+# Vestigant Spotlight Investigator V1.6.28
 
-V1.6.6.6 was built after review of the uploaded V1.6.6.5 iOS thin bundle. The thin run reached `complete_success` and reported 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events. No slow or incomplete exports were reported above the thin-performance threshold.
+## Validation fix
+- V1.6.27 thin completed and produced the new active-comparison/CoreDuet validation samples. Eight active-comparison checks passed and one remained REVIEW because the GUI-layer Missing-from-FFS view re-created `vw_ios_spotlight_missing_from_ffs_candidates` with blank `ffs_lookup_source`.
+- V1.6.28 updates the GUI/review-layer Missing-from-FFS view to carry lookup source from full iOS FFS inventory or slim path lookup into exported reference rows.
+- V1.6.28 also hardens orphan/missing candidate materialization so `orphan_reason` uses a nonblank lookup-source fallback.
+- Missing-from-FFS rows remain investigative leads only, not deletion proof.
 
-Source inspection of V1.6.6.5 found that the requested APFS guided traversal cycle guards, bounded bplist/NSKeyedArchiver resolver, and `tel:` / `mailto:` identity fallback were already present. The actionable gap was that `vw_ios_spotlight_comms_missing_from_ffs` existed in the case schema and registry, but not in the lightweight GUI bootstrap SQL.
+# Vestigant Spotlight Investigator V1.6.28
 
-Changes:
+## Validation hardening
+- Verified from V1.6.26 thin evidence that active filesystem comparison completed and produced 7,766 materialized Missing-from-FFS reference candidates, but one validation check remained REVIEW because reference-view lookup-source reporting was not populated in the exported validation surface.
+- Added additional active filesystem comparison validation checks for candidate-summary reconciliation, unsafe deletion-language absence, materialized-reference provenance, and high-value message-attachment candidate visibility.
+- Added CoreDuet interactionC validation checks to reconcile parsed rows to canonical ZINTERACTIONS rows, confirm join tables are not promoted as standalone events, confirm Phone: identity promotion remains suppressed, and confirm contextual guardrail notes are present.
+- Added bounded upload enforcement for the new active-comparison and CoreDuet validation samples.
+- Missing-from-FFS rows remain investigative leads only, not deletion proof.
 
-- Added `vw_ios_spotlight_comms_missing_from_ffs` to `src/gui/win32_gui.cpp` GUI bootstrap SQL.
-- Prioritized `iOS - Spotlight Comms Missing From Native DB` in both GUI sort lists.
-- Added V1.6.6.6 forensic-directive and release-readiness checks requiring the view in `case_db.cpp`, `win32_gui.cpp`, and `view_registry.cpp`.
-- Bumped current wrappers, version metadata, and current documentation to V1.6.6.6.
+# V1.6.28 Release Notes
 
-Test determination: run Windows/MSVC build and iOS thin. AFF4/APFS thin/full is not required unless Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
+## Purpose
 
-## V1.6.6.5 - iOS native CoreSpotlight probe review bridge
+V1.6.25 validated the active filesystem comparison pipeline and materialized 7,766 Missing-from-FFS reference candidates. V1.6.28 adds additional validation surfaces so the next thin run can prove count consistency, lead-only language, lookup-source preservation, and candidate categorization without manually joining CSVs.
 
-V1.6.6.5 was built after review of the uploaded V1.6.6.4 Windows build log and iOS thin bundle. The Windows build log showed a completed V1.6.6.4 build. The iOS thin bundle reached `complete_success`, with 6 valid stores, 344,445 raw records, 22,569 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events.
+## Triggering evidence from V1.6.25 thin
 
-The V1.6.6.4 thin run showed that timeout-prone V1.6.6.2 exports were fixed, but compact native probe strings were still not flowing into the main iOS text-context and communication review surfaces. `ios_string_probe_category_summary.csv` contained 9,591 message/app string probes and 933 email/account probes, while message/text-context review exports remained empty.
+- Build completed cleanly and reported `Vestigant Spotlight v1.6.25`.
+- Thin run ended with `complete_success`.
+- `active_file_comparison_runs_sample.csv` showed `run_status=COMPLETED_IOS_FFS_EXACT_PATH_AND_REFERENCE_LOOKUP`, `image_file_count=2245783`, `missing_candidate_count=7766`, and `not_checked_count=344445`.
+- `orphaned_deleted_candidates_sample.csv` showed `MISSING_FROM_IOS_FFS_REFERENCE_CANDIDATE` rows with lead-only language.
+- The Missing-from-FFS candidate sample exposed blank `ffs_lookup_source`, so V1.6.28 normalizes blank lookup-source values to `lookup_available_no_matching_path`.
 
-Implemented:
-- high-signal `__native_core_probe_string_*` values can now feed same-record text context;
-- iOS text-context review exposes `source_field_name` and classifies native SMS/iMessage/mail/account/file-reference probes;
-- iOS communication/message review views expose `native_probe_context_count` and `native_probe_context_sample`;
-- new communication buckets identify `SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE` and `SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE`;
-- `vw_ios_spotlight_investigator_overview` now uses lightweight base/probe counts to avoid the V1.6.6.4 46-second slow overview export;
-- self-test coverage now includes native CoreSpotlight probe-to-text-context and communication-review checks.
+## Changed in V1.6.28
 
-Validation performed here:
-- Linux CMake build: PASS.
-- CLI version: `Vestigant Spotlight v1.6.6.5`.
-- Self-test: PASS.
-- Windows/MSVC build: not run here.
+- Adds `vw_active_file_comparison_validation_checks`.
+- Adds `vw_active_file_comparison_candidate_summary`.
+- Exports full CSVs for both validation views.
+- Adds bounded upload samples:
+  - `active_file_comparison_validation_checks_sample.csv`
+  - `active_file_comparison_candidate_summary_sample.csv`
+  - `orphaned_deleted_candidates_focus.csv`
+- Updates active-comparison readiness next-action text for all `COMPLETED_IOS_FFS%` run statuses.
+- Normalizes blank Missing-from-FFS lookup source values to `lookup_available_no_matching_path`.
 
-# V1_6_6_5
+## Guardrails retained
 
-## Summary
-
-V1.6.6.5 is a build-wrapper and release-readiness hotfix after V1.6.6.3 stopped at the pre-build readiness check for generic `KNOWLEDGEC_EVENTS` in communication/identity predicates.
-
-## Implemented
-
-- Updated the current Windows build wrapper to V1.6.6.5 and corrected the final CLI version assertion to `1.6.6.5`.
-- Moved build-wrapper preflight checks after source extraction / clean extraction so the checks validate the package that will actually be built.
-- Updated Win32 GUI bootstrap communication views to use `KNOWLEDGEC_COMMUNICATION_INTENT` and provenance markers rather than generic `KNOWLEDGEC_EVENTS`.
-- Reworked release-readiness checks to distinguish disallowed promotional predicates from allowed suppression guards that exclude generic KnowledgeC/device-app activity rows.
-- Added release-readiness coverage for `src/gui/win32_gui.cpp` in addition to `src/db/case_db.cpp`.
-- Added `docs/V1_6_6_5_BUILD_WRAPPER_AND_READINESS_HOTFIX.md`.
-
-## Validation
-
-- Local Linux CMake build: PASS.
-- CLI version: `Vestigant Spotlight v1.6.6.5`.
-- Self-test: PASS.
-- Static current-wrapper/text audit: PASS.
-- Static KnowledgeC promotional predicate audit: PASS.
-- Windows/MSVC build: not run in this environment.
-- Required next validation: Windows/MSVC build, then iOS thin.
+- Missing rows remain investigative leads only, not deletion proof.
+- No fuzzy matching.
+- AFF4/APFS image-backed inode/parent comparison remains pending.

@@ -738,6 +738,9 @@ void writeUploadReviewIndex(const fs::path& file) {
         row("exports/upload_samples/folder_activity_summary.csv", "Same-parent folder activity rollup from Spotlight parent inode data.");
         row("exports/upload_samples/recent_activity_focus.csv", "Recent artifacts by usage/update signals.");
         row("exports/upload_samples/volume_root_focus.csv", "Volume root and mounted-volume indicators.");
+        row("exports/upload_samples/ios_coreduet_interactionc_database_status_sample.csv", "CoreDuet People/interactionC source and parse readiness sample.");
+        row("exports/upload_samples/ios_coreduet_interactionc_summary_sample.csv", "CoreDuet People/interactionC summary sample.");
+        row("exports/upload_samples/ios_coreduet_interactionc_events_sample.csv", "Bounded CoreDuet People/interactionC event review sample.");
         out << "</table>";
         out << "<h2>Local-only files intentionally not in Upload</h2><p>The following are normally present in the local case folder but omitted from Upload: <code>VestigantSpotlight.case.sqlite</code>, <code>spotlight_case.db</code>, full <code>artifact_summary.csv</code>, full <code>investigator_timeline.csv</code>, full <code>native_key_values_part_*.csv</code>, raw AFF4/iOS tool output logs, helper scripts that may contain absolute evidence paths, and other large full-case CSVs.</p>";
         out << "<p>Active file comparison is now modeled through image_file_inventory and vw_spotlight_active_file_comparison. It remains readiness-only until an AFF4/APFS filesystem reader populates image_file_inventory.</p>";
@@ -777,7 +780,7 @@ void writeUiAndIosPlanningFiles(const fs::path& caseDir) {
             out << "- Full raw-key/value review should be targeted by field, path, inode, or date instead of browsed from row one.\n\n";
             out << "## Source intake status\n\n";
             out << "- Folder and ZIP sources are implemented for Store-V2/CoreSpotlight discovery.\n";
-            out << "- AFF4 and raw flat-image inputs are identified and registered in source-probe/readiness output, but container/filesystem extraction is not implemented yet.\n";
+            out << "- AFF4 and raw flat-image inputs are identified and registered in source-probe/readiness output. General full-container filesystem extraction is still staged, but bounded AFF4/APFS Spotlight Store-V2 copy-out/staging/parsing validation is active for supported guarded layouts.\n";
             out << "- Review `SOURCE_INTAKE_PLAN.md` and `evidence_source_readiness.csv` in the case folder for source-specific status.\n";
         }
         {
@@ -3414,7 +3417,8 @@ void registerOriginalContainerSource(CaseDatabase& db,
                                      const fs::path& stagedWorkingRoot,
                                      const std::string& notes,
                                      Logger& log,
-                                     bool skipHash) {
+                                     bool skipHash,
+                                     const fs::path& caseDirForStatus) {
     std::uintmax_t sizeBytes = 0;
     std::string sha;
     try {
@@ -3425,7 +3429,27 @@ void registerOriginalContainerSource(CaseDatabase& db,
             if (skipHash) {
                 log.warn("Original container SHA256 deferred for this source-probe/development run: " + pathString(originalContainer));
             } else {
-                sha = sha256File(originalContainer);
+                appendRunStatus(caseDirForStatus, "original_container_hash_start", "size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " path=" + pathString(originalContainer));
+                log.info("Original container SHA256 hashing started. size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " path=" + pathString(originalContainer));
+                std::uintmax_t lastReportedBytes = 0;
+                int lastReportedPercent = -1;
+                const std::uintmax_t minReportStep = 5ULL * 1024ULL * 1024ULL * 1024ULL;
+                sha = sha256FileWithProgress(originalContainer, [&](std::uintmax_t bytesRead) {
+                    int percent = -1;
+                    if (sizeBytes > 0) percent = static_cast<int>((bytesRead * 100ULL) / sizeBytes);
+                    const bool reportByBytes = (lastReportedBytes == 0 || bytesRead >= lastReportedBytes + minReportStep || bytesRead >= sizeBytes);
+                    const bool reportByPercent = (percent >= 0 && (lastReportedPercent < 0 || percent >= lastReportedPercent + 5 || percent >= 100));
+                    if (!reportByBytes && !reportByPercent) return;
+                    lastReportedBytes = bytesRead;
+                    if (percent >= 0) lastReportedPercent = percent;
+                    appendRunStatus(caseDirForStatus,
+                                    "original_container_hash_progress",
+                                    "bytes_read=" + std::to_string(static_cast<unsigned long long>(bytesRead)) +
+                                    " total_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) +
+                                    " percent=" + (percent >= 0 ? std::to_string(percent) : std::string("unknown")));
+                });
+                appendRunStatus(caseDirForStatus, "original_container_hash_complete", "size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
+                log.info("Original container SHA256 hashing completed. size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
             }
         }
     } catch (const std::exception& ex) {
@@ -4121,22 +4145,33 @@ bool containsU64(const std::vector<std::uint64_t>& values, std::uint64_t v) {
 }
 
 
-void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
-                                         const EvidenceSource& source,
-                                         const RunOptions& opt,
-                                         CaseDatabase& db,
-                                         Logger& log) {
+struct Aff4ApfsStagedStoreV2ParserProbeResult {
+    std::vector<StoreInfo> candidates;
+    std::vector<StoreInfo> selected;
+    NativeStoreDbParseCounts parseCounts;
+    std::string status = "NOT_RUN";
+    std::string decodeModeName = "NOT_RUN";
+};
+
+Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
+                                                                            const EvidenceSource& source,
+                                                                            const RunOptions& opt,
+                                                                            CaseDatabase& db,
+                                                                            Logger& log) {
     const fs::path stagedRoot = caseDir / "ExtractedSpotlight" / "StagedStoreV2";
     const fs::path csvPath = caseDir / "aff4_apfs_staged_storev2_parser_probe.csv";
     const fs::path jsonPath = caseDir / "aff4_apfs_staged_storev2_parser_probe_summary.json";
     const fs::path mdPath = caseDir / "AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md";
-    std::vector<StoreInfo> candidates;
-    std::vector<StoreInfo> selected;
-    NativeStoreDbParseCounts parseCounts;
+    Aff4ApfsStagedStoreV2ParserProbeResult result;
+    auto& candidates = result.candidates;
+    auto& selected = result.selected;
+    auto& parseCounts = result.parseCounts;
     std::string runStatus = "NOT_RUN";
     std::string notes;
     std::size_t maxRecordsUsed = opt.maxNativeRecords ? opt.maxNativeRecords : 25000U;
     std::size_t maxBlocksUsed = opt.maxNativeBlocks;
+    const NativeDecodeMode stagedDecodeMode = opt.decodeCoreNativeValues ? NativeDecodeMode::CoreFields : NativeDecodeMode::FullValues;
+    result.decodeModeName = (stagedDecodeMode == NativeDecodeMode::FullValues) ? "FullValues" : "CoreFields";
 
     try {
         if (!fs::exists(stagedRoot)) {
@@ -4154,13 +4189,13 @@ void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
                 runStatus = candidates.empty() ? "NO_STAGED_STORE_CANDIDATES_DISCOVERED" : "NO_VALID_STAGED_STORE_SELECTED";
                 notes = "Discovery did not produce a valid selected primary Store-V2 database from the staged copy-out folder.";
             } else {
-                appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parse_start", "selected_stores=" + std::to_string(selected.size()));
-                NativeStoreDbParser parser(NativeDecodeMode::CoreFields, maxRecordsUsed, maxBlocksUsed);
+                appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parse_start", "selected_stores=" + std::to_string(selected.size()) + " decode_mode=" + result.decodeModeName);
+                NativeStoreDbParser parser(stagedDecodeMode, maxRecordsUsed, maxBlocksUsed);
                 parser.setProgressPath(caseDir / "logs" / "aff4_apfs_staged_storev2_parse_progress.tsv");
                 parseCounts = parser.parseStores(selected, stagedSource, db, log);
-                appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parse_complete", "raw_records=" + std::to_string(parseCounts.rawRecords) + " raw_key_values=" + std::to_string(parseCounts.rawKeyValues) + " raw_date_candidates=" + std::to_string(parseCounts.rawDateCandidates));
+                appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parse_complete", "decode_mode=" + result.decodeModeName + " raw_records=" + std::to_string(parseCounts.rawRecords) + " raw_key_values=" + std::to_string(parseCounts.rawKeyValues) + " raw_date_candidates=" + std::to_string(parseCounts.rawDateCandidates) + " fallback_header_only_items=" + std::to_string(parseCounts.fallbackHeaderOnlyItems));
                 runStatus = "PARSE_PROBE_COMPLETED";
-                notes = "Native Store-V2 parser was run in bounded CoreFields mode against APFS-extracted staged Store-V2 candidates. Treat results as development validation until APFS path reconstruction and full Store-V2 component completeness are confirmed.";
+                notes = "Native Store-V2 parser was run in bounded " + result.decodeModeName + " mode against APFS-extracted staged Store-V2 candidates. FullValues is now the default for this bounded macOS AFF4 validation probe; pass --decode-core-native-values to force the older raw-probe-only CoreFields path.";
             }
         }
     } catch (const std::exception& ex) {
@@ -4214,6 +4249,7 @@ void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
         out << "  \"selected_databases\": " << selected.size() << ",\n";
         out << "  \"max_records_used\": " << maxRecordsUsed << ",\n";
         out << "  \"max_blocks_used\": " << maxBlocksUsed << ",\n";
+        out << "  \"native_decode_mode\": \"" << jsonEscape(result.decodeModeName) << "\",\n";
         out << "  \"stores_seen\": " << parseCounts.storesSeen << ",\n";
         out << "  \"valid_stores\": " << parseCounts.validStores << ",\n";
         out << "  \"metadata_blocks\": " << parseCounts.metadataBlocks << ",\n";
@@ -4233,12 +4269,13 @@ void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
         out << "# AFF4 APFS Staged Store-V2 Parser Probe\n\n";
         out << "Version: " << appVersion() << "\n\n";
         out << "## Scope\n\n";
-        out << "This probe discovers Store-V2 candidates copied out of the selected AFF4/APFS image and runs the native Store-V2 parser in bounded CoreFields mode against the staged candidate folders. It does not scan parent drives, does not mount APFS, and does not convert the AFF4 image to RAW/DD.\n\n";
+        out << "This probe discovers Store-V2 candidates copied out of the selected AFF4/APFS image and runs the native Store-V2 parser in bounded " << result.decodeModeName << " mode against the staged candidate folders. It does not scan parent drives, does not mount APFS, and does not convert the AFF4 image to RAW/DD. FullValues is the default for this macOS AFF4 validation probe because the record cap keeps the run bounded while exposing semantic kMDItem fields where the private Store-V2 value parser can decode them.\n\n";
         out << "## Summary\n\n";
         out << "- Status: `" << runStatus << "`\n";
         out << "- Candidate databases: `" << candidates.size() << "`\n";
         out << "- Selected databases: `" << selected.size() << "`\n";
         out << "- Max records used: `" << maxRecordsUsed << "`\n";
+        out << "- Native decode mode: `" << result.decodeModeName << "`\n";
         out << "- Raw records: `" << parseCounts.rawRecords << "`\n";
         out << "- Raw key/value rows: `" << parseCounts.rawKeyValues << "`\n";
         out << "- Raw date candidates: `" << parseCounts.rawDateCandidates << "`\n";
@@ -4247,7 +4284,9 @@ void runAff4ApfsStagedStoreV2ParserProbe(const fs::path& caseDir,
         out << "If this probe produces raw records, the next version should run enrichment/export on the APFS-staged parser results and preserve AFF4/APFS provenance fields for each staged store and parsed artifact.\n";
     } catch (const std::exception& ex) { log.warn(std::string("Unable to write AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md: ") + ex.what()); }
 
+    result.status = runStatus;
     log.info("AFF4 APFS staged Store-V2 parser probe written: " + pathString(csvPath));
+    return result;
 }
 
 
@@ -4258,6 +4297,35 @@ long long scalarCountForSource(CaseDatabase& db, const std::string& tableName, c
     st.bind(1, sourceId);
     if (st.stepRow()) return st.colInt64(0);
     return 0;
+}
+
+void writeActiveFileComparisonReadinessFromDb(CaseDatabase& db,
+                                             const fs::path& caseDir,
+                                             const std::string& sourceId,
+                                             Logger& log) {
+    try {
+        const fs::path outPath = caseDir / "active_file_comparison_readiness.csv";
+        std::ofstream out(outPath, std::ios::binary);
+        out << "image_inventory_source_id,created_utc,source_id,input_type,container_type,container_reader_status,partition_reader_status,filesystem_reader_status,spotlight_locator_status,active_comparison_status,inventory_file_count,comparison_candidate_count,comparison_ready,spotlight_artifact_count,image_inventory_rows,next_action,notes\n";
+        auto st = db.prepare(R"SQL(
+SELECT image_inventory_source_id,created_utc,source_id,input_type,container_type,container_reader_status,partition_reader_status,filesystem_reader_status,spotlight_locator_status,active_comparison_status,inventory_file_count,comparison_candidate_count,comparison_ready,spotlight_artifact_count,image_inventory_rows,next_action,notes
+FROM vw_active_file_comparison_readiness
+WHERE source_id=?
+ORDER BY created_utc DESC, image_inventory_source_id DESC
+LIMIT 1
+)SQL");
+        st.bind(1, sourceId);
+        if (st.stepRow()) {
+            for (int i = 0; i < 17; ++i) {
+                if (i) out << ',';
+                out << csvEscape(st.colText(i));
+            }
+            out << "\n";
+        }
+        log.info("Active file comparison readiness refreshed from SQLite view: " + pathString(outPath));
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to refresh active_file_comparison_readiness.csv from SQLite view: ") + ex.what());
+    }
 }
 
 void exportAff4ApfsLimitedRows(CaseDatabase& db,
@@ -4371,6 +4439,26 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
             "SELECT failure_id,phase,store_guid,source_db,message,created_utc FROM raw_failures WHERE source_id=? ORDER BY failure_id LIMIT 5000",
             source.sourceId, log);
 
+        exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_field_inventory_sample.csv",
+            {"field_inventory_id","field_name","row_count","populated_count","sample_value"},
+            "SELECT field_inventory_id,field_name,row_count,populated_count,sample_value FROM field_inventory WHERE source_id=? ORDER BY row_count DESC, field_name LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_parser_coverage_summary_sample.csv",
+            {"summary_id","metric_name","metric_value","created_utc"},
+            "SELECT summary_id,metric_name,metric_value,created_utc FROM parser_coverage_summary WHERE source_id=? ORDER BY summary_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_path_reconstruction_sample.csv",
+            {"link_id","store_guid","artifact_id","inode_num","parent_inode_num","file_name","best_path","path_source","path_status","parent_artifact_id","parent_file_name","parent_best_path","reconstructed_path_candidate","applied_to_artifact_path","candidate_matches_artifact_path","path_candidate_status","existing_path_context_only","new_reconstructed_path","sibling_count","relationship_status","path_reconstruction_method","confidence"},
+            "SELECT link_id,store_guid,artifact_id,inode_num,parent_inode_num,file_name,best_path,path_source,path_status,parent_artifact_id,parent_file_name,parent_best_path,reconstructed_path_candidate,applied_to_artifact_path,candidate_matches_artifact_path,path_candidate_status,existing_path_context_only,new_reconstructed_path,sibling_count,relationship_status,path_reconstruction_method,confidence FROM vw_path_reconstruction WHERE source_id=? ORDER BY applied_to_artifact_path DESC, new_reconstructed_path DESC, existing_path_context_only DESC, link_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_path_reconstruction_metrics_sample.csv",
+            {"summary_id","metric_name","metric_value","created_utc"},
+            "SELECT summary_id,metric_name,metric_value,created_utc FROM parser_coverage_summary WHERE source_id=? AND metric_name LIKE 'parent_inode_%' ORDER BY summary_id LIMIT 5000",
+            source.sourceId, log);
+
     } catch (const std::exception& ex) {
         log.warn(std::string("AFF4 APFS staged Store-V2 diagnostic sample export failed: ") + ex.what());
         appendRunStatus(caseDir, "aff4_apfs_staged_storev2_sample_export_failed", ex.what());
@@ -4424,7 +4512,10 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
         out << "- `aff4_apfs_staged_storev2_timeline_sample.csv`\n";
         out << "- `aff4_apfs_staged_storev2_raw_key_values_sample.csv`\n";
         out << "- `aff4_apfs_staged_storev2_raw_date_candidates_sample.csv`\n";
-        out << "- `aff4_apfs_staged_storev2_raw_failures_sample.csv`\n\n";
+        out << "- `aff4_apfs_staged_storev2_raw_failures_sample.csv`\n";
+        out << "- `aff4_apfs_staged_storev2_field_inventory_sample.csv`\n";
+        out << "- `aff4_apfs_staged_storev2_parser_coverage_summary_sample.csv`\n";
+        out << "- `aff4_apfs_staged_storev2_path_reconstruction_sample.csv`\n\n";
         out << "## Next step\n\n";
         out << "Use these outputs to validate whether APFS-extracted Store-V2 rows are investigator-useful, then add AFF4/APFS provenance columns into object-centric review views.\n";
     } catch (const std::exception& ex) {
@@ -5271,7 +5362,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         log.info("Diagnostics mode enabled: skipping 7z preservation by default and enabling safe core native probe diagnostics.");
     }
     if (sourceProbeMode) {
-        appendRunStatus(caseDir, "source_probe_start", "source intake/readiness probe only; no parsing/enrichment will be run");
+        appendRunStatus(caseDir, "source_probe_start", "source intake/readiness probe with bounded validation; AFF4/APFS Store-V2 copy-out, staging, parsing, and enrichment run when the guarded AFF4/APFS validation pipeline is enabled");
         log.info("Source-probe mode enabled: source will be identified, registered, and reported without running parser/enrichment.");
     }
     try {
@@ -5363,13 +5454,13 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             if (deferLargeImageHash && !opt.skipContainerHash && !opt.forceContainerHash) {
                 log.warn("Full original-container SHA256 deferred by default for AFF4/raw source-probe development speed. Use --force-container-hash when a full evidentiary hash is needed.");
             }
-            registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash);
+            registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash, caseDir);
             const std::string stage = aff4InputSource ? "aff4_apfs_source_registered" : "unsupported_raw_image_source";
             const std::string message = aff4InputSource ? "AFF4 registered; guarded APFS metadata and Store-V2 staging pipeline active; full native source-discovery handoff still staged" : "raw image registered; partition/filesystem extraction not implemented";
             const std::string nextAction = aff4InputSource
                 ? "Implement AFF4 stream enumeration, then APFS filesystem inventory, then Spotlight artifact staging and active-file comparison."
                 : "Use V0_8_9 source_partition_probe.csv for partition readiness; raw image extraction remains secondary to AFF4-backed APFS inventory and active-file comparison.";
-            log.warn((aff4InputSource ? "AFF4" : "Raw flat image") + std::string(" source selected and registered. Full container/filesystem extraction is not implemented in this build; source-probe output will document the required next reader layer."));
+            log.warn((aff4InputSource ? "AFF4" : "Raw flat image") + std::string(" source selected and registered. General full-container filesystem extraction is still staged; bounded AFF4/APFS Spotlight Store-V2 copy-out/staging/parsing is available when the guarded validation pipeline is enabled."));
             appendRunStatus(caseDir, stage, message);
             appendRunStatus(caseDir, "source_probe_write", "write source intake readiness and roadmap artifacts");
             writeSourceIntakeArtifacts(caseDir, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
@@ -5383,7 +5474,12 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 appendRunStatus(caseDir, "aff4_dynamic_load_probe", opt.enableAff4DynamicProbe ? "load libaff4 and perform bounded AFF4 random-access smoke test" : "skipped by default to avoid reader-driven access to other AFF4 files");
                 Aff4ProbeWorker::executeDynamicLoadProbe(caseDir, source, opt, opt.input, cancelToken, log);
                 appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parser_probe", "discover and parse copied Store-V2 candidates if APFS extraction staged them");
-                runAff4ApfsStagedStoreV2ParserProbe(caseDir, source, opt, db, log);
+                const auto stagedParserResult = runAff4ApfsStagedStoreV2ParserProbe(caseDir, source, opt, db, log);
+                result.databaseCandidateCount = stagedParserResult.candidates.size();
+                result.validDatabaseCandidateCount = countValidDatabaseCandidates(stagedParserResult.candidates);
+                result.storeCount = countDistinctStoreGroups(stagedParserResult.candidates, false);
+                result.validStoreCount = countDistinctStoreGroups(stagedParserResult.candidates, true);
+                result.selectedParserDatabaseCount = stagedParserResult.selected.size();
                 appendRunStatus(caseDir, "aff4_apfs_staged_storev2_enrichment_probe", "enrich APFS-staged Store-V2 parser rows when present");
                 const auto stagedEnrichmentCounts = runAff4ApfsStagedStoreV2EnrichmentProbe(caseDir, source, db, log);
                 result.rawRecordCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawRecordsBefore));
@@ -5392,7 +5488,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 result.artifactCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.artifacts));
                 result.timelineCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.timelineEvents));
                 result.usageCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.usageEvidence));
-                result.nativeDecodeMode = "AFF4_APFS_STAGED_STOREV2_CORE_FIELDS";
+                result.nativeDecodeMode = "AFF4_APFS_STAGED_STOREV2_" + stagedParserResult.decodeModeName;
                 appendRunStatus(caseDir, "aff4_stream_inventory_start", opt.enableAff4StreamInventory ? "list AFF4 streams when aff4imager is available" : "skipped by default to avoid external reader discovery outside selected AFF4");
                 const auto aff4Inventory = runAff4StreamInventory(
                     opt, source, opt.input, caseDir, log,
@@ -5418,7 +5514,11 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             writeUiAndIosPlanningFiles(caseDir);
             createUploadBundle(caseDir);
             if (sourceProbeMode || topModeLower == "discover") {
-                appendRunStatus(caseDir, "complete_source_probe", "unsupported container registered and readiness report written");
+                if (aff4InputSource && result.rawRecordCount > 0) {
+                    appendRunStatus(caseDir, "complete_aff4_apfs_staged_storev2_validation_probe", "AFF4/APFS staged Store-V2 validation probe completed; raw_records=" + std::to_string(result.rawRecordCount) + " selected_databases=" + std::to_string(result.selectedParserDatabaseCount));
+                } else {
+                    appendRunStatus(caseDir, "complete_source_probe", "unsupported container registered and readiness report written");
+                }
                 refreshUploadRunDiagnostics(caseDir);
                 result.messages = log.messages();
                 return result;
@@ -5454,7 +5554,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 appendRunStatus(caseDir, "original_container_hash_deferred_ios_zip", "large iOS ZIP source registered without full SHA256 for parser/review speed; use --force-container-hash for evidentiary hash run");
                 log.warn("Full original-container SHA256 deferred by default for iOS FFS ZIP parser/review speed. Use --force-container-hash when a full evidentiary hash is required.");
             }
-            registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash);
+            registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash, caseDir);
             if (profile == SourceProfileKind::IOS) {
                 const auto epLowerForIos = toLower(opt.exportProfile);
                 const bool supportMaterializationRequested = opt.diagnosticFullNativeDb || epLowerForIos == "diagnostics" || epLowerForIos == "support" || epLowerForIos == "full";
@@ -5536,6 +5636,15 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
 
         if (cancelRequested()) return returnCancelled("before_native_parse_selection");
         const auto parserCandidates = parseStores;
+        // Store discovery counts in case_summary must describe the database set that
+        // will actually be parsed. When preservation redirects parsing to a staged copy,
+        // the original discovery counts can be zero even though rediscovery found valid
+        // Store-V2 databases. Refresh counts after preservation rediscovery and before
+        // parser selection so validation bundles do not under-report parsed sources.
+        result.databaseCandidateCount = parserCandidates.size();
+        result.validDatabaseCandidateCount = countValidDatabaseCandidates(parserCandidates);
+        result.storeCount = countDistinctStoreGroups(parserCandidates, false);
+        result.validStoreCount = countDistinctStoreGroups(parserCandidates, true);
         parseStores = selectDatabasesForParsing(parserCandidates, profile, opt.fullScan, log);
         writeStoreSelectionCsv(caseDir, parserCandidates, parseStores, log);
         result.selectedParserDatabaseCount = parseStores.size();
@@ -5608,7 +5717,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Active filesystem evidence-root comparison is tabled in v0.6.4. EvidenceRoot was supplied but will not be used for live/missing or deleted/orphaned classification.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.28. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);
@@ -5624,6 +5733,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             appendRunStatus(caseDir, "ios_app_db_post_enrichment_promotion_complete", "timeline=" + std::to_string(counts.timeline) + " usage=" + std::to_string(counts.usage));
         }
         purgeOrphanSourceRows(db, caseDir, log);
+        writeActiveFileComparisonReadinessFromDb(db, caseDir, source.sourceId, log);
         appendRunStatus(caseDir, "export_start");
         if (opt.suppressCsvExports) {
             const fs::path exportDir = caseDir / "exports";

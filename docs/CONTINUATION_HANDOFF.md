@@ -1,34 +1,34 @@
-# Continuation Handoff - V1.6.6.6
+# Start Continuation Chat - V1.6.28
 
-Current package: `VestigantSpotlightInv_V1_6_6_6.zip`.
+Upload these files first:
 
-V1.6.6.6 follows the uploaded V1.6.6.5 iOS thin bundle. The thin run reached `complete_success`, reported 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events. No slow or incomplete exports were reported above the thin-performance threshold.
+- `VestigantSpotlightInv_V1_6_28.zip`
+- `V1_6_28_build.log`, if already run
+- Latest iOS upload ZIP, preferably `Upload_Thin_iOS_CoreSpotlight_V1_6_28.zip`
+- Prior reference evidence if needed: `Upload_Thin_iOS_CoreSpotlight_V1_6_26.zip` and `V1_6_26_build.log`
 
-Queued forensic-directive claims were checked against the actual V1.6.6.5 source before changes. APFS guided traversal cycle guards, the bounded bplist/NSKeyedArchiver resolver, and `tel:` / `mailto:` identity fallback were already present. The actionable gap found was that the Spotlight/native-DB mismatch view existed in `case_db.cpp` and `view_registry.cpp` but not in the lightweight GUI bootstrap SQL in `win32_gui.cpp`.
+Paste this prompt:
 
-V1.6.6.6 adds `vw_ios_spotlight_comms_missing_from_ffs` to the GUI bootstrap schema and prioritizes `iOS - Spotlight Comms Missing From Native DB` in GUI iOS sorting. The view wording avoids asserting deletion as the only explanation.
+```text
+Continue the Vestigant Spotlight iOS/CoreSpotlight project from V1.6.28.
 
-Validation performed in this package environment:
-
-- Linux CMake build: run locally during packaging.
-- CLI version expected: `Vestigant Spotlight v1.6.6.6`.
-- Self-test expected: PASS.
-- Static forensic-directive and release-readiness checks expected: PASS.
-
-Next commands:
-
-```powershell
-Set-Location D:\Downloads
-Get-FileHash .\VestigantSpotlightInv_V1_6_6_6.zip -Algorithm SHA256
-Remove-Item -LiteralPath "T:\VestigantSpotlightInv_V1_6_6_6" -Recurse -Force -ErrorAction SilentlyContinue
-Expand-Archive -LiteralPath .\VestigantSpotlightInv_V1_6_6_6.zip -DestinationPath T:\ -Force
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_6\scripts\Build-V1_6_6_6.ps1
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_6_6\scripts\Run-V1_6_6_6-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
+Use VestigantSpotlightInv_V1_6_28.zip as the current source baseline. V1.6.28 adds validation surfaces for active filesystem comparison after V1.6.25 materialized 7,766 MISSING_FROM_IOS_FFS_REFERENCE_CANDIDATE rows. Validate active_file_comparison_validation_checks_sample.csv, active_file_comparison_candidate_summary_sample.csv, orphaned_deleted_candidates_focus.csv, active_file_comparison_runs_sample.csv, and active_file_comparison_readiness_focus.csv. Missing rows are investigative leads only, not deletion proof.
 ```
 
-Upload next:
+Build command:
 
-- `V1_6_6_6_build.log`
-- `Upload_Thin_iOS_CoreSpotlight_V1_6_6_6.zip`
+```powershell
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_28\scripts\Build-V1_6_28.ps1 -CleanExtract
+```
 
-AFF4/APFS thin/full is not required for V1.6.6.6 unless the Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
+Thin command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_28\scripts\Run-V1_6_28-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
+```
+
+Expected thin upload:
+
+```text
+D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_6_28.zip
+```

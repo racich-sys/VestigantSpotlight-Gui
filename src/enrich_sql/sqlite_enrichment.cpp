@@ -315,11 +315,210 @@ SELECT source_id,
 FROM child_parent;
 )SQL");
 
+        // V1.6.12: the native Store-V2 metadata stream can enumerate children before parents,
+        // which means parser-time path reconstruction may miss otherwise valid parent chains.
+        // Rebuild candidate paths after all artifacts are materialized, using all observed
+        // parent_inode_num edges.  Relative chains are retained as review-only evidence when
+        // no absolute ancestor path is available; absolute/raw paths remain preferred.
+        db.exec(R"SQL(
+DROP TABLE IF EXISTS temp_parent_inode_nodes;
+DROP TABLE IF EXISTS temp_parent_inode_path_candidates;
+DROP TABLE IF EXISTS temp_best_parent_inode_path;
+CREATE TEMP TABLE temp_parent_inode_nodes AS
+SELECT artifact_id,
+       source_id,
+       store_guid,
+       inode_num,
+       parent_inode_num,
+       CASE
+         WHEN COALESCE(NULLIF(trim(file_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(file_name)
+         WHEN COALESCE(NULLIF(trim(display_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(display_name)
+         ELSE ''
+       END AS valid_name,
+       CASE
+         WHEN trim(COALESCE(best_path,''))='/' AND COALESCE(NULLIF(parent_inode_num,''),'0') IN ('0','') THEN '/'
+         WHEN COALESCE(NULLIF(trim(best_path),''),'') NOT IN ('/','------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(best_path)
+         ELSE ''
+       END AS existing_path,
+       path_status
+FROM artifacts
+WHERE source_id=)SQL" + sid + R"SQL(;
+
+CREATE TEMP TABLE temp_parent_inode_path_candidates AS
+WITH RECURSIVE path_chain(artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_path,method,confidence,quality,depth,visited) AS (
+  SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,
+         CASE WHEN existing_path='/' THEN '/' ELSE rtrim(existing_path,'/') END AS candidate_path,
+         'EXISTING_SPOTLIGHT_PATH_CHAIN_SEED' AS method,
+         'MEDIUM_EXISTING_SPOTLIGHT_PATH_CONTEXT' AS confidence,
+         0 AS quality,
+         0 AS depth,
+         '|' || inode_num || '|' AS visited
+  FROM temp_parent_inode_nodes
+  WHERE existing_path<>'' AND instr(existing_path,'/')>0
+
+  UNION ALL
+
+  SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,
+         CASE WHEN parent_inode_num IN ('0','') THEN '/' || valid_name ELSE valid_name END AS candidate_path,
+         CASE WHEN parent_inode_num IN ('0','') THEN 'ROOT_NAME_CHAIN_SEED' ELSE 'RELATIVE_NAME_CHAIN_SEED' END AS method,
+         CASE WHEN parent_inode_num IN ('0','') THEN 'LOW_ROOT_NAME_CHAIN_CONTEXT' ELSE 'LOW_RELATIVE_NAME_CHAIN_CONTEXT' END AS confidence,
+         CASE WHEN parent_inode_num IN ('0','') THEN 1 ELSE 2 END AS quality,
+         0 AS depth,
+         '|' || inode_num || '|' AS visited
+  FROM temp_parent_inode_nodes
+  WHERE valid_name<>''
+
+  UNION ALL
+
+  SELECT child.artifact_id,
+         child.source_id,
+         child.store_guid,
+         child.inode_num,
+         child.parent_inode_num,
+         CASE
+           WHEN pc.candidate_path='/' THEN '/' || child.valid_name
+           ELSE pc.candidate_path || '/' || child.valid_name
+         END AS candidate_path,
+         CASE
+           WHEN pc.candidate_path LIKE '/%' THEN 'ANCESTOR_PATH_PLUS_CHILD_CHAIN'
+           ELSE 'RELATIVE_PARENT_INODE_NAME_CHAIN'
+         END AS method,
+         CASE
+           WHEN pc.candidate_path LIKE '/%' THEN 'MEDIUM_PARENT_INODE_CHAIN_WITH_ABSOLUTE_ANCESTOR'
+           ELSE 'LOW_RELATIVE_PARENT_INODE_CHAIN_REVIEW'
+         END AS confidence,
+         CASE WHEN pc.candidate_path LIKE '/%' THEN 1 ELSE 3 END AS quality,
+         pc.depth + 1 AS depth,
+         pc.visited || child.inode_num || '|'
+  FROM temp_parent_inode_nodes child
+  JOIN path_chain pc
+    ON pc.source_id=child.source_id
+   AND pc.store_guid=child.store_guid
+   AND child.parent_inode_num=pc.inode_num
+  WHERE child.valid_name<>''
+    AND pc.depth < 64
+    AND instr(pc.visited, '|' || child.inode_num || '|')=0
+)
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_path,method,confidence,quality,depth,
+       length(candidate_path) AS candidate_len
+FROM path_chain
+WHERE COALESCE(candidate_path,'')<>''
+  AND instr(candidate_path,'/')>0;
+
+CREATE TEMP TABLE temp_best_parent_inode_path AS
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_path,method,confidence,quality,depth
+FROM (
+  SELECT p.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY p.artifact_id
+           ORDER BY p.quality ASC,
+                    CASE WHEN p.candidate_path LIKE '/%' THEN 0 ELSE 1 END ASC,
+                    p.depth DESC,
+                    length(p.candidate_path) DESC,
+                    p.candidate_path ASC
+         ) AS rn
+  FROM temp_parent_inode_path_candidates p
+) ranked
+WHERE rn=1;
+
+UPDATE parent_inode_links
+SET reconstructed_path_candidate = CASE
+      WHEN COALESCE(NULLIF(reconstructed_path_candidate,''),'')=''
+           OR (COALESCE(reconstructed_path_candidate,'') NOT LIKE '/%' AND EXISTS (
+             SELECT 1 FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+               AND b.candidate_path LIKE '/%'
+           )) THEN COALESCE((
+             SELECT b.candidate_path
+             FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+             LIMIT 1
+           ), reconstructed_path_candidate)
+      ELSE reconstructed_path_candidate
+    END,
+    path_reconstruction_method = CASE
+      WHEN COALESCE(NULLIF(reconstructed_path_candidate,''),'')=''
+           OR (COALESCE(reconstructed_path_candidate,'') NOT LIKE '/%' AND EXISTS (
+             SELECT 1 FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+               AND b.candidate_path LIKE '/%'
+           )) THEN COALESCE((
+             SELECT b.method
+             FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+             LIMIT 1
+           ), path_reconstruction_method)
+      ELSE path_reconstruction_method
+    END,
+    confidence = CASE
+      WHEN COALESCE(NULLIF(reconstructed_path_candidate,''),'')=''
+           OR (COALESCE(reconstructed_path_candidate,'') NOT LIKE '/%' AND EXISTS (
+             SELECT 1 FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+               AND b.candidate_path LIKE '/%'
+           )) THEN COALESCE((
+             SELECT b.confidence
+             FROM temp_best_parent_inode_path b
+             WHERE b.artifact_id=parent_inode_links.child_artifact_id
+               AND b.source_id=parent_inode_links.source_id
+               AND b.store_guid=parent_inode_links.store_guid
+             LIMIT 1
+           ), confidence)
+      ELSE confidence
+    END
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND EXISTS (
+    SELECT 1
+    FROM temp_best_parent_inode_path b
+    WHERE b.artifact_id=parent_inode_links.child_artifact_id
+      AND b.source_id=parent_inode_links.source_id
+      AND b.store_guid=parent_inode_links.store_guid
+  )
+  AND (
+    COALESCE(NULLIF(reconstructed_path_candidate,''),'')=''
+    OR (COALESCE(reconstructed_path_candidate,'') NOT LIKE '/%' AND EXISTS (
+      SELECT 1 FROM temp_best_parent_inode_path b
+      WHERE b.artifact_id=parent_inode_links.child_artifact_id
+        AND b.source_id=parent_inode_links.source_id
+        AND b.store_guid=parent_inode_links.store_guid
+        AND b.candidate_path LIKE '/%'
+    ))
+  );
+)SQL");
+
         const std::size_t parentLinkRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=?", source.sourceId);
-        const std::size_t reconstructedPathRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId);
+        const std::size_t pathContextRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId);
+        const std::size_t existingPathContextRows = scalarCount(db, R"SQL(
+SELECT COUNT(*)
+FROM parent_inode_links pl
+LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id
+WHERE pl.source_id=?
+  AND COALESCE(pl.reconstructed_path_candidate,'')<>''
+  AND COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'')
+  AND COALESCE(a.path_source,'') NOT IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')
+)SQL", source.sourceId);
+        const std::size_t newReconstructedPathRows = scalarCount(db, R"SQL(
+SELECT COUNT(*)
+FROM parent_inode_links pl
+LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id
+WHERE pl.source_id=?
+  AND COALESCE(pl.reconstructed_path_candidate,'')<>''
+  AND (COALESCE(a.best_path,'')<>COALESCE(pl.reconstructed_path_candidate,'') OR COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW'))
+)SQL", source.sourceId);
         const std::size_t parentMatchedRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE'", source.sourceId);
         const std::size_t childNameRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.')", source.sourceId);
-        appendEnrichmentRunStatus(db, 81, "enrichment_parent_inode_links_complete", "links=" + std::to_string(parentLinkRows) + " matched=" + std::to_string(parentMatchedRows) + " child_names=" + std::to_string(childNameRows) + " reconstructed_paths=" + std::to_string(reconstructedPathRows));
+        const std::size_t missingChildNameRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND path_reconstruction_method='PARENT_INODE_MATCH_NO_CHILD_NAME'", source.sourceId);
+        appendEnrichmentRunStatus(db, 81, "enrichment_parent_inode_links_complete", "links=" + std::to_string(parentLinkRows) + " matched=" + std::to_string(parentMatchedRows) + " child_names=" + std::to_string(childNameRows) + " missing_child_names=" + std::to_string(missingChildNameRows) + " path_context_candidates=" + std::to_string(pathContextRows) + " existing_path_context=" + std::to_string(existingPathContextRows) + " new_reconstructed_paths=" + std::to_string(newReconstructedPathRows));
 
         log.info("Applying parent-inode reconstructed paths to weak artifact path rows.");
         appendEnrichmentRunStatus(db, 82, "enrichment_parent_inode_path_apply_start", "source_id=" + source.sourceId);
@@ -343,11 +542,20 @@ SET best_path = COALESCE((
         ORDER BY CASE WHEN pl.path_reconstruction_method='PARENT_PATH_PLUS_CHILD_NAME' THEN 0 ELSE 1 END, pl.link_id
         LIMIT 1
     ), normalized_mac_path),
-    path_source = 'PARENT_INODE_RECONSTRUCTION',
-    path_status = 'RECONSTRUCTED_FROM_PARENT_INODE',
+    path_source = CASE
+      WHEN EXISTS (SELECT 1 FROM temp_best_parent_inode_path b WHERE b.artifact_id=artifacts.artifact_id AND b.candidate_path LIKE '/%') THEN 'PARENT_INODE_CHAIN_RECONSTRUCTION'
+      ELSE 'PARENT_INODE_RELATIVE_CHAIN_REVIEW'
+    END,
+    path_status = CASE
+      WHEN EXISTS (SELECT 1 FROM temp_best_parent_inode_path b WHERE b.artifact_id=artifacts.artifact_id AND b.candidate_path LIKE '/%') THEN 'RECONSTRUCTED_FROM_PARENT_INODE_CHAIN'
+      ELSE 'RECONSTRUCTED_RELATIVE_PARENT_INODE_CHAIN_REVIEW'
+    END,
     confidence = CASE
       WHEN COALESCE(confidence,'') LIKE 'HIGH%' THEN confidence
-      ELSE 'MEDIUM_PARENT_INODE_RECONSTRUCTED_PATH'
+      ELSE CASE
+        WHEN EXISTS (SELECT 1 FROM temp_best_parent_inode_path b WHERE b.artifact_id=artifacts.artifact_id AND b.candidate_path LIKE '/%') THEN 'MEDIUM_PARENT_INODE_RECONSTRUCTED_PATH'
+        ELSE 'LOW_RELATIVE_PARENT_INODE_CHAIN_REVIEW'
+      END
     END
 WHERE source_id=)SQL" + sid + R"SQL(
   AND EXISTS (
@@ -364,8 +572,11 @@ WHERE source_id=)SQL" + sid + R"SQL(
     OR COALESCE(path_status,'') IN ('','RAW_PATH_NO_DIRECTORY_CONTEXT','FILE_NAME_ONLY_PARENT_RECONSTRUCTION_PENDING','FILE_NAME_ONLY_NO_PARENT_CONTEXT','NO_USABLE_PATH')
   );
 )SQL");
-        const std::size_t appliedPathRows = scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source='PARENT_INODE_RECONSTRUCTION'", source.sourceId);
+        const std::size_t appliedPathRows = scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')", source.sourceId);
         appendEnrichmentRunStatus(db, 83, "enrichment_parent_inode_path_apply_complete", "artifacts_updated=" + std::to_string(appliedPathRows));
+        db.exec("DROP TABLE IF EXISTS temp_best_parent_inode_path;");
+        db.exec("DROP TABLE IF EXISTS temp_parent_inode_path_candidates;");
+        db.exec("DROP TABLE IF EXISTS temp_parent_inode_nodes;");
 
         if (kvCount > 0) {
             log.info("Applying key/value enrichment updates.");
@@ -739,7 +950,10 @@ SELECT COALESCE(MAX(c),0) FROM (
         insertMetric(db, source.sourceId, "mounted_volume_candidates", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM external_volume_candidates WHERE source_id=?", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=?", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_matched", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE'", source.sourceId)));
-        insertMetric(db, source.sourceId, "parent_inode_links_with_reconstructed_path", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId)));
+        insertMetric(db, source.sourceId, "parent_inode_links_with_path_context_candidate", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId)));
+        insertMetric(db, source.sourceId, "parent_inode_links_with_existing_path_context", std::to_string(scalarCount(db, R"SQL(SELECT COUNT(*) FROM parent_inode_links pl LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id WHERE pl.source_id=? AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(a.path_source,'') NOT IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW'))SQL", source.sourceId)));
+        insertMetric(db, source.sourceId, "parent_inode_links_with_new_reconstructed_path", std::to_string(scalarCount(db, R"SQL(SELECT COUNT(*) FROM parent_inode_links pl LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id WHERE pl.source_id=? AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND (COALESCE(a.best_path,'')<>COALESCE(pl.reconstructed_path_candidate,'') OR COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')))SQL", source.sourceId)));
+        insertMetric(db, source.sourceId, "parent_inode_artifacts_updated_from_reconstruction", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_without_child_name", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND path_reconstruction_method='PARENT_INODE_MATCH_NO_CHILD_NAME'", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_with_child_name", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.')", source.sourceId)));
         insertMetric(db, source.sourceId, "same_folder_groups_with_valid_child_name", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM (SELECT source_id, store_guid, child_parent_inode_num FROM parent_inode_links WHERE source_id=? GROUP BY source_id, store_guid, child_parent_inode_num HAVING COUNT(*) > 1 AND SUM(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN 1 ELSE 0 END) > 0)", source.sourceId)));
@@ -762,29 +976,225 @@ SELECT COALESCE(MAX(c),0) FROM (
 
 void SqliteEnrichment::classifyFilesystem(CaseDatabase& db, const EvidenceSource& source, Logger& log, SqliteEnrichmentCounts&) const {
     const std::string sid = sqlLiteral(source.sourceId);
-    if (!source.evidenceRoot.empty()) {
-        log.info("Active filesystem comparison is tabled in v0.6.4; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed.");
-    } else {
-        log.info("Active filesystem comparison is tabled in v0.6.4; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
-    }
+    const std::size_t iosFullInventoryRows = scalarCount(db, "SELECT COUNT(*) FROM ios_ffs_file_inventory WHERE source_id=?", source.sourceId);
+    const std::size_t iosPathLookupRows = scalarCount(db, "SELECT COUNT(*) FROM ios_ffs_path_lookup WHERE source_id=?", source.sourceId);
+    const bool hasIosFfsLookup = (iosFullInventoryRows + iosPathLookupRows) > 0;
 
     db.begin();
     try {
-        db.exec(R"SQL(
+        db.exec("DELETE FROM orphaned_deleted_candidates WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM active_file_comparison_runs WHERE source_id=" + sid + ";");
+
+        if (!hasIosFfsLookup) {
+            if (!source.evidenceRoot.empty()) {
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.28; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
+            } else {
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.28; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
+            }
+            db.exec(R"SQL(
 UPDATE artifacts
 SET existence_status = CASE
         WHEN trim(COALESCE(best_path,''))='' THEN 'NO_FILESYSTEM_PATH_NOT_CHECKED'
         WHEN instr(best_path,'/')=0 AND instr(best_path,char(92))=0 AND trim(COALESCE(index_text_snippet,''))<>'' THEN 'INDEX_ONLY_NO_FILESYSTEM_PATH_NOT_CHECKED'
-        ELSE 'NOT_CHECKED'
+        ELSE 'NOT_CHECKED_NO_ACTIVE_INVENTORY'
     END,
     matched_filesystem_path = '',
     deleted_or_orphaned_candidate = 0,
     orphan_reason = ''
 WHERE source_id=)SQL" + sid + ";");
-        db.exec("DELETE FROM orphaned_deleted_candidates WHERE source_id=" + sid + ";");
-        db.exec("UPDATE timeline_events SET existence_status=(SELECT existence_status FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id), deleted_or_orphaned_candidate=0 WHERE source_id=" + sid + ";");
+            db.exec(R"SQL(
+INSERT INTO active_file_comparison_runs(source_id,image_inventory_available,spotlight_artifact_count,image_file_count,inode_match_count,path_match_count,missing_candidate_count,not_checked_count,run_status,comparison_basis,notes,created_utc)
+SELECT )SQL" + sid + R"SQL(,
+       0,
+       COUNT(*),
+       0,
+       0,
+       0,
+       0,
+       COUNT(*),
+       'SKIPPED_NO_IOS_FFS_OR_IMAGE_INVENTORY',
+       'NO_ACTIVE_INVENTORY',
+       'No ios_ffs_file_inventory, ios_ffs_path_lookup, or image_file_inventory rows were available for exact active filesystem comparison.',
+       datetime('now')
+FROM artifacts
+WHERE source_id=)SQL" + sid + ";");
+            db.exec("UPDATE timeline_events SET existence_status=(SELECT existence_status FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id), deleted_or_orphaned_candidate=0 WHERE source_id=" + sid + ";");
+            db.commit();
+            return;
+        }
+
+        log.info("Active filesystem comparison enabled in V1.6.28 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
+
+        db.exec("DROP TABLE IF EXISTS temp_ios_active_ffs_paths;");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_ios_active_ffs_paths(
+  normalized_path TEXT PRIMARY KEY,
+  file_name TEXT,
+  size_bytes INTEGER,
+  lookup_source TEXT
+);
+)SQL");
+        if (iosFullInventoryRows > 0) {
+            db.exec(R"SQL(
+INSERT OR IGNORE INTO temp_ios_active_ffs_paths(normalized_path,file_name,size_bytes,lookup_source)
+SELECT trim(normalized_path), file_name, size_bytes, 'ios_ffs_file_inventory'
+FROM ios_ffs_file_inventory
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND trim(COALESCE(normalized_path,''))<>'';
+)SQL");
+        } else {
+            db.exec(R"SQL(
+INSERT OR IGNORE INTO temp_ios_active_ffs_paths(normalized_path,file_name,size_bytes,lookup_source)
+SELECT trim(normalized_path), file_name, size_bytes, 'ios_ffs_path_lookup'
+FROM ios_ffs_path_lookup
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND trim(COALESCE(normalized_path,''))<>'';
+)SQL");
+        }
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_ios_active_ffs_paths_path ON temp_ios_active_ffs_paths(normalized_path);");
+
+        db.exec("DROP TABLE IF EXISTS temp_ios_active_artifact_paths;");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_ios_active_artifact_paths AS
+SELECT artifact_id,
+       CASE
+         WHEN trim(COALESCE(filesystem_lookup_path,'')) LIKE '/%' AND length(trim(COALESCE(filesystem_lookup_path,'')))>1 THEN trim(filesystem_lookup_path)
+         WHEN trim(COALESCE(best_path,'')) LIKE '/%' AND length(trim(COALESCE(best_path,'')))>1 THEN trim(best_path)
+         WHEN trim(COALESCE(normalized_mac_path,'')) LIKE '/%' AND length(trim(COALESCE(normalized_mac_path,'')))>1 THEN trim(normalized_mac_path)
+         WHEN trim(COALESCE(spotlight_display_path,'')) LIKE '/%' AND length(trim(COALESCE(spotlight_display_path,'')))>1 THEN trim(spotlight_display_path)
+         ELSE ''
+       END AS candidate_path
+FROM artifacts
+WHERE source_id=)SQL" + sid + ";");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_ios_active_artifact_paths_id ON temp_ios_active_artifact_paths(artifact_id);");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_ios_active_artifact_paths_path ON temp_ios_active_artifact_paths(candidate_path);");
+
+        db.exec(R"SQL(
+UPDATE artifacts
+SET filesystem_lookup_path = COALESCE((SELECT candidate_path FROM temp_ios_active_artifact_paths c WHERE c.artifact_id=artifacts.artifact_id),''),
+    matched_filesystem_path = '',
+    deleted_or_orphaned_candidate = 0,
+    orphan_reason = '',
+    existence_status = CASE
+        WHEN trim(COALESCE(best_path,''))='' THEN 'NO_FILESYSTEM_PATH_NOT_CHECKED'
+        WHEN instr(best_path,'/')=0 AND instr(best_path,char(92))=0 AND trim(COALESCE(index_text_snippet,''))<>'' THEN 'INDEX_ONLY_NO_FILESYSTEM_PATH_NOT_CHECKED'
+        ELSE 'NOT_CHECKED_NO_COMPARABLE_IOS_PATH'
+    END
+WHERE source_id=)SQL" + sid + ";");
+
+        db.exec(R"SQL(
+UPDATE artifacts
+SET existence_status='PRESENT_IN_IOS_FFS_EXACT_PATH',
+    matched_filesystem_path=(
+        SELECT p.normalized_path
+        FROM temp_ios_active_artifact_paths c
+        JOIN temp_ios_active_ffs_paths p ON p.normalized_path=c.candidate_path
+        WHERE c.artifact_id=artifacts.artifact_id
+        LIMIT 1
+    ),
+    deleted_or_orphaned_candidate=0,
+    orphan_reason='',
+    confidence='HIGH_IOS_FFS_EXACT_PATH_MATCH'
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND EXISTS (
+        SELECT 1
+        FROM temp_ios_active_artifact_paths c
+        JOIN temp_ios_active_ffs_paths p ON p.normalized_path=c.candidate_path
+        WHERE c.artifact_id=artifacts.artifact_id
+  );
+)SQL");
+
+        db.exec(R"SQL(
+UPDATE artifacts
+SET existence_status='MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE',
+    matched_filesystem_path='',
+    deleted_or_orphaned_candidate=1,
+    orphan_reason='EXACT_SPOTLIGHT_PATH_NOT_FOUND_IN_IOS_FFS_LOOKUP; investigative lead only, not deletion proof',
+    confidence='MEDIUM_IOS_FFS_PATH_ABSENT_LEAD'
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND EXISTS (
+        SELECT 1 FROM temp_ios_active_artifact_paths c
+        WHERE c.artifact_id=artifacts.artifact_id
+          AND c.candidate_path<>''
+          AND (
+               lower(c.candidate_path) LIKE '/private/%'
+            OR lower(c.candidate_path) LIKE '/var/%'
+            OR lower(c.candidate_path) LIKE '/system/%'
+            OR lower(c.candidate_path) LIKE '/applications/%'
+            OR lower(c.candidate_path) LIKE '/library/%'
+          )
+  )
+  AND NOT EXISTS (
+        SELECT 1
+        FROM temp_ios_active_artifact_paths c
+        JOIN temp_ios_active_ffs_paths p ON p.normalized_path=c.candidate_path
+        WHERE c.artifact_id=artifacts.artifact_id
+  );
+)SQL");
+
+        db.exec(R"SQL(
+INSERT INTO orphaned_deleted_candidates(source_id,artifact_id,store_guid,inode_num,file_name,best_path,content_type,existence_status,orphan_reason,index_text_snippet)
+SELECT source_id, artifact_id, store_guid, inode_num, file_name, best_path, content_type, existence_status, orphan_reason, index_text_snippet
+FROM artifacts
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND existence_status='MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE'
+  AND deleted_or_orphaned_candidate=1;
+)SQL");
+
+        db.exec(R"SQL(
+WITH grouped_reference_candidates AS (
+  SELECT source_id,
+         store_guid,
+         inode_num,
+         MIN(normalized_ios_path) AS normalized_ios_path,
+         MIN(missing_candidate_category) AS missing_candidate_category,
+         MIN(investigative_priority) AS investigative_priority,
+         MIN(investigative_reason) AS investigative_reason,
+         MIN(spotlight_text_context_sample) AS spotlight_text_context_sample,
+         MIN(confidence) AS reference_confidence,
+         COALESCE(NULLIF(MIN(ffs_lookup_source),''),'lookup_available_no_matching_path') AS ffs_lookup_source,
+         COUNT(*) AS supporting_reference_count
+  FROM vw_ios_spotlight_missing_from_ffs_candidates
+  WHERE source_id=)SQL" + sid + R"SQL(
+  GROUP BY source_id, store_guid, inode_num, normalized_ios_path, missing_candidate_category
+)
+INSERT INTO orphaned_deleted_candidates(source_id,artifact_id,store_guid,inode_num,file_name,best_path,content_type,existence_status,orphan_reason,index_text_snippet)
+SELECT c.source_id,
+       (SELECT MIN(a.artifact_id) FROM artifacts a WHERE a.source_id=c.source_id AND a.store_guid=c.store_guid AND COALESCE(a.inode_num,'')=COALESCE(c.inode_num,'')),
+       c.store_guid,
+       c.inode_num,
+       '',
+       c.normalized_ios_path,
+       c.missing_candidate_category,
+       'MISSING_FROM_IOS_FFS_REFERENCE_CANDIDATE',
+       'Spotlight recovered an iOS file/path reference absent from the available FFS lookup; investigative lead only, not deletion proof; priority=' || COALESCE(c.investigative_priority,'') || '; confidence=' || COALESCE(c.reference_confidence,'') || '; lookup=' || COALESCE(c.ffs_lookup_source,'') || '; supporting_references=' || CAST(c.supporting_reference_count AS TEXT) || '; reason=' || COALESCE(c.investigative_reason,''),
+       substr(COALESCE(c.spotlight_text_context_sample,''),1,900)
+FROM grouped_reference_candidates c;
+)SQL");
+
+        db.exec(R"SQL(
+INSERT INTO active_file_comparison_runs(source_id,image_inventory_available,spotlight_artifact_count,image_file_count,inode_match_count,path_match_count,missing_candidate_count,not_checked_count,run_status,comparison_basis,notes,created_utc)
+SELECT )SQL" + sid + R"SQL(,
+       1,
+       COUNT(*),
+       )SQL" + std::to_string((iosFullInventoryRows > 0) ? iosFullInventoryRows : iosPathLookupRows) + R"SQL(,
+       0,
+       SUM(CASE WHEN existence_status='PRESENT_IN_IOS_FFS_EXACT_PATH' THEN 1 ELSE 0 END),
+       (SELECT COUNT(*) FROM orphaned_deleted_candidates od WHERE od.source_id=)SQL" + sid + R"SQL(),
+       SUM(CASE WHEN existence_status NOT IN ('PRESENT_IN_IOS_FFS_EXACT_PATH','MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE') THEN 1 ELSE 0 END),
+       'COMPLETED_IOS_FFS_EXACT_PATH_AND_REFERENCE_LOOKUP',
+       'IOS_FFS_EXACT_PATH_AND_SPOTLIGHT_REFERENCE_LOOKUP',
+       'Exact artifact-path comparison plus Spotlight recovered-path references checked against ios_ffs_file_inventory or ios_ffs_path_lookup. Missing rows are investigative leads only and are not deletion proof.',
+       datetime('now')
+FROM artifacts
+WHERE source_id=)SQL" + sid + ";");
+
+        db.exec("UPDATE timeline_events SET existence_status=(SELECT existence_status FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id), deleted_or_orphaned_candidate=(SELECT deleted_or_orphaned_candidate FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id) WHERE source_id=" + sid + ";");
+        db.exec("DROP TABLE IF EXISTS temp_ios_active_artifact_paths;");
+        db.exec("DROP TABLE IF EXISTS temp_ios_active_ffs_paths;");
         db.commit();
     } catch (...) { db.rollbackNoThrow(); throw; }
 }
+
 
 } // namespace vestigant::spotlight

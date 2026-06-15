@@ -1,3 +1,38 @@
+# V1.6.28 Release Notes
+
+## Purpose
+
+V1.6.28 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.28 limitation language.
+
+## Triggering evidence from V1.6.22.1 thin
+
+- `run_status.txt` ended in `complete_success`.
+- `VestigantSpotlight_tail250.log` reported active filesystem comparison was tabled and that `existence_status` would remain `NOT_CHECKED`-style.
+- `active_file_comparison_readiness.csv` reported `comparison_ready=0` and `comparison_status=ZIP_PARSED_FOR_SPOTLIGHT_NOT_IMAGE_FILE_INVENTORY`.
+
+## Changed in V1.6.28
+
+- Added `docs/ACTIVE_FILESYSTEM_COMPARISON_ROADMAP.md`.
+- Updated continuation docs to make active filesystem comparison the next queued implementation target.
+- Replaced stale `v0.6.4` active-comparison log strings in current source files.
+- Kept V1.6.22.1 thin diagnostic-wrapper behavior.
+- Kept V1.6.22 interactionC precision behavior.
+
+## Not implemented yet
+
+V1.6.28 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
+
+
+## V1.6.18 implemented / queued validation
+
+- [x] Reviewed uploaded V1.6.17 iOS thin and validated the targeted email-category false-positive reduction.
+- [x] Compact Windows GUI Case Information / Build Processing top section in source.
+- [x] Compact Windows GUI Investigation Results action bar in source.
+- [x] Update stale current continuation and quick-start docs from V1.6.12/V1.6.7.1 to V1.6.18.
+- [ ] Windows/MSVC build validation for V1.6.18.
+- [ ] Live Windows GUI visual validation at common DPI settings.
+- [ ] Live V1.6.18 iOS thin validation after build passes.
+
 ## V1.6.6.2 workflow ledger
 
 - Completed prerequisite review of every `.md` and `.txt` file in the uploaded V1.6.6.1 package.
@@ -76,3 +111,17 @@ Remaining:
 - No parser, extraction, GUI, SQLite schema, or forensic interpretation behavior intentionally changed by this documentation-only package.
 
 - V1.6.3.1 corrected: release-blocking version consistency verification added after Build-V1_6_3.ps1 stale 1.4.1 check was found.
+
+## V1.6.18.1
+
+- [x] Restore GUI review-grid subclass callbacks needed for Windows/MSVC compile.
+- [ ] Confirm Windows/MSVC build with `V1_6_18_1_build.log`.
+- [ ] Visually confirm compact GUI top/review layout at scaled DPI.
+
+## V1.6.28
+
+- [x] Add CoreDuet interactionC database-status workflow.
+- [x] Add CoreDuet interactionC summary/event GUI views and CSV exports.
+- [x] Add bounded upload samples for interactionC review.
+- [x] Add running start-continuation document.
+- [ ] Validate Windows/MSVC build and V1.6.28 iOS thin output.

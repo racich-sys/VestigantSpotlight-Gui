@@ -1,3 +1,52 @@
+## V1.6.12 - Spotlight validation fixes for AFF4/APFS staged Store-V2
+
+V1.6.12 follows review of `Upload_Thin_MacOS_AFF4_V1_6_7_1.zip` with SHA256 `F0C3621CAD18B6FEC29F49BCC5716B4A5065B274242A4EC512D7B6AA48BF7331`. That thin proved AFF4/APFS Store-V2 copy-out, staging, parser, enrichment, and external comparison outputs were generated, but also showed validation-reporting and semantic-decoding gaps: `case_summary.json` under-reported staged Store-V2 discovery counts, `last_stage.txt` could remain misleading for source-probe workflows, and the bounded macOS AFF4 parser path used raw CoreFields probes rather than FullValues validation by default.
+
+Code fixes in V1.6.12:
+- AFF4/APFS staged Store-V2 parser probe now returns its discovered candidates, selected databases, parse counts, status, and decode mode to `runApplication`, allowing `case_summary.json` to report staged Store-V2 database counts rather than zero-count source-probe placeholders.
+- AFF4/APFS source-probe runs that successfully parse staged Store-V2 now finish with `complete_aff4_apfs_staged_storev2_validation_probe` instead of a generic unsupported-container/source-probe completion stage.
+- The bounded macOS AFF4 staged Store-V2 validation parser now defaults to `FullValues`; `--decode-core-native-values` remains available to force the older CoreFields raw-probe path.
+- FullValues mode now remains evidence-preserving: if structured private Store-V2 value decoding cannot promote named fields, the parser falls back to bounded raw string probes instead of emitting records with no reviewable metadata.
+- Store discovery counts are refreshed after preservation/staged rediscovery so ordinary preserved-folder runs also report the database set actually parsed.
+- Path reconstruction no longer invents `/` for unnamed non-root records; raw key/value rows now receive the effective metadata/reconstructed path rather than the pre-fallback path argument.
+- The macOS AFF4 thin wrapper now uses the guarded single-AFF4 runner, passes the known AFF4 and external Store-V2 reference defaults, and fails if copy-out/staging/parser/enrichment outputs or FullValues validation output are missing from the thin ZIP.
+
+Validation completed in this packaging environment: Linux CMake build PASS, CLI version `Vestigant Spotlight v1.6.12`, self-test PASS, static V1.6.12 validation marker audit PASS, and a local staged Store-V2 folder run PASS using `--experimental-full-native-values --max-native-records 3000`. The local staged run verified corrected preserved-discovery summary counts (`store_count=1`, `database_candidate_count=2`, `parser_selected_database_count=1`) and avoided false root-path reconstruction for unnamed records. Windows/MSVC build and full live AFF4 thin run were not run in this environment.
+
+## V1.6.7.1 - iOS production wrapper and hash-progress hotfix
+
+V1.6.7.1 follows review of `Upload_Production_iOS_CoreSpotlight_V1_6_7_0.zip`. The uploaded production bundle reached `complete_success` and reported 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events in `case_summary.json`. The same run logged `validation_warning_metadata_limited_export`, which showed that the V1.6.7.0 production wrapper requested investigator exports without full native metadata values.
+
+The production upload also showed a long interval during original-container hashing: `run_progress.tsv` moved from `source_probe_write` at 2026-06-11T17:25:46Z to the next stage at 2026-06-11T19:55:22Z. V1.6.7.1 adds explicit source-container SHA256 start/progress/complete run-status markers so future production runs do not look idle during forced hashing.
+
+Code fixes in V1.6.7.1:
+- Fixed a Windows-only `src/core/hash.cpp` compile hazard: the Windows SHA256 function had a duplicate `std::vector<unsigned char> buffer(4 * 1024 * 1024);` declaration. Linux did not compile that branch, so the issue was not visible in prior Linux validation.
+- Added `sha256FileWithProgress` and production hash run-status markers: `original_container_hash_start`, `original_container_hash_progress`, and `original_container_hash_complete`.
+- Updated the production iOS wrapper to pass full native metadata decoding through `FullNativeValues = $true` / `--experimental-full-native-values`, matching the investigator export profile.
+- Updated production upload packaging to include `exports/ios_production_readiness_summary.csv`, `exports/parser_limits_and_suppression_summary.csv`, `exports/EXPORT_INDEX.csv`, `EXPORT_INDEX.csv`, `production_performance_summary.csv`, `PRODUCTION_PERFORMANCE_SUMMARY.md`, and `wrapper_heartbeat.log` when present.
+- Added production-specific performance-summary naming while retaining thin-summary defaults for thin runs.
+
+Validation completed in the packaging environment: Linux CMake build PASS, CLI version `Vestigant Spotlight v1.6.7.1`, self-test PASS, static audit PASS, and ZIP integrity test PASS. Windows/MSVC and the new V1.6.7.1 iOS production run were not run in this environment.
+
+## V1.6.7.0 - iOS production-readiness candidate
+
+V1.6.7.0 was built after review of the uploaded V1.6.6.5 iOS thin bundle and line-by-line source review of the V1.6.6.6 package. The V1.6.6.5 thin run reached `complete_success` with 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events. `thin_performance_summary.csv` did not show slow or incomplete exports above the 30-second threshold.
+
+The V1.6.6.6 source review found an actionable production-readiness issue in the current release-readiness script: the V1.6.6.6 checker still tested for the prior V1.6.6.5 CLI version token. For V1.6.7.0, the build wrapper and release-readiness checks are pinned to 1.6.7.0 and avoid stale current-wrapper references.
+
+Production-readiness changes:
+
+- Added `vw_ios_production_readiness_summary` to summarize iOS source hash status, export profile, native decode mode, record counts, text-context coverage, missing-from-FFS surface, and Spotlight/native-DB mismatch surface.
+- Exported `exports/ios_production_readiness_summary.csv` during CSV export.
+- Added `scripts/Run-V1_6_7_0-iOS-Production-AndZip.ps1`, which runs iOS with `--mode run`, `--export-profile investigator`, and `--force-container-hash` for production review.
+- Extended the focused iOS runner to support explicit `RunMode`, `ExportProfile`, `ForceContainerHash`, and `MaterializeIosSupportDb` controls.
+- Added GUI registry priority for `iOS - Production Readiness Summary`.
+- Added self-test coverage for the new production-readiness view.
+- Retained KnowledgeC/CoreDuet identity-promotion guardrails and existing APFS guided traversal cycle protection.
+- Updated current wrappers, release-readiness checks, version metadata, and current user-facing documentation to V1.6.7.0.
+
+Test determination: run Windows/MSVC build, then iOS thin once. If thin passes, run the new iOS production wrapper and review `ios_production_readiness_summary.csv`. AFF4/APFS thin/full is not required unless Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
+
 ## V1.6.6.6 - Thin result review and GUI bootstrap native-DB mismatch view audit
 
 V1.6.6.6 was built after review of the uploaded V1.6.6.5 iOS thin bundle. The thin run reached `complete_success` and reported 6 valid stores, 344,445 raw records, 42,799 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events. No slow or incomplete exports were reported above the thin-performance threshold.

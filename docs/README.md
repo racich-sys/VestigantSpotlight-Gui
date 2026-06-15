@@ -1,14 +1,7 @@
-# Vestigant Spotlight Current User Note — V1.6.6.6
+# V1.6.28 Current Note
 
-Current source package: `VestigantSpotlightInv_V1_6_6_6.zip`.
+Current baseline is V1.6.28. Use `docs/START_CONTINUATION_CHAT.md` for handoff and `docs/IOS_INVESTIGATION_VALIDATION_WORKFLOW.md` for iOS validation. Guardrail retirement is tracked in `docs/GUARDRAIL_RETIREMENT_PLAN.md`.
 
-Use `BUILD_INSTRUCTIONS.md` or `docs/QUICK_START.md` for the current build and thin-test commands.
+# Vestigant Spotlight V1.6.28
 
-Key current release note:
-
-- V1.6.6.6 reviewed the uploaded V1.6.6.5 iOS thin result and verified queued forensic-directive claims against source before modifying code.
-- The V1.6.6.5 thin run reached `complete_success`; no slow or incomplete exports were reported above the thin-performance threshold.
-- APFS guided traversal cycle detection, bounded bplist/NSKeyedArchiver recovery, and `tel:` / `mailto:` identity fallback were already present in the V1.6.6.5 baseline.
-- V1.6.6.6 adds the Spotlight/native-DB communication mismatch view to the GUI bootstrap schema and prioritizes that view in the iOS GUI sort order.
-
-Detailed note: `docs/V1_6_6_6_THIN_AND_FORENSIC_DIRECTIVE_REVIEW.md`.
+V1.6.28 adds a CoreDuet `interactionC.db` investigator workflow and keeps a running start-continuation handoff in `docs/START_CONTINUATION_CHAT.md`.

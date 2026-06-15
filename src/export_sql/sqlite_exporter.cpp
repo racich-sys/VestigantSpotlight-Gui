@@ -234,7 +234,7 @@ void writeInvestigatorDashboard(CaseDatabase& db, const fs::path& file, Logger& 
     writeHtmlQueryTable(db, out, "Same-folder / parent inode activity", "Parent-inode groups with multiple children; useful for reconstructing folder context without active filesystem comparison. Limited to 200 rows.", R"SQL(SELECT store_guid,parent_inode_num,COUNT(*) AS child_count, SUM(CASE WHEN COALESCE(usage_field_summary,'')<>'' OR COALESCE(last_used_date_utc,'')<>'' OR COALESCE(first_used_candidate_utc,'')<>'' OR COALESCE(used_dates_count,0)>0 OR COALESCE(use_count_value,'')<>'' THEN 1 ELSE 0 END) AS usage_child_count, MIN(NULLIF(last_updated_utc,'')) AS first_last_updated_utc, MAX(NULLIF(last_updated_utc,'')) AS last_last_updated_utc, MIN(NULLIF(best_path,'')) AS sample_child_path FROM artifacts WHERE COALESCE(parent_inode_num,'')<>'' GROUP BY store_guid,parent_inode_num HAVING COUNT(*)>1 ORDER BY usage_child_count DESC, child_count DESC, store_guid, CAST(parent_inode_num AS INTEGER) LIMIT 200)SQL");
     writeHtmlQueryTable(db, out, "Volume root / mounted volume indicators", "Spotlight-native volume root and mounted-volume candidates. Limited to 150 rows.", R"SQL(SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,content_type_tree,last_updated_utc,first_used_candidate_utc,last_used_date_utc,is_mounted_volume_path,mounted_volume_name,external_volume_reason,confidence FROM artifacts WHERE COALESCE(content_type,'')='public.volume' OR COALESCE(is_mounted_volume_path,0)<>0 OR COALESCE(mounted_volume_name,'')<>'' OR COALESCE(external_volume_reason,'')<>'' ORDER BY store_guid, CAST(inode_num AS INTEGER), artifact_id LIMIT 150)SQL");
     writeHtmlQueryTable(db, out, "Top date fields", "Date-field coverage and observed ranges. Limited to 100 rows.", R"SQL(SELECT field_name,COUNT(*) AS row_count, COUNT(DISTINCT source_id || '|' || store_guid || '|' || source_db || '|' || inode_num || '|' || COALESCE(store_id,'')) AS record_count, MIN(COALESCE(NULLIF(parsed_utc,''),field_value)) AS min_observed, MAX(COALESCE(NULLIF(parsed_utc,''),field_value)) AS max_observed FROM raw_date_candidates GROUP BY field_name ORDER BY row_count DESC, field_name LIMIT 100)SQL");
-    out << "<div class=\"note\"><b>Limitations:</b> active filesystem comparison and deleted/orphaned classification remain disabled. Path reconstruction is Spotlight-native and confidence-rated.</div></body></html>\n";
+    out << "<div class=\"note\"><b>Limitations:</b> iOS FFS exact-path active filesystem comparison is enabled when ios_ffs inventory/lookup rows exist. Missing rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory comparison remains pending.</div></body></html>\n";
     log.info("Investigator dashboard written: " + pathString(file));
 }
 
@@ -335,7 +335,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in this version; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.28 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";
@@ -400,6 +400,14 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/upload_samples/folder_activity_summary.csv", "Same-parent folder activity rollup from Spotlight parent inode data.");
     row("exports/upload_samples/recent_activity_focus.csv", "Recent artifacts by usage/update signals.");
     row("exports/upload_samples/volume_root_focus.csv", "Volume root and mounted-volume indicators.");
+    row("exports/upload_samples/ios_coreduet_interactionc_database_status_sample.csv", "CoreDuet People/interactionC source and parse readiness sample.");
+    row("exports/upload_samples/ios_coreduet_interactionc_validation_checks_sample.csv", "CoreDuet People/interactionC parser reconciliation and guardrail validation sample.");
+    row("exports/upload_samples/ios_coreduet_interactionc_summary_sample.csv", "CoreDuet People/interactionC summary sample.");
+    row("exports/upload_samples/ios_coreduet_interactionc_events_sample.csv", "Bounded CoreDuet People/interactionC event review sample.");
+    row("exports/ios_coreduet_interactionc_database_status.csv", "CoreDuet People/interactionC database, WAL/SHM, table inventory, and parsed-row status.");
+    row("exports/ios_coreduet_interactionc_validation_checks.csv", "CoreDuet People/interactionC parser reconciliation and guardrail validation checks.");
+    row("exports/ios_coreduet_interactionc_summary.csv", "CoreDuet People/interactionC investigator summary by stream/app/participant hint.");
+    row("exports/ios_coreduet_interactionc_events.csv", "Support/full row-level CoreDuet People/interactionC event review.");
     row("exports/ios_app_parsed_records.csv", "Generic parsed rows from staged iOS app databases such as Messages, calls, web, calendar, contacts, and attachments.");
     row("exports/ios_app_parsed_record_summary.csv", "Counts and date ranges for generic parsed iOS app database rows.");
     row("exports/ios_apple_messages_parsed_records.csv", "Apple Messages SMS.db message and attachment rows with handle/chat context where schema permits.");
@@ -413,6 +421,7 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
     row("exports/ios_attachment_reference_frequency.csv", "Attachment/file reference frequency from parsed iOS app database records.");
     row("exports/ios_communication_existence_evidence.csv", "Row-level communication existence evidence from parsed app records and communication provenance markers; sampled in thin mode.");
     row("exports/ios_spotlight_comms_missing_from_native_db.csv", "CoreSpotlight/index-derived communication rows not matched to parsed native app database records; sampled in thin mode.");
+    row("exports/ios_production_readiness_summary.csv", "Production-readiness checklist for iOS runs, including hash, export profile, parser mode, and review-surface counts.");
     row("exports/ios_communication_identity_frequency.csv", "Identity/thread grouped communication frequency rollup by app, category, and source table.");
     row("exports/ios_communication_temporal_frequency.csv", "Daily communication frequency rollup by thread/identity/app/category.");
     row("exports/ios_identity_activity_linkage.csv", "Links phone/email/account/thread/user identity hints to parsed iOS activities by app/category.");
@@ -513,6 +522,8 @@ void writeParserLimitsAndSuppressionSummary(CaseDatabase& db, const fs::path& fi
     const std::string materializeAppDb = caseInfoValue(db, "materialize_ios_app_db_records", "not_recorded");
     const std::string exportProfile = caseInfoValue(db, "export_profile", "not_recorded");
     const std::string skipHash = caseInfoValue(db, "skip_container_hash", "not_recorded");
+    const std::string forceHash = caseInfoValue(db, "force_container_hash", "not_recorded");
+    const std::string containerIntegrityStatus = scalarText(db, "SELECT COALESCE(MAX(integrity_status),'') FROM preserved_evidence_sets WHERE archive_format IN ('zip','aff4','raw','img','dd','container') OR archive_path<>''");
     const std::string guardrailBytes = caseInfoValue(db, "db_size_guardrail_bytes", "not_recorded");
 
     auto ratio = [](long long a, long long b) {
@@ -529,7 +540,7 @@ void writeParserLimitsAndSuppressionSummary(CaseDatabase& db, const fs::path& fi
 
     out << "setting_or_limit,current_value,effect_on_extraction,completeness_or_review_risk,override_or_confirmation,evidence_from_current_run\n";
     row("application_version", caseInfoValue(db, "app_version", "unknown"), "Identifies parser build used for the run.", "None.", "Build/run current version.", "case_info.app_version");
-    row("source_container_hash", skipHash == "true" ? "HASH_DEFERRED_BY_SKIP_CONTAINER_HASH" : "hash attempted or not recorded", "Reuse-cache development runs can avoid re-reading very large ZIP sources solely for hashing.", "For forensic/final runs, deferred hash should be replaced with a source/container hash.", "omit --skip-container-hash or use --force-container-hash where supported", "case_info.skip_container_hash=" + skipHash);
+    row("source_container_hash", skipHash == "true" ? "HASH_DEFERRED_BY_SKIP_CONTAINER_HASH" : (forceHash == "true" ? "FORCE_CONTAINER_HASH_REQUESTED" : "HASH_ATTEMPTED_OR_NOT_RECORDED"), "Reuse-cache development runs can avoid re-reading very large ZIP sources solely for hashing; production iOS runs should request container hashing.", "For forensic/final runs, deferred hash should be replaced with a source/container hash or a documented external hash.", "omit --skip-container-hash and use --force-container-hash for production/final iOS ZIP runs", "case_info.skip_container_hash=" + skipHash + "; case_info.force_container_hash=" + forceHash + "; preserved_evidence_sets.integrity_status=" + containerIntegrityStatus);
     row("native_record_parse_limit", (maxNativeRecords == "0" ? "UNLIMITED" : maxNativeRecords), "Controls whether Store-V2/CoreSpotlight records are intentionally capped.", maxNativeRecords == "0" ? "No deliberate record-count cap recorded." : "Records may be intentionally sampled/capped.", "run without --max-native-records for full record enumeration", "raw_records=" + std::to_string(rawRecords) + "; native_decode_attempts=" + std::to_string(decodeAttempts));
     row("native_metadata_block_limit", (maxNativeBlocks == "0" ? "UNLIMITED" : maxNativeBlocks), "Controls whether native metadata block scanning is capped.", maxNativeBlocks == "0" ? "No deliberate block-count cap recorded." : "Metadata block scan may be intentionally capped.", "run without --max-native-blocks for full block enumeration", "case_info.max_native_blocks=" + maxNativeBlocks);
     row("native_decode_mode", decodeMode.empty() ? "not_recorded" : decodeMode, "Indicates native parser mode reported by native_decode_attempts.", "FullValues still may use compact persistence in normal iOS mode.", "use diagnostic flags only for bounded support runs", "native_decode_attempts.decode_mode=" + decodeMode);
@@ -1030,6 +1041,7 @@ void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& expor
     }
     appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_start", "profile=" + profile);
     writeParserLimitsAndSuppressionSummary(db, exportDir / "parser_limits_and_suppression_summary.csv", log);
+    exportQuery(db, exportDir / "ios_production_readiness_summary.csv", "SELECT * FROM vw_ios_production_readiness_summary ORDER BY readiness_order", log);
 
     if (!fullExport) {
         exportQuery(db, exportDir / "source_probe_inventory.csv", "SELECT * FROM vw_source_probe_inventory ORDER BY created_utc DESC, source_probe_run_id DESC", log);
@@ -1037,6 +1049,8 @@ void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& expor
         exportQuery(db, exportDir / "source_partition_probe.csv", "SELECT * FROM vw_source_partition_inventory ORDER BY source_id, scheme, partition_index, offset_bytes", log);
         exportQuery(db, exportDir / "image_inventory_sources.csv", "SELECT * FROM vw_image_inventory_sources ORDER BY created_utc DESC, image_inventory_source_id DESC", log);
         exportQuery(db, exportDir / "active_file_comparison_readiness.csv", "SELECT * FROM vw_active_file_comparison_readiness ORDER BY created_utc DESC, image_inventory_source_id DESC", log);
+        exportQuery(db, exportDir / "active_file_comparison_validation_checks.csv", "SELECT * FROM vw_active_file_comparison_validation_checks ORDER BY source_id, check_name", log);
+        exportQuery(db, exportDir / "active_file_comparison_candidate_summary.csv", "SELECT * FROM vw_active_file_comparison_candidate_summary ORDER BY source_id, existence_status, candidate_count DESC", log);
         if (supportDataExport) exportQuery(db, exportDir / "spotlight_active_file_comparison.csv", "SELECT * FROM vw_spotlight_active_file_comparison ORDER BY artifact_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "image_file_inventory.csv", "SELECT * FROM vw_image_file_inventory ORDER BY source_id, apfs_volume_name, full_path", log);
         exportQuery(db, exportDir / "content_type_summary.csv", "SELECT * FROM vw_content_type_summary ORDER BY artifact_count DESC, content_type", log);
@@ -1084,7 +1098,7 @@ WITH probe AS (
 ), categorized AS (
   SELECT CASE
     WHEN v LIKE '%http://%' OR v LIKE '%https://%' OR v LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-    WHEN v LIKE '%@%' AND v LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+    WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (v LIKE '%@%' AND v LIKE '%.%' AND v NOT LIKE '%file:%' AND v NOT LIKE '%/%' AND v NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
     WHEN v LIKE '%imessage%' OR v LIKE '%sms%' OR v LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
     WHEN v LIKE '%icloud%' OR v LIKE '%onedrive%' OR v LIKE '%dropbox%' OR v LIKE '%google drive%' OR v LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
     WHEN v LIKE '%calendar%' OR v LIKE '%invite%' OR v LIKE '%rsvp%' OR v LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -1141,7 +1155,7 @@ ORDER BY row_count DESC, domain_bucket
 )SQL", log);
         exportQuery(db, exportDir / "ios_redacted_investigation_summary.csv", R"SQL(
 WITH probe AS (
-  SELECT store_guid, source_db, inode_num, LOWER(field_value) AS v
+  SELECT store_guid, source_db, inode_num, field_name, LOWER(field_value) AS v
   FROM raw_key_values
   WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
     AND COALESCE(field_value,'')<>''
@@ -1149,7 +1163,7 @@ WITH probe AS (
   SELECT store_guid, source_db, inode_num,
          CASE
            WHEN v LIKE '%http://%' OR v LIKE '%https://%' OR v LIKE '%www.%' THEN 'URL_OR_WEB_LINK'
-           WHEN v LIKE '%@%' AND v LIKE '%.%' THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
+           WHEN (field_name LIKE '__native_probe_email_candidate_%' OR (v LIKE '%@%' AND v LIKE '%.%' AND v NOT LIKE '%file:%' AND v NOT LIKE '%/%' AND v NOT LIKE '% %')) THEN 'EMAIL_ADDRESS_OR_ACCOUNT'
            WHEN v LIKE '%imessage%' OR v LIKE '%sms%' OR v LIKE '%message%' THEN 'MESSAGE_TEXT_OR_MESSAGE_APP'
            WHEN v LIKE '%icloud%' OR v LIKE '%onedrive%' OR v LIKE '%dropbox%' OR v LIKE '%google drive%' OR v LIKE '%drive.google%' THEN 'CLOUD_STORAGE_OR_SYNC'
            WHEN v LIKE '%calendar%' OR v LIKE '%invite%' OR v LIKE '%rsvp%' OR v LIKE '%event%' THEN 'CALENDAR_OR_INVITATION'
@@ -1372,6 +1386,10 @@ LIMIT 5000
         exportQuery(db, exportDir / "ios_spotlight_bplist_nskeyedarchiver_summary.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary ORDER BY spotlight_record_count DESC, store_guid, source_db, bplist_detection_status", log);
         exportQuery(db, exportDir / "ios_spotlight_bplist_nskeyedarchiver_detail.csv", "SELECT * FROM vw_ios_spotlight_bplist_nskeyedarchiver_detail ORDER BY last_updated_utc DESC, store_guid, raw_kv_id LIMIT 5000", log);
         exportQuery(db, exportDir / "investigator_time_anomalies.csv", "SELECT * FROM vw_investigator_time_anomalies ORDER BY anomaly_type, last_updated_utc DESC, artifact_id LIMIT 5000", log);
+        exportQuery(db, exportDir / "ios_coreduet_interactionc_database_status.csv", "SELECT * FROM vw_ios_coreduet_interactionc_database_status ORDER BY normalized_path, ios_db_id", log);
+        exportQuery(db, exportDir / "ios_coreduet_interactionc_validation_checks.csv", "SELECT * FROM vw_ios_coreduet_interactionc_validation_checks ORDER BY source_id, ios_db_id, check_name", log);
+        exportQuery(db, exportDir / "ios_coreduet_interactionc_summary.csv", "SELECT * FROM vw_ios_coreduet_interactionc_summary ORDER BY event_count DESC, latest_event_utc DESC, parsed_app_or_participant_hint", log);
+        if (supportDataExport) exportQuery(db, exportDir / "ios_coreduet_interactionc_events.csv", "SELECT * FROM vw_ios_coreduet_interactionc_event_review ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_knowledgec_interaction_summary.csv", "SELECT * FROM vw_ios_knowledgec_interaction_summary ORDER BY event_count DESC, latest_event_utc DESC, app_bundle_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_knowledgec_interaction_events.csv", "SELECT * FROM vw_ios_knowledgec_interaction_events ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
         exportQuery(db, exportDir / "investigator_super_timeline_sample.csv", "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category LIMIT 5000", log);
@@ -1618,6 +1636,8 @@ FROM source_copy_comparison ORDER BY store_guid, CAST(inode_num AS INTEGER)
     exportQuery(db, exportDir / "image_inventory_sources.csv", "SELECT * FROM vw_image_inventory_sources ORDER BY created_utc DESC, image_inventory_source_id DESC", log);
     exportQuery(db, exportDir / "image_file_inventory.csv", "SELECT * FROM vw_image_file_inventory ORDER BY source_id, apfs_volume_name, full_path", log);
     exportQuery(db, exportDir / "active_file_comparison_readiness.csv", "SELECT * FROM vw_active_file_comparison_readiness ORDER BY created_utc DESC, image_inventory_source_id DESC", log);
+    exportQuery(db, exportDir / "active_file_comparison_validation_checks.csv", "SELECT * FROM vw_active_file_comparison_validation_checks ORDER BY source_id, check_name", log);
+    exportQuery(db, exportDir / "active_file_comparison_candidate_summary.csv", "SELECT * FROM vw_active_file_comparison_candidate_summary ORDER BY source_id, existence_status, candidate_count DESC", log);
     exportQuery(db, exportDir / "spotlight_active_file_comparison.csv", "SELECT * FROM vw_spotlight_active_file_comparison ORDER BY artifact_id", log);
     exportQuery(db, exportDir / "parent_inode_links.csv", R"SQL(
 SELECT link_id,source_id,store_guid,child_artifact_id,child_inode_num,child_parent_inode_num,child_file_name,child_best_path,parent_artifact_id,parent_inode_num,parent_file_name,parent_best_path,sibling_group_key,sibling_count,relationship_status,path_reconstruction_method,reconstructed_path_candidate,confidence
@@ -1625,7 +1645,7 @@ FROM parent_inode_links
 ORDER BY source_id, store_guid, CAST(child_parent_inode_num AS INTEGER), CAST(child_inode_num AS INTEGER), link_id
 )SQL", log);
     exportQuery(db, exportDir / "path_reconstruction_applied.csv", R"SQL(
-SELECT link_id,source_id,store_guid,artifact_id,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,parent_artifact_id,resolved_parent_inode_num,parent_file_name,parent_best_path,reconstructed_path_candidate,applied_to_artifact_path,candidate_matches_artifact_path,sibling_group_key,sibling_count,relationship_status,path_reconstruction_method,confidence
+SELECT link_id,source_id,store_guid,artifact_id,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,parent_artifact_id,resolved_parent_inode_num,parent_file_name,parent_best_path,reconstructed_path_candidate,applied_to_artifact_path,candidate_matches_artifact_path,path_candidate_status,existing_path_context_only,new_reconstructed_path,sibling_group_key,sibling_count,relationship_status,path_reconstruction_method,confidence
 FROM vw_path_reconstruction
 ORDER BY store_guid, CAST(parent_inode_num AS INTEGER), CAST(inode_num AS INTEGER), link_id
 )SQL", log);
@@ -1662,13 +1682,14 @@ SELECT source_id,
        CASE WHEN SUM(CASE WHEN COALESCE(NULLIF(trim(parent_best_path),''),'') NOT IN ('/','------NONAME------','(null)','NULL','.') THEN 1 ELSE 0 END) > 0 THEN MAX(CASE WHEN COALESCE(NULLIF(trim(parent_best_path),''),'') NOT IN ('/','------NONAME------','(null)','NULL','.') THEN parent_best_path ELSE NULL END) ELSE '' END AS path_candidate,
        COUNT(*) AS child_count,
        SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END) AS resolved_parent_link_count,
-       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
+       SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END) AS reconstructed_child_path_count,
        SUM(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN 1 ELSE 0 END) AS child_name_count,
        MIN(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS first_child_name,
        MAX(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END) AS last_child_name,
        GROUP_CONCAT(CASE WHEN COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN child_file_name ELSE NULL END, '; ') AS child_filename_candidates,
        CASE
-         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' THEN 1 ELSE 0 END)>0 THEN 'MEDIUM_RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')<>COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'MEDIUM_NEW_RECONSTRUCTED_CHILD_PATHS_PRESENT'
+         WHEN SUM(CASE WHEN COALESCE(reconstructed_path_candidate,'')<>'' AND COALESCE(child_best_path,'')=COALESCE(reconstructed_path_candidate,'') THEN 1 ELSE 0 END)>0 THEN 'LOW_EXISTING_SPOTLIGHT_PATH_CONTEXT_PRESENT'
          WHEN SUM(CASE WHEN relationship_status='PARENT_INODE_MATCHED_IN_SAME_STORE' THEN 1 ELSE 0 END)>0 THEN 'LOW_PARENT_INODE_MATCH_WITHOUT_FULL_PATH'
          ELSE 'LOW_SAME_PARENT_INODE_GROUP_ONLY'
        END AS confidence,
@@ -2191,6 +2212,15 @@ void SqliteExporter::exportUploadSamples(CaseDatabase& db, const fs::path& sampl
     exportQuery(db, sampleDir / "active_file_comparison_readiness_focus.csv", "SELECT * FROM vw_active_file_comparison_readiness ORDER BY created_utc DESC, image_inventory_source_id DESC LIMIT 250", log);
     manifest << "active_file_comparison_readiness_focus.csv,vw_active_file_comparison_readiness," << tableRowCount(db, "image_inventory_sources") << ",250,readiness status for Spotlight-to-image active file comparison\n";
 
+    exportQuery(db, sampleDir / "active_file_comparison_validation_checks_sample.csv", "SELECT * FROM vw_active_file_comparison_validation_checks ORDER BY source_id, check_name LIMIT 1000", log);
+    manifest << "active_file_comparison_validation_checks_sample.csv,vw_active_file_comparison_validation_checks," << tableRowCount(db, "vw_active_file_comparison_validation_checks") << ",1000,active filesystem comparison validation checks and invariant status\n";
+
+    exportQuery(db, sampleDir / "active_file_comparison_candidate_summary_sample.csv", "SELECT * FROM vw_active_file_comparison_candidate_summary ORDER BY source_id, existence_status, candidate_count DESC LIMIT 1000", log);
+    manifest << "active_file_comparison_candidate_summary_sample.csv,vw_active_file_comparison_candidate_summary," << tableRowCount(db, "vw_active_file_comparison_candidate_summary") << ",1000,active filesystem comparison candidate counts by status/category\n";
+
+    exportQuery(db, sampleDir / "orphaned_deleted_candidates_focus.csv", "SELECT * FROM orphaned_deleted_candidates ORDER BY CASE WHEN content_type LIKE 'MESSAGE%' THEN 1 WHEN content_type LIKE 'APP_DOCUMENT%' THEN 2 WHEN content_type LIKE 'GENERAL%' THEN 5 ELSE 9 END, candidate_id LIMIT 5000", log);
+    manifest << "orphaned_deleted_candidates_focus.csv,orphaned_deleted_candidates," << tableRowCount(db, "orphaned_deleted_candidates") << ",5000,missing/orphan candidate rows prioritized for validation; lead-only not deletion proof\n";
+
     exportQuery(db, sampleDir / "spotlight_active_file_comparison_focus.csv", "SELECT * FROM vw_spotlight_active_file_comparison ORDER BY artifact_id LIMIT 1000", log);
     manifest << "spotlight_active_file_comparison_focus.csv,vw_spotlight_active_file_comparison," << tableRowCount(db, "artifacts") << ",1000,Spotlight artifacts joined to image_file_inventory when image inventory rows exist\n";
 
@@ -2237,17 +2267,17 @@ LIMIT 5000
     manifest << "artifacts_path_focus.csv,artifacts," << tableRowCount(db, "artifacts") << "," << FocusSampleLimit << ",artifacts with path/name reconstruction signals\n";
 
     exportQuery(db, sampleDir / "path_reconstruction_focus.csv", R"SQL(
-SELECT link_id,source_id,store_guid,artifact_id,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,parent_artifact_id,resolved_parent_inode_num,parent_file_name,parent_best_path,reconstructed_path_candidate,applied_to_artifact_path,candidate_matches_artifact_path,sibling_count,relationship_status,path_reconstruction_method,confidence
+SELECT link_id,source_id,store_guid,artifact_id,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,parent_artifact_id,resolved_parent_inode_num,parent_file_name,parent_best_path,reconstructed_path_candidate,applied_to_artifact_path,candidate_matches_artifact_path,path_candidate_status,existing_path_context_only,new_reconstructed_path,sibling_count,relationship_status,path_reconstruction_method,confidence
 FROM vw_path_reconstruction
-ORDER BY applied_to_artifact_path DESC, candidate_matches_artifact_path DESC, confidence DESC, store_guid, CAST(parent_inode_num AS INTEGER), CAST(inode_num AS INTEGER), link_id
+ORDER BY applied_to_artifact_path DESC, new_reconstructed_path DESC, existing_path_context_only DESC, confidence DESC, store_guid, CAST(parent_inode_num AS INTEGER), CAST(inode_num AS INTEGER), link_id
 LIMIT 5000
 )SQL", log);
     manifest << "path_reconstruction_focus.csv,vw_path_reconstruction," << tableRowCount(db, "parent_inode_links") << "," << FocusSampleLimit << ",parent-inode reconstructed path candidates with separate applied-path and candidate-match status\n";
 
     exportQuery(db, sampleDir / "same_folder_groups_focus.csv", R"SQL(
-SELECT source_id,store_guid,parent_inode_num,parent_artifact_id,parent_file_name,parent_best_path,child_count,resolved_parent_link_count,reconstructed_child_path_count,child_name_count,first_child_name,last_child_name,folder_group_status,max_confidence,sibling_group_key
+SELECT source_id,store_guid,parent_inode_num,parent_artifact_id,parent_file_name,parent_best_path,child_count,resolved_parent_link_count,path_context_candidate_count,existing_path_context_count,reconstructed_child_path_count,child_name_count,first_child_name,last_child_name,folder_group_status,max_confidence,sibling_group_key
 FROM vw_same_folder_groups
-ORDER BY child_count DESC, reconstructed_child_path_count DESC, store_guid, CAST(parent_inode_num AS INTEGER)
+ORDER BY child_count DESC, reconstructed_child_path_count DESC, path_context_candidate_count DESC, store_guid, CAST(parent_inode_num AS INTEGER)
 LIMIT 5000
 )SQL", log);
     manifest << "same_folder_groups_focus.csv,vw_same_folder_groups," << tableRowCount(db, "parent_inode_links") << "," << FocusSampleLimit << ",same-folder parent-inode groups with reconstruction counts\n";
@@ -2428,6 +2458,23 @@ LIMIT 5000
     if (tableExists(db, "vw_ios_spotlight_apple_field_coverage")) {
         exportQuery(db, sampleDir / "ios_spotlight_apple_field_coverage_sample.csv", "SELECT * FROM vw_ios_spotlight_apple_field_coverage ORDER BY value_row_count DESC, apple_semantic_group, field_name LIMIT 5000", log);
         manifest << "ios_spotlight_apple_field_coverage_sample.csv,vw_ios_spotlight_apple_field_coverage," << tableRowCount(db, "vw_ios_spotlight_apple_field_coverage") << "," << FocusSampleLimit << ",CoreSpotlight field names grouped by Apple public metadata semantics\n";
+    }
+
+    if (tableExists(db, "vw_ios_coreduet_interactionc_database_status")) {
+        exportQuery(db, sampleDir / "ios_coreduet_interactionc_database_status_sample.csv", "SELECT * FROM vw_ios_coreduet_interactionc_database_status ORDER BY normalized_path, ios_db_id LIMIT 5000", log);
+        manifest << "ios_coreduet_interactionc_database_status_sample.csv,vw_ios_coreduet_interactionc_database_status," << tableRowCount(db, "vw_ios_coreduet_interactionc_database_status") << "," << FocusSampleLimit << ",CoreDuet People/interactionC source and parse readiness\n";
+    }
+    if (tableExists(db, "vw_ios_coreduet_interactionc_validation_checks")) {
+        exportQuery(db, sampleDir / "ios_coreduet_interactionc_validation_checks_sample.csv", "SELECT * FROM vw_ios_coreduet_interactionc_validation_checks ORDER BY source_id, ios_db_id, check_name LIMIT 1000", log);
+        manifest << "ios_coreduet_interactionc_validation_checks_sample.csv,vw_ios_coreduet_interactionc_validation_checks," << tableRowCount(db, "vw_ios_coreduet_interactionc_validation_checks") << ",1000,CoreDuet People/interactionC parser reconciliation and guardrail validation checks\n";
+    }
+    if (tableExists(db, "vw_ios_coreduet_interactionc_summary")) {
+        exportQuery(db, sampleDir / "ios_coreduet_interactionc_summary_sample.csv", "SELECT * FROM vw_ios_coreduet_interactionc_summary ORDER BY event_count DESC, latest_event_utc DESC, parsed_app_or_participant_hint LIMIT 5000", log);
+        manifest << "ios_coreduet_interactionc_summary_sample.csv,vw_ios_coreduet_interactionc_summary," << tableRowCount(db, "vw_ios_coreduet_interactionc_summary") << "," << FocusSampleLimit << ",CoreDuet People/interactionC investigator summary\n";
+    }
+    if (tableExists(db, "vw_ios_coreduet_interactionc_event_review")) {
+        exportQuery(db, sampleDir / "ios_coreduet_interactionc_events_sample.csv", "SELECT * FROM vw_ios_coreduet_interactionc_event_review ORDER BY record_timestamp_utc DESC, ios_app_record_id LIMIT 5000", log);
+        manifest << "ios_coreduet_interactionc_events_sample.csv,vw_ios_coreduet_interactionc_event_review," << tableRowCount(db, "vw_ios_coreduet_interactionc_event_review") << "," << FocusSampleLimit << ",bounded CoreDuet People/interactionC event review rows\n";
     }
 
     exportQuery(db, sampleDir / "content_type_summary.csv", R"SQL(

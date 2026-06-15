@@ -1,0 +1,18 @@
+=== V1.6.7.1 static source/text/wrapper audit ===
+generated_utc=2026-06-12T00:12:30Z
+files_scanned=204
+md_txt_files_scanned=71
+lines_scanned=66502
+raw_string_max_bytes=4973
+raw_string_max_file=src/db/case_db.cpp
+PASS: VERSION is 1.6.7.1
+PASS: app_info.cpp version is 1.6.7.1
+PASS: Build wrapper CLI validation pinned to 1.6.7.1
+PASS: Windows SHA256 branch has one 4MB buffer declaration
+PASS: Progress-capable SHA256 helper present
+PASS: Source-container hash run-status markers present
+PASS: Production wrapper requests run/investigator/hash/full-native-values
+PASS: Focused runner supports full-native-values and production performance naming
+PASS: Upload tool includes production artifacts
+PASS: MSVC raw-string risk guard below 5000 bytes
+STATIC_AUDIT_RESULT=PASS

@@ -1,3 +1,68 @@
+# V1.6.28 - CoreDuet interactionC workflow
+
+- Added CoreDuet `interactionC.db` database-status, summary, and event-review views.
+- Added GUI review entries and CSV exports for CoreDuet People / interactionC workflow.
+- Added bounded upload samples for interactionC status/summary/events.
+- Added `docs/INTERACTIONC_WORKFLOW.md` and running `docs/START_CONTINUATION_CHAT.md`.
+- Validation here is static source/package audit only; Windows/MSVC build is still required.
+
+# V1.6.18.1 - Windows GUI subclass hotfix
+
+- Restored `ReviewListSubclassProc` and `ReviewDetailsSplitterSubclassProc` definitions needed by the compacted V1.6.18 Investigation Results controls.
+- Added static release-readiness markers for the restored subclass callbacks.
+- Windows/MSVC build was not run in this environment; upload `D:\Downloads\V1_6_18_1_build.log` after local build.
+
+## V1.6.18 - iOS thin validation closure and compact GUI header layout
+
+V1.6.18 follows review of the uploaded `Upload_Thin_iOS_CoreSpotlight_V1_6_17.zip`, whose computed SHA256 was `11C80504B37AF0A19FC0DA342FC691C3DF238DFAF3B0EEFCB6C54CC50EE89522`. The V1.6.17 iOS thin reached `complete_success`, generated 203 upload files, and reported `store_count=6`, `valid_store_count=6`, `database_candidate_count=12`, `valid_database_candidate_count=12`, `parser_selected_database_count=6`, `native_decode_mode=CoreFields`, `raw_record_count=344445`, `raw_key_value_count=60665`, `raw_date_candidate_count=0`, `artifact_count=344445`, `usage_evidence_count=228699`, and `timeline_event_count=277823`.
+
+The V1.6.17 email-category precision fix validated on the uploaded thin sample: `EMAIL_ADDRESS_OR_ACCOUNT` decreased from 2913 rows in V1.6.16 to 2702 rows in V1.6.17, and the 5000-row `ios_string_probe_values_sample.csv` review found no email-category rows containing the path/URL/space indicators that drove the V1.6.16 false-positive issue. The remaining zero `raw_date_candidate_count` is documented as normal compact iOS CoreFields behavior in this run; Last_Updated remains on raw records, while broad date expansion requires bounded diagnostic/full support mode.
+
+V1.6.18 changes:
+
+- Compact the Windows GUI Case Information / Build Processing header in `src/gui/win32_gui.cpp` by reducing row heights, combo drop-down extents, explanatory text height, and action-button heights.
+- Compact the Investigation Results top action area so the grid starts higher and more rows/details remain visible.
+- Update current continuation, quick-start, release, and validation documents that were stale at V1.6.12 or V1.6.7.1.
+- Add V1.6.18 build/run wrappers and release-readiness checks.
+
+Validation completed here: V1.6.17 iOS thin upload review PASS for the targeted email-category regression. Linux CMake build and self-test for V1.6.18 should be run before Windows/MSVC packaging. Windows/MSVC build and live V1.6.18 GUI layout verification are not verified here.
+
+## V1.6.12 - Parent-inode path reconstruction metric clarification after V1.6.11 thin
+
+V1.6.12 follows review of the uploaded `Upload_Thin_MacOS_AFF4_V1_6_11.zip`, whose uploaded SHA256 file reported `1A716392CD6F8F414B9D3EED7C5FB3203E0BB7A277082CCF74830E072D0CEFE4`. The V1.6.11 thin reached `complete_aff4_apfs_staged_storev2_validation_probe` with `store_count=11`, `valid_store_count=7`, `database_candidate_count=22`, `valid_database_candidate_count=14`, `parser_selected_database_count=7`, `native_decode_mode=AFF4_APFS_STAGED_STOREV2_FullValues`, `raw_record_count=25000`, `raw_key_value_count=6568`, `raw_date_candidate_count=25000`, `artifact_count=25000`, and `timeline_event_count=25000`.
+
+The V1.6.11 parent-inode validation sample was present and the run status improved from V1.6.10: `parent_inode_links=24998`, `matched=23871`, `child_names=1425`, and `reconstructed_paths=1425`. However, sample review showed those 1,425 path candidates matched existing raw Spotlight paths, while `artifacts_updated=0`. The validation wording therefore overstated new path reconstruction. The true finding was: parent-link evidence and existing path context were captured, but no newly applied path was created from unnamed child rows.
+
+Code fixes in V1.6.12:
+- Separates path-context candidates from newly reconstructed paths in parent-inode metrics and run-status output.
+- Adds metrics for `parent_inode_links_with_path_context_candidate`, `parent_inode_links_with_existing_path_context`, `parent_inode_links_with_new_reconstructed_path`, and `parent_inode_artifacts_updated_from_reconstruction`.
+- Updates `vw_path_reconstruction` with explicit `path_candidate_status`, `existing_path_context_only`, and `new_reconstructed_path` columns.
+- Updates `vw_same_folder_groups` so existing Spotlight path context is not mislabeled as newly reconstructed child paths.
+- Adds `aff4_apfs_staged_storev2_path_reconstruction_metrics_sample.csv` to the AFF4/APFS thin output and requires it in the macOS AFF4 wrapper.
+
+Validation completed in this packaging environment: Linux CMake build PASS, CLI version `Vestigant Spotlight v1.6.12`, self-test PASS, and ZIP integrity checks PASS. Windows/MSVC build, full live V1.6.12 macOS AFF4 thin, and iOS CoreSpotlight regression thin were not run here.
+
+Test determination: run Windows/MSVC build and the macOS AFF4 thin for V1.6.12. iOS thin is recommended after macOS because SQLite enrichment code is shared, but the V1.6.12 change is macOS path-validation-output focused.
+
+## V1.6.11 - Parent-inode path reconstruction validation after V1.6.10 thin
+
+V1.6.11 follows review of the uploaded `Upload_Thin_MacOS_AFF4_V1_6_10.zip`, whose uploaded SHA256 file reported `0D42F7F285F8DC526A1E0C1E7A93B217BFD90FAA35BF9A1BD4209FF1154BD39D`. The V1.6.10 thin reached `complete_aff4_apfs_staged_storev2_validation_probe` with `store_count=11`, `valid_store_count=7`, `database_candidate_count=22`, `valid_database_candidate_count=14`, `parser_selected_database_count=7`, `native_decode_mode=AFF4_APFS_STAGED_STOREV2_FullValues`, `raw_record_count=25000`, `raw_key_value_count=6568`, `raw_date_candidate_count=25000`, `artifact_count=25000`, and `timeline_event_count=25000`. The V1.6.10 date-candidate fix was validated because `raw_date_candidates_sample.csv` contained only `Last_Updated` rows while raw probe aliases remained in `raw_key_values`.
+
+The remaining validation defect was parent-inode path reconstruction. The V1.6.10 thin reported `parent_inode_links=24998`, `matched=23871`, and `child_names=1425`, but `reconstructed_paths=0` and `artifacts_updated=0`. That showed relationship evidence was being captured, but post-parse path-chain reconstruction was not using the complete artifact set to recover reviewable path candidates.
+
+Code fixes in V1.6.11:
+- Added a post-artifact recursive parent-inode chain reconstruction pass in SQLite enrichment. This pass rebuilds candidate paths after all raw records are materialized, avoiding parser-order loss where children are seen before parent records.
+- Preserves absolute path candidates as preferred evidence and retains relative parent-inode chains as review-only evidence when no absolute ancestor path is available.
+- Updates `parent_inode_links.reconstructed_path_candidate`, `path_reconstruction_method`, and confidence with chain-derived candidates where the immediate parent-link pass left the candidate blank.
+- Applies chain-derived candidates to weak artifact path rows using explicit path provenance values: `PARENT_INODE_CHAIN_RECONSTRUCTION` or `PARENT_INODE_RELATIVE_CHAIN_REVIEW`.
+- Updates `vw_path_reconstruction` so the applied-path flag recognizes the new path-source values.
+- Adds a focused AFF4/APFS thin validation sample: `aff4_apfs_staged_storev2_path_reconstruction_sample.csv`.
+- Updates the macOS AFF4 thin wrapper to require the new path-reconstruction sample, in addition to parser and field-coverage samples.
+
+Validation completed in this packaging environment: Linux CMake build PASS, CLI version `Vestigant Spotlight v1.6.11`, self-test PASS, and a local staged Store-V2 run against uploaded V1.6.10 staged data PASS. Windows/MSVC build, full live V1.6.11 macOS AFF4 thin, and iOS CoreSpotlight regression thin were not run here.
+
+Test determination: run Windows/MSVC build and the macOS AFF4 thin for V1.6.11. iOS thin remains recommended after macOS because native parser/enrichment code is shared, but the V1.6.11 change is macOS path-reconstruction-focused.
+
 ## V1.6.6.5 - iOS native CoreSpotlight probe review bridge
 
 V1.6.6.5 was built after review of the uploaded V1.6.6.4 Windows build log and iOS thin bundle. The Windows build log showed a completed V1.6.6.4 build. The iOS thin bundle reached `complete_success`, with 6 valid stores, 344,445 raw records, 22,569 raw key/value rows, 344,445 artifacts, 228,699 usage evidence rows, and 277,823 timeline events.

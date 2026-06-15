@@ -1,8 +1,10 @@
 #include "core/hash.h"
 #include "core/path_utils.h"
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
@@ -131,13 +133,18 @@ private:
     bool finalized_ = false;
 };
 
-std::string sha256Stream(std::istream& in) {
+std::string sha256Stream(std::istream& in, const std::function<void(std::uintmax_t)>& progressCallback) {
     Sha256Context ctx;
     std::vector<unsigned char> buffer(1024 * 1024);
+    std::uintmax_t bytesRead = 0;
     while (in) {
         in.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
         const std::streamsize got = in.gcount();
-        if (got > 0) ctx.update(buffer.data(), static_cast<std::size_t>(got));
+        if (got > 0) {
+            ctx.update(buffer.data(), static_cast<std::size_t>(got));
+            bytesRead += static_cast<std::uintmax_t>(got);
+            if (progressCallback) progressCallback(bytesRead);
+        }
     }
     if (in.bad()) throw std::runtime_error("Read error while hashing file");
     return ctx.finalHex();
@@ -165,7 +172,7 @@ std::string winErrorMessage(DWORD code) {
     return out;
 }
 
-std::string sha256FileWindows(const fs::path& file) {
+std::string sha256FileWindows(const fs::path& file, const std::function<void(std::uintmax_t)>& progressCallback) {
     HANDLE h = CreateFileW(file.wstring().c_str(), GENERIC_READ,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                            nullptr, OPEN_EXISTING,
@@ -178,15 +185,17 @@ std::string sha256FileWindows(const fs::path& file) {
     try {
         Sha256Context ctx;
         std::vector<unsigned char> buffer(4 * 1024 * 1024);
+        std::uintmax_t bytesRead = 0;
         for (;;) {
             DWORD got = 0;
             if (!ReadFile(h, buffer.data(), static_cast<DWORD>(buffer.size()), &got, nullptr)) {
                 const DWORD err = GetLastError();
-                CloseHandle(h);
                 throw std::runtime_error("Read error while hashing file: " + pathString(file) + " (" + winErrorMessage(err) + ")");
             }
             if (got == 0) break;
             ctx.update(buffer.data(), static_cast<std::size_t>(got));
+            bytesRead += static_cast<std::uintmax_t>(got);
+            if (progressCallback) progressCallback(bytesRead);
         }
         CloseHandle(h);
         return ctx.finalHex();
@@ -195,6 +204,7 @@ std::string sha256FileWindows(const fs::path& file) {
         throw;
     }
 }
+
 #endif
 }
 
@@ -204,14 +214,18 @@ std::string sha256Bytes(const unsigned char* data, std::size_t len) {
     return ctx.finalHex();
 }
 
-std::string sha256File(const fs::path& file) {
+std::string sha256FileWithProgress(const fs::path& file, const std::function<void(std::uintmax_t)>& progressCallback) {
 #ifdef _WIN32
-    return sha256FileWindows(file);
+    return sha256FileWindows(file, progressCallback);
 #else
     std::ifstream in(file, std::ios::binary);
     if (!in) throw std::runtime_error("Unable to open file for SHA256: " + pathString(file));
-    return sha256Stream(in);
+    return sha256Stream(in, progressCallback);
 #endif
+}
+
+std::string sha256File(const fs::path& file) {
+    return sha256FileWithProgress(file, {});
 }
 
 } // namespace vestigant::spotlight

@@ -151,6 +151,11 @@ $Wanted = @(
     "run_progress.tsv",
     "thin_performance_summary.csv",
     "THIN_PERFORMANCE_SUMMARY.md",
+    "production_performance_summary.csv",
+    "PRODUCTION_PERFORMANCE_SUMMARY.md",
+    "wrapper_heartbeat.log",
+    "EXPORT_INDEX.csv",
+    "exports/EXPORT_INDEX.csv",
     "VestigantSpotlight.log",
     "case_path_manifest.txt",
     "wrapper_case_path_manifest.txt",
@@ -178,7 +183,7 @@ $Wanted = @(
     "reader_tool_readiness.csv",
     "aff4_cpp_lite_reader_readiness.csv",
     "aff4_cpp_lite_integration_readiness.csv",
-    "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_volume_superblocks.csv", "aff4_apfs_volume_superblocks_summary.json", "AFF4_APFS_VOLUME_SUPERBLOCK_PROBE.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_root_tree_child_node_probe.csv", "aff4_apfs_root_tree_child_record_sample.csv", "aff4_apfs_root_tree_child_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_CHILD_NODE_PROBE.md", "aff4_apfs_root_tree_descendant_node_probe.csv", "aff4_apfs_root_tree_descendant_record_sample.csv", "aff4_apfs_root_tree_descendant_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_DESCENDANT_NODE_PROBE.md", "aff4_apfs_filesystem_namespace_seed.csv", "aff4_apfs_filesystem_namespace_seed_summary.json", "AFF4_APFS_FILESYSTEM_NAMESPACE_SEED.md", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_file_copy_out.csv", "aff4_apfs_spotlight_file_copy_out_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_COPY_OUT.md", "aff4_apfs_extracted_storev2_stage_groups.csv", "aff4_apfs_extracted_storev2_stage_files.csv", "aff4_apfs_extracted_storev2_stage_summary.json", "AFF4_APFS_EXTRACTED_STOREV2_STAGE.md", "aff4_apfs_storev2_candidate_dual_process_compare.csv", "aff4_apfs_storev2_candidate_dual_process_compare_summary.json", "AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md", "aff4_apfs_staged_storev2_parser_probe.csv", "aff4_apfs_staged_storev2_parser_probe_summary.json", "AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md", "aff4_apfs_staged_storev2_enrichment_probe_summary.json", "AFF4_APFS_STAGED_STOREV2_ENRICHMENT_PROBE.md", "aff4_apfs_staged_storev2_artifacts_sample.csv", "aff4_apfs_staged_storev2_timeline_sample.csv", "aff4_apfs_staged_storev2_raw_key_values_sample.csv", "aff4_apfs_staged_storev2_raw_date_candidates_sample.csv", "aff4_apfs_staged_storev2_raw_failures_sample.csv", "aff4_apfs_external_spotlight_external_manifest.csv", "aff4_apfs_external_spotlight_vestigant_manifest.csv", "aff4_apfs_external_spotlight_file_compare.csv", "aff4_apfs_external_spotlight_storev2_group_compare.csv", "aff4_apfs_external_spotlight_compare_summary.json", "AFF4_APFS_EXTERNAL_SPOTLIGHT_COMPARE.md", "aff4_apfs_remaining_mismatch_diagnostics.csv", "aff4_apfs_remaining_mismatch_diagnostics_summary.json", "aff4_apfs_remaining_mismatch_diagnostics.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json",
+    "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_volume_superblocks.csv", "aff4_apfs_volume_superblocks_summary.json", "AFF4_APFS_VOLUME_SUPERBLOCK_PROBE.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_root_tree_child_node_probe.csv", "aff4_apfs_root_tree_child_record_sample.csv", "aff4_apfs_root_tree_child_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_CHILD_NODE_PROBE.md", "aff4_apfs_root_tree_descendant_node_probe.csv", "aff4_apfs_root_tree_descendant_record_sample.csv", "aff4_apfs_root_tree_descendant_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_DESCENDANT_NODE_PROBE.md", "aff4_apfs_filesystem_namespace_seed.csv", "aff4_apfs_filesystem_namespace_seed_summary.json", "AFF4_APFS_FILESYSTEM_NAMESPACE_SEED.md", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_file_copy_out.csv", "aff4_apfs_spotlight_file_copy_out_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_COPY_OUT.md", "aff4_apfs_extracted_storev2_stage_groups.csv", "aff4_apfs_extracted_storev2_stage_files.csv", "aff4_apfs_extracted_storev2_stage_summary.json", "AFF4_APFS_EXTRACTED_STOREV2_STAGE.md", "aff4_apfs_storev2_candidate_dual_process_compare.csv", "aff4_apfs_storev2_candidate_dual_process_compare_summary.json", "AFF4_APFS_STOREV2_CANDIDATE_DUAL_PROCESS_COMPARE.md", "aff4_apfs_staged_storev2_parser_probe.csv", "aff4_apfs_staged_storev2_parser_probe_summary.json", "AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md", "aff4_apfs_staged_storev2_enrichment_probe_summary.json", "AFF4_APFS_STAGED_STOREV2_ENRICHMENT_PROBE.md", "aff4_apfs_staged_storev2_artifacts_sample.csv", "aff4_apfs_staged_storev2_timeline_sample.csv", "aff4_apfs_staged_storev2_raw_key_values_sample.csv", "aff4_apfs_staged_storev2_raw_date_candidates_sample.csv", "aff4_apfs_staged_storev2_raw_failures_sample.csv", "aff4_apfs_staged_storev2_field_inventory_sample.csv", "aff4_apfs_staged_storev2_parser_coverage_summary_sample.csv", "aff4_apfs_staged_storev2_path_reconstruction_sample.csv", "aff4_apfs_staged_storev2_path_reconstruction_metrics_sample.csv", "aff4_apfs_external_spotlight_external_manifest.csv", "aff4_apfs_external_spotlight_vestigant_manifest.csv", "aff4_apfs_external_spotlight_file_compare.csv", "aff4_apfs_external_spotlight_storev2_group_compare.csv", "aff4_apfs_external_spotlight_compare_summary.json", "AFF4_APFS_EXTERNAL_SPOTLIGHT_COMPARE.md", "aff4_apfs_remaining_mismatch_diagnostics.csv", "aff4_apfs_remaining_mismatch_diagnostics_summary.json", "aff4_apfs_remaining_mismatch_diagnostics.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json",
         "aff4_apfs_spotlight_xattr_probe.csv",
         "aff4_apfs_spotlight_xattr_probe_summary.json",
         "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_PROBE.md", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_LEAF_KV_DECODE.md",
@@ -201,6 +206,8 @@ $Wanted = @(
     "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md",
     "AFF4_DIRECT_MAP_READER_REQUIRED.md",
     "AFF4_STREAM_SELECTION_PLAN.md",
+    "exports/ios_production_readiness_summary.csv",
+    "exports/parser_limits_and_suppression_summary.csv",
     "exports/ios_store_parse_summary.csv",
     "exports/ios_string_probe_category_summary.csv",
     "exports/ios_string_probe_values.csv",
@@ -245,6 +252,28 @@ foreach ($name in $Wanted) {
     if (Copy-FirstExistingCaseFile -RelativeName $name) {
         $copied.Add($name) | Out-Null
     }
+}
+
+# V1.6.17 iOS validation fix: copy the bounded upload_samples directory recursively.
+# Prior focused iOS thin bundles listed sample files in upload_samples_manifest.csv but only
+# included upload_table_counts.csv and upload_samples_manifest.csv, preventing row-level validation.
+$UploadSamplesDir = Join-Path (Join-Path $CaseRoot "exports") "upload_samples"
+if (Test-Path -LiteralPath $UploadSamplesDir) {
+    $sampleCopied = 0
+    $sampleSkipped = 0
+    Get-ChildItem -LiteralPath $UploadSamplesDir -File -ErrorAction SilentlyContinue |
+        Sort-Object Name |
+        ForEach-Object {
+            $rel = "exports/upload_samples/$($_.Name)"
+            if (Test-ThinUploadDeniedRelativeName -RelativeName $rel) { $sampleSkipped += 1; return }
+            if ($_.Length -gt $ThinUploadMaxDynamicExportCsvBytes) { $sampleSkipped += 1; return }
+            $dest = Join-Path (Join-Path (Join-Path $UploadRoot "exports") "upload_samples") $_.Name
+            $destParent = Split-Path -Parent $dest
+            if ($destParent) { New-Item -ItemType Directory -Force -Path $destParent | Out-Null }
+            Copy-Item -LiteralPath $_.FullName -Destination $dest -Force
+            $sampleCopied += 1
+        }
+    if ($sampleCopied -gt 0) { $copied.Add("exports/upload_samples/* copied_files=$sampleCopied skipped=$sampleSkipped") | Out-Null }
 }
 
 $CandidateDir = Join-Path $CaseRoot "Aff4DirectSqliteCandidates"

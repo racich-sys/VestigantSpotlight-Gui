@@ -1,8 +1,8 @@
 param(
     [string]$InputRoot = "D:\Downloads\iOS_CoreSpotlight_Focused_Extracts\EXTRACTION_FFS",
-    [string]$Out = "Q:\SpotlightCase\V0_8_75_iOS_CoreSpotlight",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_V0_8_75_iOS_CoreSpotlight.zip",
-    [string]$UploadWorkRoot = "D:\Downloads\V0_8_75_iOS_UploadWork",
+    [string]$Out = "Q:\SpotlightCase\iOS_CoreSpotlight_Focused",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_iOS_CoreSpotlight_Focused.zip",
+    [string]$UploadWorkRoot = "D:\Downloads\iOS_CoreSpotlight_Focused_UploadWork",
     [switch]$CleanOut,
     [switch]$FullScan,
     [switch]$NoClipboardOrExplorer
@@ -36,6 +36,7 @@ $args = @(
     "--input", $InputRoot,
     "--out", $Out,
     "--full-scan",
+    "--decode-core-native-values",
     "--export-profile", "diagnostics",
     "--verbose"
 )

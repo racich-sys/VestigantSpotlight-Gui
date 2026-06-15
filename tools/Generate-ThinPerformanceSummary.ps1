@@ -1,6 +1,9 @@
 param(
   [Parameter(Mandatory=$true)][string]$CaseRoot,
-  [int]$SlowExportSeconds = 30
+  [int]$SlowExportSeconds = 30,
+  [string]$ReportTitle = 'Thin Performance Summary',
+  [string]$OutputPrefix = 'thin_performance_summary',
+  [string]$OutputMarkdownName = 'THIN_PERFORMANCE_SUMMARY.md'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,8 +24,8 @@ function Parse-IsoUtcSafe {
 }
 
 $runProgress = Find-CaseFile -RelativeName 'run_progress.tsv'
-$outCsv = Join-Path $CaseRoot 'thin_performance_summary.csv'
-$outMd = Join-Path $CaseRoot 'THIN_PERFORMANCE_SUMMARY.md'
+$outCsv = Join-Path $CaseRoot ($OutputPrefix + '.csv')
+$outMd = Join-Path $CaseRoot $OutputMarkdownName
 
 $rows = New-Object System.Collections.Generic.List[object]
 $exports = @{}
@@ -100,7 +103,7 @@ $total = ''
 if ($firstTs -and $lastTs) { $total = [int][Math]::Round(($lastTs - $firstTs).TotalSeconds) }
 $slow = @($sorted | Where-Object { $_.status -eq 'slow_complete' -or $_.status -eq 'started_not_completed' } | Select-Object -First 20)
 $md = New-Object System.Collections.Generic.List[string]
-$md.Add('# Thin Performance Summary') | Out-Null
+$md.Add('# ' + $ReportTitle) | Out-Null
 $md.Add('') | Out-Null
 $md.Add("Generated UTC: $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))") | Out-Null
 $md.Add("CaseRoot: $CaseRoot") | Out-Null
@@ -116,8 +119,8 @@ if ($slow.Count -eq 0) {
   }
 }
 $md.Add('') | Out-Null
-$md.Add('CSV detail: thin_performance_summary.csv') | Out-Null
+$md.Add('CSV detail: ' + ($OutputPrefix + '.csv')) | Out-Null
 $md | Set-Content -LiteralPath $outMd -Encoding UTF8
 
-Write-Host "Thin performance summary written: $outCsv"
-Write-Host "Thin performance summary written: $outMd"
+Write-Host "Performance summary written: $outCsv"
+Write-Host "Performance summary written: $outMd"
