@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VestigantSpotlightInv VERSION 1.6.28 LANGUAGES C CXX)
+project(VestigantSpotlightInv VERSION 1.6.29.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -889,8 +889,15 @@ ApfsOmapTargetResolution aff4ResolveVolumeOmapTargetObjectForProbe(
     nextLeafNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
     std::vector<unsigned char> reusableChildNodeBuffer;
     reusableChildNodeBuffer.reserve(static_cast<std::size_t>(blockSize));
+    std::set<std::uint64_t> visitedNodes;
     constexpr std::uint32_t kMaxDepth = 8;
     for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
+        if (!visitedNodes.insert(nodeOid).second) {
+            out.lookupStatus = "VOLUME_OMAP_VERTICAL_CYCLE_DETECTED";
+            out.interpretation = purpose + ": volume OMAP B-tree traversal detected a repeated branch/leaf node and stopped.";
+            aff4ApfsAppendProbeNote(out.notes, "vertical_cycle_detected_oid=" + std::to_string(nodeOid));
+            break;
+        }
         if (cancelCheck && cancelCheck()) {
             out.lookupStatus = "CANCELLED_BY_USER";
             out.interpretation = purpose + ": OMAP traversal cancelled by investigator request.";
@@ -1552,6 +1559,7 @@ std::vector<unsigned char> aff4DirectLz4DecompressBlock(const unsigned char* src
             for (;;) {
                 if (pos >= srcSize) throw std::runtime_error("AFF4 LZ4 length overrun");
                 const unsigned char b = src[pos++];
+                if (len > MaxOutput - static_cast<std::size_t>(b)) throw std::runtime_error("AFF4 LZ4 length overflow");
                 len += static_cast<std::size_t>(b);
                 if (b != 255U) break;
             }
@@ -1561,17 +1569,19 @@ std::vector<unsigned char> aff4DirectLz4DecompressBlock(const unsigned char* src
     while (pos < srcSize) {
         const unsigned char token = src[pos++];
         const std::size_t literalLen = readLen(static_cast<std::size_t>(token >> 4));
-        if (pos + literalLen > srcSize || outPos + literalLen > expectedOutputSize) throw std::runtime_error("AFF4 LZ4 literal overrun");
+        if (literalLen > srcSize - pos || literalLen > expectedOutputSize - outPos) throw std::runtime_error("AFF4 LZ4 literal overrun");
         std::memcpy(out.data() + outPos, src + pos, literalLen);
         pos += literalLen;
         outPos += literalLen;
         if (outPos == expectedOutputSize || pos >= srcSize) break;
-        if (pos + 2U > srcSize) throw std::runtime_error("AFF4 LZ4 match offset missing");
+        if (srcSize - pos < 2U) throw std::runtime_error("AFF4 LZ4 match offset missing");
         const std::size_t matchOffset = static_cast<std::size_t>(src[pos]) | (static_cast<std::size_t>(src[pos + 1U]) << 8);
         pos += 2U;
         if (matchOffset == 0U || matchOffset > outPos) throw std::runtime_error("AFF4 LZ4 invalid match offset");
-        std::size_t matchLen = readLen(static_cast<std::size_t>(token & 0x0fU)) + 4U;
-        if (outPos + matchLen > expectedOutputSize) throw std::runtime_error("AFF4 LZ4 match output overrun");
+        std::size_t matchLen = readLen(static_cast<std::size_t>(token & 0x0fU));
+        if (matchLen > MaxOutput - 4U) throw std::runtime_error("AFF4 LZ4 match length overflow");
+        matchLen += 4U;
+        if (matchLen > expectedOutputSize - outPos) throw std::runtime_error("AFF4 LZ4 match output overrun");
         while (matchLen-- > 0U) {
             out[outPos] = out[outPos - matchOffset];
             ++outPos;
@@ -4719,8 +4729,15 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             std::vector<unsigned char> reusableChildNodeBuffer;
                             reusableChildNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
+                            std::set<std::uint64_t> visitedNodes;
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
+                                if (!visitedNodes.insert(nodeOid).second) {
+                                    out.lookupStatus = "VOLUME_OMAP_VERTICAL_CYCLE_DETECTED";
+                                    out.interpretation = purpose + ": volume OMAP B-tree traversal detected a repeated branch/leaf node and stopped.";
+                                    aff4ApfsAppendProbeNote(out.notes, "vertical_cycle_detected_oid=" + std::to_string(nodeOid));
+                                    break;
+                                }
                                 out.branchDepth = depth;
                                 if (node.size() < 64) {
                                     out.lookupStatus = "VOLUME_OMAP_NODE_TOO_SMALL";
@@ -4951,8 +4968,15 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             nextLeafNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
                             std::vector<unsigned char> reusableChildNodeBuffer;
                             reusableChildNodeBuffer.reserve(static_cast<std::size_t>(nxSummary.blockSize));
+                            std::set<std::uint64_t> visitedNodes;
                             constexpr std::uint32_t kMaxDepth = 8;
                             for (std::uint32_t depth = 0; depth < kMaxDepth; ++depth) {
+                                if (!visitedNodes.insert(nodeOid).second) {
+                                    out.lookupStatus = "VOLUME_OMAP_VERTICAL_CYCLE_DETECTED";
+                                    out.interpretation = "Volume OMAP B-tree traversal detected a repeated branch/leaf node and stopped.";
+                                    aff4ApfsAppendProbeNote(out.notes, "vertical_cycle_detected_oid=" + std::to_string(nodeOid));
+                                    break;
+                                }
                                 out.branchDepth = depth;
                                 if (node.size() < 64) {
                                     out.lookupStatus = "VOLUME_OMAP_NODE_TOO_SMALL";

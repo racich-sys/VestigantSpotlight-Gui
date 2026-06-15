@@ -1,8 +1,8 @@
-# iOS Investigation Validation Workflow - V1.6.28
+# iOS Investigation Validation Workflow - V1.6.29.4
 
-1. Build V1.6.28 and review `V1_6_28_build.log`.
-2. Run `scripts\Run-V1_6_28-iOS-CoreSpotlight-AndZip.ps1 -CleanOut`.
-3. Upload `Upload_Thin_iOS_CoreSpotlight_V1_6_28.zip`.
+1. Build V1.6.29.4 and review `V1_6_29_4_build.log`.
+2. Run `scripts\Run-V1_6_29_4-iOS-CoreSpotlight-AndZip.ps1 -CleanOut`.
+3. Upload `Upload_Thin_iOS_CoreSpotlight_V1_6_29_4.zip`.
 4. Validate CoreSpotlight counts, interactionC samples, string-probe category precision, and active filesystem comparison outputs.
 5. For active filesystem comparison, review `active_file_comparison_runs_sample.csv`, `active_file_comparison_readiness_focus.csv`, `spotlight_active_file_comparison_focus.csv`, and `orphaned_deleted_candidates_sample.csv`.
 6. Treat missing iOS FFS exact-path rows as investigative leads only. Do not infer deletion without corroboration.

@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_28.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_28",
-  [string]$BuildLog = "D:\Downloads\V1_6_28_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_29_4.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_29_4",
+  [string]$BuildLog = "D:\Downloads\V1_6_29_4_build.log",
   [switch]$CleanExtract
 )
 
@@ -20,14 +20,22 @@ if (!(Test-Path -LiteralPath $SourceRoot)) {
   Expand-Archive -LiteralPath $ZipPath -DestinationPath "T:\" -Force
 }
 
+function Invoke-CheckedPreflightScript {
+  param([string]$ScriptPath, [string]$Name)
+  if (Test-Path -LiteralPath $ScriptPath) {
+    powershell -ExecutionPolicy Bypass -File $ScriptPath -SourceRoot $SourceRoot
+    if ($LASTEXITCODE -ne 0) { throw "$Name failed with exit code ${LASTEXITCODE}: $ScriptPath" }
+  }
+}
+
 $WrapperCompat = Join-Path $SourceRoot "tools\Verify-PowerShellWrapperCompatibility.ps1"
-if (Test-Path -LiteralPath $WrapperCompat) { powershell -ExecutionPolicy Bypass -File $WrapperCompat -SourceRoot $SourceRoot }
+Invoke-CheckedPreflightScript -ScriptPath $WrapperCompat -Name "PowerShell wrapper compatibility check"
 
 $MsvcStringCheck = Join-Path $SourceRoot "tools\Verify-MsvcStringLiteralRisk.ps1"
-if (Test-Path -LiteralPath $MsvcStringCheck) { powershell -ExecutionPolicy Bypass -File $MsvcStringCheck -SourceRoot $SourceRoot }
+Invoke-CheckedPreflightScript -ScriptPath $MsvcStringCheck -Name "MSVC string literal risk check"
 
-$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_28-ReleaseReadiness.ps1"
-if (Test-Path -LiteralPath $ReleaseReadiness) { powershell -ExecutionPolicy Bypass -File $ReleaseReadiness -SourceRoot $SourceRoot }
+$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_29_4-ReleaseReadiness.ps1"
+Invoke-CheckedPreflightScript -ScriptPath $ReleaseReadiness -Name "Release readiness check"
 
 if (!(Test-Path -LiteralPath "$SourceRoot\build_windows_msvc.bat")) { throw "Build script not found: $SourceRoot\build_windows_msvc.bat" }
 
@@ -39,9 +47,13 @@ Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.e
 Remove-Item -LiteralPath "$SourceRoot\build-msvc\Release\VestigantSpotlightTests.exe" -Force -ErrorAction SilentlyContinue
 
 & "$SourceRoot\build_windows_msvc.bat" 2>&1 | Tee-Object -FilePath $BuildLog
-if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE. Log: $BuildLog" }
+$buildExitCode = $LASTEXITCODE
+$cliExe = "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe"
+if ($buildExitCode -ne 0) { throw "Build failed with exit code $buildExitCode. Log: $BuildLog" }
+if (!(Test-Path -LiteralPath $cliExe)) { throw "Build did not produce CLI executable: $cliExe. Check compile/link errors in log: $BuildLog" }
+if (Select-String -LiteralPath $BuildLog -Pattern ': error ', ' error C', 'fatal error' -Quiet) { throw "Build log contains compiler/linker errors. Log: $BuildLog" }
 
-$version = (& "$SourceRoot\build-msvc\Release\VestigantSpotlightCli.exe" --version 2>&1 | Out-String).Trim()
-if ($version -notmatch "1\.6\.28") { throw "Unexpected CLI version after build: $version" }
+$version = (& $cliExe --version 2>&1 | Out-String).Trim()
+if ($version -notmatch "1\.6\.29\.4") { throw "Unexpected CLI version after build: $version" }
 Write-Host $version
 Write-Host "Build log: $BuildLog"

@@ -1227,7 +1227,7 @@ FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id
 UNION ALL
 SELECT lr.source_id,
        'candidate_summary_matches_materialized_rows',
-       CASE WHEN COALESCE(css.summary_candidate_count,0)=COALESCE(cs.candidate_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
+)SQL" R"SQL(       CASE WHEN COALESCE(css.summary_candidate_count,0)=COALESCE(cs.candidate_rows,0) THEN 'PASS' ELSE 'REVIEW' END,
        'summary_candidate_count=' || COALESCE(CAST(css.summary_candidate_count AS TEXT),'0') || '; materialized_candidate_rows=' || COALESCE(CAST(cs.candidate_rows AS TEXT),'0'),
        'Grouped candidate summary should reconcile to orphaned_deleted_candidates rows.'
 FROM latest_runs lr LEFT JOIN candidate_stats cs ON cs.source_id=lr.source_id LEFT JOIN candidate_summary_stats css ON css.source_id=lr.source_id
@@ -6380,7 +6380,7 @@ WITH dbs AS (
   FROM ios_app_database_record_inventory
   WHERE ios_db_id IN (SELECT ios_db_id FROM dbs)
   GROUP BY ios_db_id
-), pr AS (
+)VSQL47" R"VSQL47(), pr AS (
   SELECT ios_db_id,COUNT(*) AS parsed_record_count,
          MIN(NULLIF(record_timestamp_utc,'')) AS earliest_parsed_record_utc,
          MAX(NULLIF(record_timestamp_utc,'')) AS latest_parsed_record_utc,
@@ -6445,7 +6445,7 @@ WITH dbs AS (
   SELECT ios_db_id,source_id,
          COUNT(*) AS event_rows,
          SUM(CASE WHEN table_name='ZINTERACTIONS' THEN 1 ELSE 0 END) AS canonical_event_rows,
-         SUM(CASE WHEN table_name<>'ZINTERACTIONS' THEN 1 ELSE 0 END) AS noncanonical_event_rows,
+)VSQL47" R"VSQL47(         SUM(CASE WHEN table_name<>'ZINTERACTIONS' THEN 1 ELSE 0 END) AS noncanonical_event_rows,
          SUM(CASE WHEN parsed_app_or_participant_hint LIKE 'Phone:%' THEN 1 ELSE 0 END) AS phone_label_rows,
          SUM(CASE WHEN interpretation_note LIKE '%contextual activity/people evidence%' THEN 1 ELSE 0 END) AS guardrail_note_rows
   FROM vw_ios_coreduet_interactionc_event_review

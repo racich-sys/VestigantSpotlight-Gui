@@ -1,12 +1,54 @@
-# Vestigant Spotlight Investigator V1.6.28
+# Vestigant Spotlight Investigator V1.6.29.4
+
+## Compile hotfix
+
+- Fixes MSVC compile error in `src/parsers/aff4_probe_worker.cpp` by replacing `appendProbeNote(...)` with the in-file helper `aff4ApfsAppendProbeNote(...)` in OMAP vertical-cycle handling.
+- Hardens `Build-V1_6_29_4.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
+- Carries forward V1.6.29.3 packaging and readiness fixes.
+
+# Vestigant Spotlight Investigator V1.6.29.4
+
+## Hotfix
+
+- Adds the required `docs/V1_6_29_CODE_REVIEW_VALIDATION_HARDENING.md` document that was missing from the V1.6.29.2 ZIP.
+- Carries forward V1.6.29.2 stable release-readiness checks and all V1.6.29 code-review hardening.
+
+# Vestigant Spotlight Investigator V1.6.29.4
+
+## Hotfix
+
+- Replaces the brittle V1.6.29.1 release-readiness roadmap prose check with stable source/docs markers.
+- Keeps version, wrapper, raw-string, and code-review hardening checks strict.
+- Carries forward V1.6.29.1 and V1.6.29 fixes.
+
+# Vestigant Spotlight Investigator V1.6.29.4
+
+## Hotfix
+
+- Fixes the V1.6.29 release-readiness script stale escaped VERSION regex that still checked `^1\.6\.28\s*$`.
+- Carries forward the corrected fatal preflight behavior: wrapper compatibility, MSVC raw-string risk, and release-readiness failures stop before MSVC starts.
+- Carries forward V1.6.29 code-review hardening.
+
+# Vestigant Spotlight Investigator V1.6.29.4
+
+## Validation and stability hardening
+
+- Validated V1.6.29.4 build/thin evidence before source changes. V1.6.29.4 active-comparison and CoreDuet validation samples passed.
+- Implemented user-supplied code-review hardening for APFS OMAP cycle detection, AFF4 LZ4 overflow checks, NSKeyedArchiver/bplist bounds and expansion caps, Unicode bplist fallback ripping, generic iOS app database pagination, GUI schema-open churn reduction, and folder-picker path warnings.
+- Split oversized SQL raw strings and corrected V1.6.29.4 build/readiness version pinning.
+- Preserved Missing-from-FFS and CoreDuet interpretation guardrails.
+
+See `docs/V1_6_29_4_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
+
+# Vestigant Spotlight Investigator V1.6.29.4
 
 ## Validation fix
 - V1.6.27 thin completed and produced the new active-comparison/CoreDuet validation samples. Eight active-comparison checks passed and one remained REVIEW because the GUI-layer Missing-from-FFS view re-created `vw_ios_spotlight_missing_from_ffs_candidates` with blank `ffs_lookup_source`.
-- V1.6.28 updates the GUI/review-layer Missing-from-FFS view to carry lookup source from full iOS FFS inventory or slim path lookup into exported reference rows.
-- V1.6.28 also hardens orphan/missing candidate materialization so `orphan_reason` uses a nonblank lookup-source fallback.
+- V1.6.29.4 updates the GUI/review-layer Missing-from-FFS view to carry lookup source from full iOS FFS inventory or slim path lookup into exported reference rows.
+- V1.6.29.4 also hardens orphan/missing candidate materialization so `orphan_reason` uses a nonblank lookup-source fallback.
 - Missing-from-FFS rows remain investigative leads only, not deletion proof.
 
-# Vestigant Spotlight Investigator V1.6.28
+# Vestigant Spotlight Investigator V1.6.29.4
 
 ## Validation hardening
 - Verified from V1.6.26 thin evidence that active filesystem comparison completed and produced 7,766 materialized Missing-from-FFS reference candidates, but one validation check remained REVIEW because reference-view lookup-source reporting was not populated in the exported validation surface.
@@ -15,11 +57,11 @@
 - Added bounded upload enforcement for the new active-comparison and CoreDuet validation samples.
 - Missing-from-FFS rows remain investigative leads only, not deletion proof.
 
-# V1.6.28 Release Notes
+# V1.6.29.4 Release Notes
 
 ## Purpose
 
-V1.6.25 validated the active filesystem comparison pipeline and materialized 7,766 Missing-from-FFS reference candidates. V1.6.28 adds additional validation surfaces so the next thin run can prove count consistency, lead-only language, lookup-source preservation, and candidate categorization without manually joining CSVs.
+V1.6.25 validated the active filesystem comparison pipeline and materialized 7,766 Missing-from-FFS reference candidates. V1.6.29.4 adds additional validation surfaces so the next thin run can prove count consistency, lead-only language, lookup-source preservation, and candidate categorization without manually joining CSVs.
 
 ## Triggering evidence from V1.6.25 thin
 
@@ -27,9 +69,9 @@ V1.6.25 validated the active filesystem comparison pipeline and materialized 7,7
 - Thin run ended with `complete_success`.
 - `active_file_comparison_runs_sample.csv` showed `run_status=COMPLETED_IOS_FFS_EXACT_PATH_AND_REFERENCE_LOOKUP`, `image_file_count=2245783`, `missing_candidate_count=7766`, and `not_checked_count=344445`.
 - `orphaned_deleted_candidates_sample.csv` showed `MISSING_FROM_IOS_FFS_REFERENCE_CANDIDATE` rows with lead-only language.
-- The Missing-from-FFS candidate sample exposed blank `ffs_lookup_source`, so V1.6.28 normalizes blank lookup-source values to `lookup_available_no_matching_path`.
+- The Missing-from-FFS candidate sample exposed blank `ffs_lookup_source`, so V1.6.29.4 normalizes blank lookup-source values to `lookup_available_no_matching_path`.
 
-## Changed in V1.6.28
+## Changed in V1.6.29.4
 
 - Adds `vw_active_file_comparison_validation_checks`.
 - Adds `vw_active_file_comparison_candidate_summary`.

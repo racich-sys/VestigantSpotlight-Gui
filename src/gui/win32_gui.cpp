@@ -241,7 +241,18 @@ std::wstring browseFolder(HWND owner) {
     BROWSEINFOW bi{}; bi.hwndOwner = owner; bi.lpszTitle = L"Select folder"; bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
     LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
     if (!pidl) return L"";
-    wchar_t path[MAX_PATH]{}; SHGetPathFromIDListW(pidl, path); CoTaskMemFree(pidl); return path;
+    wchar_t path[MAX_PATH]{};
+    const BOOL ok = SHGetPathFromIDListW(pidl, path);
+    CoTaskMemFree(pidl);
+    if (!ok || path[0] == L'\0') {
+        MessageBoxW(owner, L"The selected folder path could not be resolved by the legacy Windows folder picker. Choose a shorter local path or map the network location closer to a drive root.", L"Folder path unavailable", MB_OK | MB_ICONWARNING);
+        return L"";
+    }
+    if (wcslen(path) >= MAX_PATH - 1) {
+        MessageBoxW(owner, L"The selected folder path is at the Windows MAX_PATH boundary. Move the case closer to a drive root or use a shorter mapped path to avoid truncation.", L"Folder path too long", MB_OK | MB_ICONWARNING);
+        return L"";
+    }
+    return path;
 }
 std::wstring browseExe(HWND owner) {
     wchar_t file[MAX_PATH]{};
@@ -364,7 +375,9 @@ public:
         const std::string p = narrow(path);
         if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
             configureGuiSqliteConnection(sharedDb_);
-            ensureInvestigatorUiSchemaNoThrow(sharedDb_);
+            if (schemaEnsuredPaths_.insert(path).second) {
+                ensureInvestigatorUiSchemaNoThrow(sharedDb_);
+            }
             currentPath_ = path;
             db_ = sharedDb_;
             return;
@@ -394,11 +407,13 @@ public:
             sharedDb_ = nullptr;
         }
         currentPath_.clear();
+        schemaEnsuredPaths_.clear();
     }
 private:
     sqlite3* db_ = nullptr;
     static inline sqlite3* sharedDb_ = nullptr;
     static inline std::wstring currentPath_;
+    static inline std::set<std::wstring> schemaEnsuredPaths_;
     static inline std::mutex poolMutex_;
 };
 

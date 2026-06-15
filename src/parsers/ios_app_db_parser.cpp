@@ -243,27 +243,66 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
 }
 
 
+void appendUtf8Local(std::string& out, std::uint32_t cp) {
+    if (cp == 0U) return;
+    if (cp <= 0x7fU) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7ffU) {
+        out.push_back(static_cast<char>(0xc0U | (cp >> 6U)));
+        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU)));
+    } else if (cp <= 0xffffU) {
+        out.push_back(static_cast<char>(0xe0U | (cp >> 12U)));
+        out.push_back(static_cast<char>(0x80U | ((cp >> 6U) & 0x3fU)));
+        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU)));
+    } else if (cp <= 0x10ffffU) {
+        out.push_back(static_cast<char>(0xf0U | (cp >> 18U)));
+        out.push_back(static_cast<char>(0x80U | ((cp >> 12U) & 0x3fU)));
+        out.push_back(static_cast<char>(0x80U | ((cp >> 6U) & 0x3fU)));
+        out.push_back(static_cast<char>(0x80U | (cp & 0x3fU)));
+    }
+}
+
 std::string ripBplistStrings(const std::string& raw) {
     if (raw.size() < 8 || raw.rfind("bplist", 0) != 0) return raw;
     std::string out = "[Extracted BPLIST Strings]: ";
     std::string cur;
     std::size_t appended = 0;
+    auto flushCur = [&]() {
+        if (cur.size() >= 4 && out.size() <= 12000) {
+            if (appended++ > 0) out += " | ";
+            out += cur;
+        }
+        cur.clear();
+    };
     for (std::size_t i = 8; i < raw.size(); ++i) {
         const unsigned char c = static_cast<unsigned char>(raw[i]);
-        if (c >= 32 && c < 127) {
+        if ((c >= 32 && c != 0x7fU) || c == '\n' || c == '\t') {
             cur.push_back(static_cast<char>(c));
         } else {
-            if (cur.size() >= 4) {
-                if (appended++ > 0) out += " | ";
-                out += cur;
-                if (out.size() > 12000) break;
-            }
-            cur.clear();
+            flushCur();
+            if (out.size() > 12000) break;
         }
     }
-    if (cur.size() >= 4 && out.size() <= 12000) {
-        if (appended++ > 0) out += " | ";
-        out += cur;
+    flushCur();
+
+    // UTF-16LE fallback: iOS bplists commonly store Unicode strings with alternating null bytes.
+    // Extract bounded printable runs so Live Text/OCR names and non-ASCII evidence are not destroyed.
+    for (std::size_t i = 8; i + 7 < raw.size() && out.size() <= 12000; ++i) {
+        std::string wide;
+        std::size_t j = i;
+        std::size_t codeUnits = 0;
+        for (; j + 1 < raw.size() && codeUnits < 512; j += 2U) {
+            const std::uint16_t cp = static_cast<std::uint16_t>(static_cast<unsigned char>(raw[j]) | (static_cast<unsigned char>(raw[j + 1U]) << 8U));
+            if (cp == 0U || cp == 0xffffU) break;
+            if (cp < 0x20U && cp != '\n' && cp != '\t') break;
+            appendUtf8Local(wide, cp);
+            ++codeUnits;
+        }
+        if (codeUnits >= 3 && wide.size() >= 4) {
+            if (appended++ > 0) out += " | ";
+            out += wide;
+            i = j > i ? j - 1U : i;
+        }
     }
     return appended == 0 ? std::string("[BPLIST detected; no printable string run >=4 bytes]") : out;
 }
@@ -280,7 +319,7 @@ std::string jsonEscapeLocal(const std::string& value) {
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
             default:
-                if (c >= 0x20 && c < 0x7f) out.push_back(static_cast<char>(c));
+                if (c >= 0x20 && c != 0x7f) out.push_back(static_cast<char>(c));
                 else out += ' ';
                 break;
         }
@@ -289,14 +328,14 @@ std::string jsonEscapeLocal(const std::string& value) {
 }
 
 std::uint64_t readBplistUintBe(const std::string& raw, std::size_t pos, std::size_t width) {
-    if (width == 0 || width > 8 || pos + width > raw.size()) return 0;
+    if (width == 0 || width > 8 || pos > raw.size() || width > raw.size() - pos) return 0;
     std::uint64_t v = 0;
     for (std::size_t i = 0; i < width; ++i) v = (v << 8U) | static_cast<unsigned char>(raw[pos + i]);
     return v;
 }
 
 std::uint64_t readBplistUintBe(const std::vector<unsigned char>& raw, std::size_t pos, std::size_t width) {
-    if (width == 0 || width > 8 || pos + width > raw.size()) return 0;
+    if (width == 0 || width > 8 || pos > raw.size() || width > raw.size() - pos) return 0;
     std::uint64_t v = 0;
     for (std::size_t i = 0; i < width; ++i) v = (v << 8U) | raw[pos + i];
     return v;
@@ -313,7 +352,18 @@ std::uint64_t readBplistObjectCount(const std::vector<unsigned char>& bplist, st
     return count;
 }
 
-std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint64_t>& objOffsets, const std::vector<unsigned char>& bplist, std::size_t objectRefSize) {
+struct BplistDecodeContext {
+    std::size_t callCount = 0;
+    std::set<std::uint64_t> expandingComplexUids;
+};
+
+std::string resolveUid(std::uint64_t uid,
+                       int depth,
+                       const std::vector<std::uint64_t>& objOffsets,
+                       const std::vector<unsigned char>& bplist,
+                       std::size_t objectRefSize,
+                       BplistDecodeContext& ctx) {
+    if (++ctx.callCount > 2500U) return "\"<bplist_expansion_limit>\"";
     if (depth > 16) return "\"<recursion_limit>\"";
     if (uid >= objOffsets.size()) return "\"<invalid_uid>\"";
     const std::uint64_t objOffset64 = objOffsets[static_cast<std::size_t>(uid)];
@@ -332,43 +382,70 @@ std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint
     if (hi == 0x50U || hi == 0x60U) {
         std::size_t cursor = objOffset + 1;
         const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        if (count > 65536U) return "\"<string_too_large>\"";
         std::string text;
         if (hi == 0x50U) {
+            if (cursor > bplist.size() || count > static_cast<std::uint64_t>(bplist.size() - cursor)) return "\"<invalid_string_bounds>\"";
             for (std::uint64_t i = 0; i < count && cursor + i < bplist.size() && text.size() < 4096; ++i) {
                 const unsigned char c = bplist[cursor + static_cast<std::size_t>(i)];
-                text.push_back((c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : ' ');
+                if ((c >= 0x20U && c != 0x7fU) || c == '\n' || c == '\t') text.push_back(static_cast<char>(c));
+                else text.push_back(' ');
             }
         } else {
+            if (cursor > bplist.size() || count > static_cast<std::uint64_t>((bplist.size() - cursor) / 2U)) return "\"<invalid_utf16_string_bounds>\"";
             for (std::uint64_t i = 0; i < count && cursor + (static_cast<std::size_t>(i) * 2U) + 1U < bplist.size() && text.size() < 4096; ++i) {
                 const std::uint16_t c = static_cast<std::uint16_t>(readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * 2U, 2));
-                text.push_back((c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : ' ');
+                if (c >= 0x20U || c == '\n' || c == '\t') appendUtf8Local(text, c);
+                else text.push_back(' ');
             }
         }
         return "\"" + jsonEscapeLocal(trim(text)) + "\"";
     }
     if (hi == 0xa0U) {
+        if (!ctx.expandingComplexUids.insert(uid).second) return "\"<seen_uid_" + std::to_string(uid) + ">\"";
         std::size_t cursor = objOffset + 1;
         const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        if (count > 65536U) { ctx.expandingComplexUids.erase(uid); return "\"<array_too_large>\""; }
+        if (objectRefSize == 0 || cursor > bplist.size() || count > static_cast<std::uint64_t>((bplist.size() - cursor) / objectRefSize)) {
+            ctx.expandingComplexUids.erase(uid);
+            return "\"<invalid_array_bounds>\"";
+        }
         std::string json = "[";
-        for (std::uint64_t i = 0; i < count && i < 256; ++i) {
+        const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
+        for (std::uint64_t i = 0; i < displayCount; ++i) {
             const std::uint64_t childUid = readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             if (i > 0) json += ", ";
-            json += resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize);
+            json += resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
         }
+        if (count > displayCount) json += ", \"<array_truncated>\"";
+        ctx.expandingComplexUids.erase(uid);
         return json + "]";
     }
     if (hi == 0xd0U) {
+        if (!ctx.expandingComplexUids.insert(uid).second) return "\"<seen_uid_" + std::to_string(uid) + ">\"";
         std::size_t cursor = objOffset + 1;
         const std::uint64_t count = readBplistObjectCount(bplist, cursor, lo);
+        if (count > 65536U) { ctx.expandingComplexUids.erase(uid); return "\"<dictionary_too_large>\""; }
         const std::size_t keyBase = cursor;
+        if (objectRefSize == 0 || keyBase > bplist.size() || count > static_cast<std::uint64_t>((bplist.size() - keyBase) / objectRefSize)) {
+            ctx.expandingComplexUids.erase(uid);
+            return "\"<invalid_dictionary_bounds>\"";
+        }
         const std::size_t valBase = keyBase + static_cast<std::size_t>(count) * objectRefSize;
+        if (valBase > bplist.size() || count > static_cast<std::uint64_t>((bplist.size() - valBase) / objectRefSize)) {
+            ctx.expandingComplexUids.erase(uid);
+            return "\"<invalid_dictionary_bounds>\"";
+        }
         std::string json = "{";
-        for (std::uint64_t i = 0; i < count && i < 256; ++i) {
+        const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
+        for (std::uint64_t i = 0; i < displayCount; ++i) {
             const std::uint64_t keyUid = readBplistUintBe(bplist, keyBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             const std::uint64_t valUid = readBplistUintBe(bplist, valBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             if (i > 0) json += ", ";
-            json += resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize) + ": " + resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize);
+            json += resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize, ctx) + ": " + resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
         }
+        if (count > displayCount) json += ", \"<dictionary_truncated>\": true";
+        ctx.expandingComplexUids.erase(uid);
         return json + "}";
     }
     if (hi == 0x80U) {
@@ -377,8 +454,14 @@ std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint
     return "\"<unparsed_bplist_type_0x" + std::to_string(marker) + ">\"";
 }
 
+std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint64_t>& objOffsets, const std::vector<unsigned char>& bplist, std::size_t objectRefSize) {
+    BplistDecodeContext ctx;
+    return resolveUid(uid, depth, objOffsets, bplist, objectRefSize, ctx);
+}
+
 std::string resolveUid(std::uint64_t uid, int depth, const std::vector<std::uint64_t>& objOffsets, const std::vector<unsigned char>& bplist) {
-    return resolveUid(uid, depth, objOffsets, bplist, 1);
+    BplistDecodeContext ctx;
+    return resolveUid(uid, depth, objOffsets, bplist, 1, ctx);
 }
 
 std::string unflattenNSKeyedArchiverOrBplist(const std::string& raw) {
@@ -1261,16 +1344,15 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                    const std::string& recordCategory,
                                    SqlStatement& parsedIns) {
     if (!iosAppDbIsTargetRecordCategory(recordCategory)) return 0;
-    constexpr int MaxRowsPerTable = 50000;
-    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ?";
+    constexpr int MaxRowsPerPage = 50000;
+    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ? OFFSET ?";
     sqlite3_stmt* st = nullptr;
     int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
     if (rc != SQLITE_OK) {
-        sql = "SELECT * FROM " + sqlIdentLocal(table) + " LIMIT ?";
+        sql = "SELECT * FROM " + sqlIdentLocal(table) + " LIMIT ? OFFSET ?";
         rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
     }
     if (rc != SQLITE_OK || !st) return 0;
-    sqlite3_bind_int(st, 1, MaxRowsPerTable);
     const int colCount = sqlite3_column_count(st);
     std::map<std::string, int> cols;
     for (int i = 0; i < colCount; ++i) {
@@ -1286,7 +1368,14 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
     const int itemCol = findColumnIndex(cols, {"guid", "uuid", "identifier", "message_id", "chat_id", "handle_id", "persistent_id", "zidentifier"}, true);
     const int textCol = findColumnIndex(cols, {"text", "body", "message", "snippet", "preview", "comment", "notes", "ztext", "zbody", "zcontent", "zsummary", "data", "payload"}, true);
     std::size_t rows = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
+    sqlite3_int64 offset = 0;
+    for (;;) {
+        sqlite3_reset(st);
+        sqlite3_clear_bindings(st);
+        sqlite3_bind_int(st, 1, MaxRowsPerPage);
+        sqlite3_bind_int64(st, 2, offset);
+        std::size_t pageRows = 0;
+        while (sqlite3_step(st) == SQLITE_ROW) {
         const std::string dateRaw = columnValue(st, dateCol, 128);
         const char* dateNamePtr = dateCol >= 0 ? sqlite3_column_name(st, dateCol) : "";
         const auto ts = normalizeIosAppTimestamp(dateRaw, dateNamePtr ? std::string(dateNamePtr) : std::string());
@@ -1316,6 +1405,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                 "parsed_coreduet_interactionc_generic_row",
                                 provenance);
             ++rows;
+            ++pageRows;
             continue;
         }
         if (recordCategory == "KNOWLEDGEC_EVENTS") {
@@ -1335,6 +1425,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                 "parsed_knowledgec_generic_row",
                                 fallbackProvenance);
             ++rows;
+            ++pageRows;
             continue;
         }
         if (recordCategory == "MESSAGE_DELETED_OR_RECOVERABLE") {
@@ -1348,6 +1439,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                 "parsed_apple_deleted_or_recoverable_record",
                                 "read_only_sqlite_dynamic_schema table=" + table + "; deleted_or_recoverable_table_v0_9_48");
             ++rows;
+            ++pageRows;
             continue;
         }
         std::string genericTitle = columnValue(st, titleCol, 1000);
@@ -1392,6 +1484,10 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                             "parsed_generic_app_db_row",
                             genericProvenance);
         ++rows;
+            ++pageRows;
+        }
+        if (pageRows < static_cast<std::size_t>(MaxRowsPerPage)) break;
+        offset += static_cast<sqlite3_int64>(pageRows);
     }
     sqlite3_finalize(st);
     return rows;
