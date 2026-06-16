@@ -396,10 +396,10 @@ V1.1.6 moved the direct-map AFF4/APFS probe into `src/parsers/aff4_probe_worker.
 
 - V1.6.3.1 corrected: release-blocking version consistency verification added after Build-V1_6_3.ps1 stale 1.4.1 check was found.
 
-## V1.6.29.4
+## V1.6.35
 
 - [x] Add CoreDuet interactionC database-status workflow.
 - [x] Add CoreDuet interactionC summary/event GUI views and CSV exports.
 - [x] Add bounded upload samples for interactionC review.
 - [x] Add running start-continuation document.
-- [ ] Validate Windows/MSVC build and V1.6.29.4 iOS thin output.
+- [ ] Validate Windows/MSVC build and V1.6.35 iOS thin output.

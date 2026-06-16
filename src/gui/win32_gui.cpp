@@ -1061,6 +1061,24 @@ std::size_t checkedArtifactCountSnapshotNoThrow() {
     }
 }
 
+
+bool isArtifactCheckedNoThrow(long long artifactId) {
+    try {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        return gCheckedArtifactIds.find(artifactId) != gCheckedArtifactIds.end();
+    } catch (...) {
+        return false;
+    }
+}
+
+void clearCheckedArtifactIdsNoThrow() {
+    try {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        gCheckedArtifactIds.clear();
+    } catch (...) {
+    }
+}
+
 std::string checkedIdListSql() {
     const auto snapshot = checkedArtifactIdsSnapshotNoThrow();
     if (snapshot.empty()) return "";
@@ -1422,25 +1440,33 @@ void clearPersistedCheckedArtifactsNoThrow() {
     }
 }
 void loadPersistedCheckedArtifactsNoThrow() {
-    gCheckedArtifactIds.clear();
-    if (gOpenedCaseDb.empty()) return;
-    try {
-        ReadOnlyDb db(gOpenedCaseDb);
-        sqlite3_stmt* st = nullptr;
-        const char* sql = "SELECT artifact_id FROM gui_checked_artifacts ORDER BY artifact_id";
-        if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) return;
-        while (sqlite3_step(st) == SQLITE_ROW) {
-            const long long artifactId = sqlite3_column_int64(st, 0);
-            if (artifactId > 0) gCheckedArtifactIds.insert(artifactId);
+    std::set<long long> loaded;
+    if (!gOpenedCaseDb.empty()) {
+        try {
+            ReadOnlyDb db(gOpenedCaseDb);
+            sqlite3_stmt* st = nullptr;
+            const char* sql = "SELECT artifact_id FROM gui_checked_artifacts ORDER BY artifact_id";
+            if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) == SQLITE_OK && st) {
+                while (sqlite3_step(st) == SQLITE_ROW) {
+                    const long long artifactId = sqlite3_column_int64(st, 0);
+                    if (artifactId > 0) loaded.insert(artifactId);
+                }
+                sqlite3_finalize(st);
+            }
+        } catch (...) {
+            loaded.clear();
         }
-        sqlite3_finalize(st);
+    }
+    try {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        gCheckedArtifactIds.swap(loaded);
     } catch (...) {
-        gCheckedArtifactIds.clear();
     }
 }
+
 void refreshCheckedArtifactsSummaryNoThrow() {
     if (gReviewSummary) {
-        setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())) + L". Checked state is saved in this case database until cleared.");
+        setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow())) + L". Checked state is saved in this case database until cleared.");
     }
 }
 
@@ -1450,8 +1476,11 @@ void setReviewRowCheckedState(int row, bool checked) {
     const std::string id = gCurrentRowArtifactIds[static_cast<size_t>(row)];
     if (id.empty()) return;
     const long long aid = std::strtoll(id.c_str(), nullptr, 10);
-    if (checked) gCheckedArtifactIds.insert(aid);
-    else gCheckedArtifactIds.erase(aid);
+    {
+        std::lock_guard<std::mutex> lock(gReviewStateMutex);
+        if (checked) gCheckedArtifactIds.insert(aid);
+        else gCheckedArtifactIds.erase(aid);
+    }
     if (!gBulkCheckUpdate) persistCheckedArtifactNoThrow(aid, checked);
     if (row >= 0 && row < static_cast<int>(gList ? ListView_GetItemCount(gList) : 0)) {
         if (gList) {
@@ -1465,7 +1494,7 @@ void toggleReviewRowChecked(int row) {
     const std::string id = gCurrentRowArtifactIds[static_cast<size_t>(row)];
     if (id.empty()) return;
     const long long aid = std::strtoll(id.c_str(), nullptr, 10);
-    setReviewRowCheckedState(row, gCheckedArtifactIds.find(aid) == gCheckedArtifactIds.end());
+    setReviewRowCheckedState(row, !isArtifactCheckedNoThrow(aid));
 }
 std::vector<int> selectedReviewRows() {
     std::vector<int> rows;
@@ -1498,7 +1527,7 @@ void toggleReviewRowsAsBatch(const std::vector<int>& rows) {
         const std::string id = gCurrentRowArtifactIds[static_cast<size_t>(row)];
         if (id.empty()) continue;
         const long long aid = std::strtoll(id.c_str(), nullptr, 10);
-        if (gCheckedArtifactIds.find(aid) == gCheckedArtifactIds.end()) { anyUnchecked = true; break; }
+        if (!isArtifactCheckedNoThrow(aid)) { anyUnchecked = true; break; }
     }
     setReviewRowsChecked(rows, anyUnchecked);
 }
@@ -1515,9 +1544,12 @@ void focusReviewRow(int row, bool selectOnlyThisRow) {
 }
 std::vector<std::string> checkedArtifactIds() {
     std::vector<std::string> ids;
-    for (long long id : gCheckedArtifactIds) ids.push_back(std::to_string(id));
+    const auto snapshot = checkedArtifactIdsSnapshotNoThrow();
+    ids.reserve(snapshot.size());
+    for (long long id : snapshot) ids.push_back(std::to_string(id));
     return ids;
 }
+
 std::vector<std::string> selectedArtifactIdsFromReview(bool preferChecked) {
     std::vector<std::string> ids;
     if (preferChecked) ids = checkedArtifactIds();
@@ -1669,7 +1701,7 @@ void showColumnContextMenu(HWND owner, int column, POINT screenPoint) {
     HMENU menu = CreatePopupMenu();
     if (gContextRow >= 0 && gContextRow < static_cast<int>(gCurrentRowArtifactIds.size())) {
         const bool hasSelectedRows = !selectedReviewRows().empty();
-        const bool hasCheckedRows = !gCheckedArtifactIds.empty();
+        const bool hasCheckedRows = checkedArtifactCountSnapshotNoThrow() > 0;
         const bool hasContextArtifact = !gCurrentRowArtifactIds[static_cast<size_t>(gContextRow)].empty();
         AppendMenuW(menu, MF_STRING, ID_CTX_TOGGLE_CHECK, L"Toggle checkmark for this row");
         AppendMenuW(menu, MF_STRING | (hasSelectedRows ? 0 : MF_GRAYED), ID_CTX_CHECK_SELECTED, L"Check selected row(s)");
@@ -1812,9 +1844,12 @@ void scheduleCaseInfoAutosave(HWND hwnd) {
 
 
 void registerExportThread(std::thread worker) {
-    std::lock_guard<std::mutex> lock(gExportThreadsMutex);
-    gExportThreads.emplace_back(std::move(worker));
+    try {
+        if (worker.joinable()) worker.detach();
+    } catch (...) {
+    }
 }
+
 
 void joinExportThreadsNoThrow() {
     std::vector<std::thread> threads;
@@ -2017,7 +2052,7 @@ void loadReviewPage() {
 
     if (gReviewThread.joinable()) {
         ++gReviewRequestSeq;
-        gReviewThread.join();
+        gReviewThread.detach();
     }
     const unsigned long long requestId = ++gReviewRequestSeq;
     const std::wstring dbPath = gOpenedCaseDb;
@@ -2279,7 +2314,7 @@ std::wstring reviewCellText(int row, int col) {
         const std::string& id = gCurrentRowArtifactIds[static_cast<std::size_t>(row)];
         if (id.empty()) return L"";
         const long long aid = std::strtoll(id.c_str(), nullptr, 10);
-        return checkMarkForState(gCheckedArtifactIds.find(aid) != gCheckedArtifactIds.end());
+        return checkMarkForState(isArtifactCheckedNoThrow(aid));
     }
     if (col == 1) {
         return row < static_cast<int>(gCurrentVisibleTagCellsW.size()) ? gCurrentVisibleTagCellsW[static_cast<std::size_t>(row)] : L"";
@@ -3011,7 +3046,7 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         if (!rows.empty()) {
             toggleReviewRowsAsBatch(rows);
             if (rows.size() == 1) focusReviewRow(rows.front() + 1, true);
-            setReviewSummary(L"Toggled selected row checkmark(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())));
+            setReviewSummary(L"Toggled selected row checkmark(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow())));
             updateRowDetailsPanel();
             return 0;
         }
@@ -3023,7 +3058,7 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         if (hit.iItem >= 0 && hit.iSubItem == 0) {
             toggleReviewRowChecked(hit.iItem);
             focusReviewRow(hit.iItem, true);
-            setReviewSummary(L"Toggled checked state. Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size())));
+            setReviewSummary(L"Toggled checked state. Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow())));
             updateRowDetailsPanel(hit.iItem);
             return 0;
         }
@@ -3357,7 +3392,7 @@ void openCaseFromPath() {
         populateViewList();
     }
     loadCaseSummary();
-    if (!gCheckedArtifactIds.empty()) refreshCheckedArtifactsSummaryNoThrow();
+    if (checkedArtifactCountSnapshotNoThrow() > 0) refreshCheckedArtifactsSummaryNoThrow();
     loadReviewPage();
     refreshTagList();
 }
@@ -3582,17 +3617,17 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_CTX_SORT_DESC: { if (gContextColumn >= 0) { gSortColumn = gContextColumn; gSortDescending = true; gCurrentPage = 0; loadReviewPage(); } return 0; }
         case ID_CTX_FILTER_SEARCH: { if (gContextColumn >= 0) { gFilterColumn = gContextColumn; gFilterValue = narrow(getText(gSearch)); gCurrentPage = 0; loadReviewPage(); } return 0; }
         case ID_CTX_CLEAR_FILTER: { gFilterColumn = -1; gFilterValue.clear(); gCurrentPage = 0; loadReviewPage(); return 0; }
-        case ID_CTX_TOGGLE_CHECK: { if (gContextRow >= 0) toggleReviewRowChecked(gContextRow); setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
-        case ID_CTX_CHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), true); setReviewSummary(L"Checked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
-        case ID_CTX_UNCHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), false); setReviewSummary(L"Unchecked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); return 0; }
-        case ID_CTX_TOGGLE_SELECTED: { toggleReviewRowsAsBatch(selectedReviewRows()); setReviewSummary(L"Toggled selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(gCheckedArtifactIds.size()))); updateRowDetailsPanel(); return 0; }
+        case ID_CTX_TOGGLE_CHECK: { if (gContextRow >= 0) toggleReviewRowChecked(gContextRow); setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }
+        case ID_CTX_CHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), true); setReviewSummary(L"Checked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }
+        case ID_CTX_UNCHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), false); setReviewSummary(L"Unchecked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }
+        case ID_CTX_TOGGLE_SELECTED: { toggleReviewRowsAsBatch(selectedReviewRows()); setReviewSummary(L"Toggled selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); updateRowDetailsPanel(); return 0; }
         case ID_CTX_APPLY_TAG_ROW: { try { if (gContextRow >= 0 && gContextRow < static_cast<int>(gCurrentRowArtifactIds.size())) applyTagToArtifacts(selectedTagId(), std::vector<std::string>{gCurrentRowArtifactIds[static_cast<size_t>(gContextRow)]}, true); } catch (const std::exception& ex) { setTagSummary(L"ERROR applying row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_REMOVE_TAG_ROW: { try { if (gContextRow >= 0 && gContextRow < static_cast<int>(gCurrentRowArtifactIds.size())) removeTagFromArtifacts(selectedTagId(), std::vector<std::string>{gCurrentRowArtifactIds[static_cast<size_t>(gContextRow)]}, true); } catch (const std::exception& ex) { setTagSummary(L"ERROR removing row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_APPLY_TAG_SELECTED: { try { applyTagToArtifacts(selectedTagId(), selectedArtifactIdsFromReview(false), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR applying selected-row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_REMOVE_TAG_SELECTED: { try { removeTagFromArtifacts(selectedTagId(), selectedArtifactIdsFromReview(false), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR removing selected-row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_APPLY_TAG_CHECKED: { try { applyTagToArtifacts(selectedTagId(), checkedArtifactIds(), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR applying checked-row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_REMOVE_TAG_CHECKED: { try { removeTagFromArtifacts(selectedTagId(), checkedArtifactIds(), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR removing checked-row tag: " + widen(ex.what())); } return 0; }
-        case ID_CTX_CLEAR_CHECKED: { gCheckedArtifactIds.clear(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); return 0; }
+        case ID_CTX_CLEAR_CHECKED: { clearCheckedArtifactIdsNoThrow(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); return 0; }
         case ID_CTX_MANAGE_TAGS: { switchToTagsTab(); return 0; }
         case ID_REVIEW_PREV: { if (gCurrentPage > 0) --gCurrentPage; loadReviewPage(); return 0; }
         case ID_REVIEW_NEXT: { ++gCurrentPage; loadReviewPage(); return 0; }
@@ -3600,7 +3635,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_EXPORT_FILTERED: { exportFilteredView(hwnd); return 0; }
         case ID_EXPORT_VISIBLE_VIEWS: { exportVisibleViews(hwnd); return 0; }
         case ID_EXPORT_CHECKED: { exportCheckedArtifacts(hwnd); return 0; }
-        case ID_CLEAR_CHECKED: { gCheckedArtifactIds.clear(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); setReviewSummary(L"Cleared all checked artifacts from the current case database."); return 0; }
+        case ID_CLEAR_CHECKED: { clearCheckedArtifactIdsNoThrow(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); setReviewSummary(L"Cleared all checked artifacts from the current case database."); return 0; }
         case ID_REFRESH_TAGS: { refreshTagList(); return 0; }
         case ID_ADD_TAG: { addTagAction(); return 0; }
         case ID_DELETE_TAG: { deleteTagAction(); return 0; }

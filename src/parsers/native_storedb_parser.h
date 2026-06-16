@@ -30,6 +30,12 @@ enum class NativeDecodeMode {
     FullValues
 };
 
+enum class NativePersistenceMode {
+    AutoPathSensitive,
+    MacOSStoreV2,
+    IosCoreSpotlightCompact
+};
+
 class NativeStoreDbParser {
 public:
     explicit NativeStoreDbParser(NativeDecodeMode decodeMode = NativeDecodeMode::HeaderOnly, std::size_t maxRecords = 0, std::size_t maxMetadataBlocks = 0)
@@ -42,6 +48,11 @@ public:
 
     NativeStoreDbParser& setPersistAllNativeKeyValues(bool persistAllNativeKeyValues) {
         persistAllNativeKeyValues_ = persistAllNativeKeyValues;
+        return *this;
+    }
+
+    NativeStoreDbParser& setNativePersistenceMode(NativePersistenceMode mode) {
+        nativePersistenceMode_ = mode;
         return *this;
     }
 
@@ -60,6 +71,7 @@ private:
     std::size_t maxMetadataBlocks_ = 0;
     std::filesystem::path progressPath_;
     bool persistAllNativeKeyValues_ = false;
+    NativePersistenceMode nativePersistenceMode_ = NativePersistenceMode::AutoPathSensitive;
     std::uintmax_t dbSizeGuardrailBytes_ = 5ull * 1024ull * 1024ull * 1024ull;
 };
 

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <set>
 
 namespace vestigant::spotlight {
 namespace {
@@ -17,6 +18,44 @@ std::string stripLeadingSlash(std::string s) {
     while (!s.empty() && (s.front() == '/' || s.front() == '\\')) s.erase(s.begin());
     for (auto& c : s) if (c == '/') c = fs::path::preferred_separator;
     return s;
+}
+
+std::string trimEnrichmentAscii(std::string s) {
+    while (!s.empty() && static_cast<unsigned char>(s.front()) <= 0x20) s.erase(s.begin());
+    while (!s.empty() && static_cast<unsigned char>(s.back()) <= 0x20) s.pop_back();
+    return s;
+}
+bool isPlaceholderNameForEnrichment(const std::string& s) {
+    const auto t = trimEnrichmentAscii(s);
+    return t.empty() || t == "------NONAME------" || t == "------PLIST------" || t == "(null)" || t == "NULL" || t == ".";
+}
+std::string normalizeNativeProbePath(std::string p) {
+    p = trimEnrichmentAscii(std::move(p));
+    if (p.rfind("file://", 0) == 0) p = p.substr(7);
+    while (p.size() > 1 && (p.back() == '/' || p.back() == '\\')) p.pop_back();
+    if (p.empty() || p == "/") return {};
+    if (p.front() != '/' && p.front() != '\\') return {};
+    for (char& ch : p) if (ch == '\\') ch = '/';
+    return p;
+}
+std::string basenameFromNativeProbePath(std::string p) {
+    p = normalizeNativeProbePath(std::move(p));
+    if (p.empty()) return {};
+    const auto pos = p.find_last_of('/');
+    std::string base = (pos == std::string::npos) ? p : p.substr(pos + 1);
+    base = trimEnrichmentAscii(std::move(base));
+    if (base.empty() || base == "." || base == "..") return {};
+    return base;
+}
+bool shouldApplyNativeProbePath(const std::string& currentPath, const std::string& currentName, const std::string& candidatePath) {
+    const auto path = normalizeNativeProbePath(candidatePath);
+    if (path.empty()) return false;
+    const auto current = normalizeNativeProbePath(currentPath);
+    if (current.empty()) return true;
+    if (isPlaceholderNameForEnrichment(currentName)) return true;
+    const auto base = basenameFromNativeProbePath(path);
+    if (!base.empty() && current == "/" + base && path.size() > current.size()) return true;
+    return false;
 }
 std::size_t scalarCount(CaseDatabase& db, const std::string& sql, const std::string& sourceId) {
     auto q = db.prepare(sql);
@@ -199,6 +238,73 @@ FROM raw_records r
 JOIN artifacts a ON a.source_id=r.source_id AND a.store_guid=r.store_guid AND a.inode_num=r.inode_num
 WHERE r.source_id=)SQL" + sid + R"SQL(;
 )SQL");
+
+        log.info("Applying native path probe candidates to artifacts with placeholder names or weak paths.");
+        appendEnrichmentRunStatus(db, 79, "enrichment_native_path_probe_apply_start", "source_id=" + source.sourceId);
+        std::size_t nativePathProbeUpdated = 0;
+        {
+            auto q = db.prepare(R"SQL(
+SELECT a.artifact_id,
+       COALESCE(a.file_name,''),
+       COALESCE(a.display_name,''),
+       COALESCE(a.best_path,''),
+       COALESCE(kv.field_value,'')
+FROM artifacts a
+JOIN raw_key_values kv
+  ON kv.source_id=a.source_id
+ AND kv.store_guid=a.store_guid
+ AND kv.inode_num=a.inode_num
+WHERE a.source_id=?
+  AND kv.field_name LIKE '__native_probe_file_path_candidate_%'
+  AND trim(COALESCE(kv.field_value,'')) LIKE '/%'
+  AND trim(COALESCE(kv.field_value,''))<>'/'
+  AND (
+    COALESCE(NULLIF(trim(a.best_path),''),'')=''
+    OR COALESCE(a.best_path,'') NOT LIKE '/%'
+    OR COALESCE(NULLIF(trim(a.file_name),''),'') IN ('------NONAME------','------PLIST------','(null)','NULL','.')
+    OR COALESCE(NULLIF(trim(a.display_name),''),'')=''
+  )
+ORDER BY a.artifact_id, length(kv.field_value) DESC, kv.raw_kv_id
+)SQL");
+            q.bind(1, source.sourceId);
+            auto up = db.prepare(R"SQL(
+UPDATE artifacts
+SET file_name=?,
+    display_name=?,
+    best_path=?,
+    spotlight_display_path=?,
+    normalized_mac_path=?,
+    path_source='NATIVE_PATH_PROBE_FULL_PATH',
+    path_status='RAW_NATIVE_PATH_PROBE_PRESENT',
+    confidence=CASE WHEN COALESCE(confidence,'') LIKE 'HIGH%' THEN confidence ELSE 'MEDIUM_NATIVE_PATH_PROBE_PATH' END
+WHERE artifact_id=? AND source_id=?
+)SQL");
+            std::set<long long> appliedArtifactIds;
+            while (q.stepRow()) {
+                const long long artifactId = q.colInt64(0);
+                if (!appliedArtifactIds.insert(artifactId).second) continue;
+                const std::string currentName = q.colText(1);
+                const std::string currentDisplay = q.colText(2);
+                const std::string currentPath = q.colText(3);
+                const std::string candidatePath = normalizeNativeProbePath(q.colText(4));
+                if (!shouldApplyNativeProbePath(currentPath, currentName, candidatePath)) continue;
+                const std::string candidateName = basenameFromNativeProbePath(candidatePath);
+                const std::string newName = isPlaceholderNameForEnrichment(currentName) && !candidateName.empty() ? candidateName : currentName;
+                const std::string newDisplay = isPlaceholderNameForEnrichment(currentDisplay) ? newName : currentDisplay;
+                up.bind(1, newName);
+                up.bind(2, newDisplay);
+                up.bind(3, candidatePath);
+                up.bind(4, candidatePath);
+                up.bind(5, candidatePath);
+                up.bind(6, artifactId);
+                up.bind(7, source.sourceId);
+                up.stepDone();
+                up.reset();
+                ++nativePathProbeUpdated;
+            }
+        }
+        insertMetric(db, source.sourceId, "native_path_probe_artifacts_updated", std::to_string(nativePathProbeUpdated));
+        appendEnrichmentRunStatus(db, 79, "enrichment_native_path_probe_apply_complete", "artifacts_updated=" + std::to_string(nativePathProbeUpdated));
 
         db.exec(R"SQL(
 INSERT INTO source_copy_comparison(source_id,store_guid,inode_num,source_instance_count,has_store_db,has_dotstore_db,comparison_status,preferred_source_db)
@@ -520,9 +626,15 @@ WHERE pl.source_id=?
         const std::size_t missingChildNameRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND path_reconstruction_method='PARENT_INODE_MATCH_NO_CHILD_NAME'", source.sourceId);
         appendEnrichmentRunStatus(db, 81, "enrichment_parent_inode_links_complete", "links=" + std::to_string(parentLinkRows) + " matched=" + std::to_string(parentMatchedRows) + " child_names=" + std::to_string(childNameRows) + " missing_child_names=" + std::to_string(missingChildNameRows) + " path_context_candidates=" + std::to_string(pathContextRows) + " existing_path_context=" + std::to_string(existingPathContextRows) + " new_reconstructed_paths=" + std::to_string(newReconstructedPathRows));
 
-        log.info("Applying parent-inode reconstructed paths to weak artifact path rows.");
-        appendEnrichmentRunStatus(db, 82, "enrichment_parent_inode_path_apply_start", "source_id=" + source.sourceId);
-        db.exec(R"SQL(
+        std::size_t appliedPathRows = 0;
+        if (newReconstructedPathRows == 0) {
+            log.info("Skipping parent-inode reconstructed path apply because no new reconstructed paths require artifact updates.");
+            appendEnrichmentRunStatus(db, 82, "enrichment_parent_inode_path_apply_skipped", "source_id=" + source.sourceId + " reason=no_new_reconstructed_paths");
+            appendEnrichmentRunStatus(db, 83, "enrichment_parent_inode_path_apply_complete", "artifacts_updated=0 skipped=1 reason=no_new_reconstructed_paths");
+        } else {
+            log.info("Applying parent-inode reconstructed paths to weak artifact path rows.");
+            appendEnrichmentRunStatus(db, 82, "enrichment_parent_inode_path_apply_start", "source_id=" + source.sourceId + " candidates=" + std::to_string(newReconstructedPathRows));
+            db.exec(R"SQL(
 UPDATE artifacts
 SET best_path = COALESCE((
         SELECT NULLIF(pl.reconstructed_path_candidate,'')
@@ -572,8 +684,9 @@ WHERE source_id=)SQL" + sid + R"SQL(
     OR COALESCE(path_status,'') IN ('','RAW_PATH_NO_DIRECTORY_CONTEXT','FILE_NAME_ONLY_PARENT_RECONSTRUCTION_PENDING','FILE_NAME_ONLY_NO_PARENT_CONTEXT','NO_USABLE_PATH')
   );
 )SQL");
-        const std::size_t appliedPathRows = scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')", source.sourceId);
-        appendEnrichmentRunStatus(db, 83, "enrichment_parent_inode_path_apply_complete", "artifacts_updated=" + std::to_string(appliedPathRows));
+            appliedPathRows = scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')", source.sourceId);
+            appendEnrichmentRunStatus(db, 83, "enrichment_parent_inode_path_apply_complete", "artifacts_updated=" + std::to_string(appliedPathRows));
+        }
         db.exec("DROP TABLE IF EXISTS temp_best_parent_inode_path;");
         db.exec("DROP TABLE IF EXISTS temp_parent_inode_path_candidates;");
         db.exec("DROP TABLE IF EXISTS temp_parent_inode_nodes;");
@@ -987,9 +1100,9 @@ void SqliteEnrichment::classifyFilesystem(CaseDatabase& db, const EvidenceSource
 
         if (!hasIosFfsLookup) {
             if (!source.evidenceRoot.empty()) {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.29.4; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.35; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
             } else {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.29.4; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.35; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
             }
             db.exec(R"SQL(
 UPDATE artifacts
@@ -1023,7 +1136,7 @@ WHERE source_id=)SQL" + sid + ";");
             return;
         }
 
-        log.info("Active filesystem comparison enabled in V1.6.29.4 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
+        log.info("Active filesystem comparison enabled in V1.6.35 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
 
         db.exec("DROP TABLE IF EXISTS temp_ios_active_ffs_paths;");
         db.exec(R"SQL(

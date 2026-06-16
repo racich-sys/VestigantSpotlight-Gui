@@ -1,12 +1,12 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_29_4",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_35",
   [string]$Aff4Path = "O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4",
-  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_29_4",
+  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_35",
   [string]$ReaderToolsRoot = "T:\VestigantReaderTools\aff4-cpp-lite",
   [string]$ExternalSpotlightRoot = "T:\ExternalExtractedSpotlight\.Spotlight-V100\Store-V2",
-  [string]$ExternalCompareOutRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_29_4_ExternalCompare",
-  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_29_4_UploadWork",
-  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_29_4.zip",
+  [string]$ExternalCompareOutRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_35_ExternalCompare",
+  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_35_UploadWork",
+  [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_35.zip",
   [switch]$CleanOut,
   [switch]$DiagnosticOutputs,
   [switch]$ForceContainerHash,
@@ -62,7 +62,7 @@ if ($DiagnosticOutputs) { $runnerArgs += "-DiagnosticOutputs" }
 if ($ForceContainerHash) { $runnerArgs += "-ForceContainerHash" }
 
 powershell -ExecutionPolicy Bypass -File $Runner @runnerArgs
-if ($LASTEXITCODE -ne 0) { throw "AFF4/APFS V1.6.29.4 probe wrapper failed with exit code $LASTEXITCODE. Review case folder: $CaseRoot" }
+if ($LASTEXITCODE -ne 0) { throw "AFF4/APFS V1.6.35 probe wrapper failed with exit code $LASTEXITCODE. Review case folder: $CaseRoot" }
 Assert-PathExists -PathValue $ZipPath -Description "Thin upload ZIP" -Leaf
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem

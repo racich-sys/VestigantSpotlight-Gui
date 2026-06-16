@@ -1,10 +1,10 @@
-V1.6.29.4 macOS AFF4/APFS Store-V2 validation wrapper
+V1.6.35 macOS AFF4/APFS Store-V2 validation wrapper
 
 Run after a successful Windows/MSVC build:
 
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_29_4\scripts\Run-V1_6_29_4-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_35\scripts\Run-V1_6_35-macOS-AFF4-Probe-AndZip.ps1 -CleanOut
 
 Expected upload:
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_29_4.zip
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_35.zip
 
 This wrapper uses the guarded single-AFF4 runner, requires the external Store-V2 reference folder, enables the bounded AFF4/APFS direct/dynamic validation path, and fails if Store-V2 copy-out/staging/parser/enrichment outputs are absent.

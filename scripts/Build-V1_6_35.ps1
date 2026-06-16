@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_29_4.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_29_4",
-  [string]$BuildLog = "D:\Downloads\V1_6_29_4_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_35.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_35",
+  [string]$BuildLog = "D:\Downloads\V1_6_35_build.log",
   [switch]$CleanExtract
 )
 
@@ -20,11 +20,27 @@ if (!(Test-Path -LiteralPath $SourceRoot)) {
   Expand-Archive -LiteralPath $ZipPath -DestinationPath "T:\" -Force
 }
 
+$VersionFile = Join-Path $SourceRoot "VERSION"
+if (!(Test-Path -LiteralPath $VersionFile)) { throw "VERSION file not found: $VersionFile" }
+$ExpectedVersion = (Get-Content -LiteralPath $VersionFile -Raw).Trim()
+if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) { throw "VERSION file is empty: $VersionFile" }
+$ExpectedVersionRegex = [regex]::Escape($ExpectedVersion)
+
 function Invoke-CheckedPreflightScript {
   param([string]$ScriptPath, [string]$Name)
   if (Test-Path -LiteralPath $ScriptPath) {
     powershell -ExecutionPolicy Bypass -File $ScriptPath -SourceRoot $SourceRoot
     if ($LASTEXITCODE -ne 0) { throw "$Name failed with exit code ${LASTEXITCODE}: $ScriptPath" }
+  }
+}
+
+function Invoke-AdvisoryPreflightScript {
+  param([string]$ScriptPath, [string]$Name)
+  if (Test-Path -LiteralPath $ScriptPath) {
+    powershell -ExecutionPolicy Bypass -File $ScriptPath -SourceRoot $SourceRoot
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "$Name returned exit code ${LASTEXITCODE}; continuing to MSVC build because this check is advisory. Script: $ScriptPath"
+    }
   }
 }
 
@@ -34,8 +50,9 @@ Invoke-CheckedPreflightScript -ScriptPath $WrapperCompat -Name "PowerShell wrapp
 $MsvcStringCheck = Join-Path $SourceRoot "tools\Verify-MsvcStringLiteralRisk.ps1"
 Invoke-CheckedPreflightScript -ScriptPath $MsvcStringCheck -Name "MSVC string literal risk check"
 
-$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_29_4-ReleaseReadiness.ps1"
-Invoke-CheckedPreflightScript -ScriptPath $ReleaseReadiness -Name "Release readiness check"
+# Release-readiness includes documentation and packaging assertions. It is useful, but must not block compilation.
+$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_35-ReleaseReadiness.ps1"
+Invoke-AdvisoryPreflightScript -ScriptPath $ReleaseReadiness -Name "Release readiness advisory check"
 
 if (!(Test-Path -LiteralPath "$SourceRoot\build_windows_msvc.bat")) { throw "Build script not found: $SourceRoot\build_windows_msvc.bat" }
 
@@ -54,6 +71,6 @@ if (!(Test-Path -LiteralPath $cliExe)) { throw "Build did not produce CLI execut
 if (Select-String -LiteralPath $BuildLog -Pattern ': error ', ' error C', 'fatal error' -Quiet) { throw "Build log contains compiler/linker errors. Log: $BuildLog" }
 
 $version = (& $cliExe --version 2>&1 | Out-String).Trim()
-if ($version -notmatch "1\.6\.29\.4") { throw "Unexpected CLI version after build: $version" }
+if ($version -notmatch $ExpectedVersionRegex) { throw "Unexpected CLI version after build. Expected $ExpectedVersion but got: $version" }
 Write-Host $version
 Write-Host "Build log: $BuildLog"

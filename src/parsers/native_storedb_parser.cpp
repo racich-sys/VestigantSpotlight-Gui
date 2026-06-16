@@ -886,15 +886,26 @@ DbStrMapLoadResult parseDbStrIndexes(const fs::path& folder, int mapId, std::map
     return result;
 }
 
+bool hasExternalDbStrMapComponents(const fs::path& folder) {
+    return fileExistsRegular(folder / "dbStr-1.map.data") &&
+           fileExistsRegular(folder / "dbStr-1.map.offsets") &&
+           fileExistsRegular(folder / "dbStr-1.map.header") &&
+           fileExistsRegular(folder / "dbStr-2.map.data") &&
+           fileExistsRegular(folder / "dbStr-2.map.offsets") &&
+           fileExistsRegular(folder / "dbStr-2.map.header");
+}
+
 bool shouldLoadExternalDbStrMaps(const HeaderInfo& h, const StoreInfo& store) {
     if (h.version != 2 || h.idx11 != 0) return false;
+    const fs::path folder = store.storePath.parent_path();
+    if (hasExternalDbStrMapComponents(folder)) return true;
     if (store.inferredIosStore) return true;
     std::string s = lowerAscii(pathString(store.storePath));
     std::replace(s.begin(), s.end(), '\\', '/');
-    return s.find("/corespotlight/") != std::string::npos || s.find("index.spotlightv2") != std::string::npos;
+    return s.find("/corespotlight/") != std::string::npos || s.find("index.spotlightv2") != std::string::npos || s.find("/store-v2/") != std::string::npos;
 }
 
-std::vector<DbStrMapLoadResult> loadIosDbStrMapsForStore(const fs::path& folder,
+std::vector<DbStrMapLoadResult> loadExternalDbStrMapsForStore(const fs::path& folder,
                                                           std::map<int, PropertyDef>& properties,
                                                           std::map<int, std::string>& categories,
                                                           std::map<int, std::vector<int>>& indexes1,
@@ -2669,10 +2680,19 @@ void appendNativeProgress(const fs::path& progressPath, int percent, const std::
         const std::string ts = nowUtc();
         const std::string cleanStage = progressClean(stage);
         const std::string cleanMessage = progressClean(message);
-        std::ofstream out(progressPath, std::ios::app | std::ios::binary);
-        out << ts << "\t" << percent << "\t" << cleanStage << "\t" << cleanMessage << "\n" << std::flush;
-        std::ofstream last(progressPath.parent_path() / "last_progress.tsv", std::ios::binary);
-        last << ts << "\t" << percent << "\t" << cleanStage << "\t" << cleanMessage << "\n" << std::flush;
+        auto writeProgressPair = [&](const fs::path& path) {
+            if (path.empty()) return;
+            fs::create_directories(path.parent_path());
+            std::ofstream out(path, std::ios::app | std::ios::binary);
+            out << ts << "\t" << percent << "\t" << cleanStage << "\t" << cleanMessage << "\n" << std::flush;
+            std::ofstream last(path.parent_path() / "last_progress.tsv", std::ios::binary);
+            last << ts << "\t" << percent << "\t" << cleanStage << "\t" << cleanMessage << "\n" << std::flush;
+        };
+        writeProgressPair(progressPath);
+        const fs::path parent = progressPath.parent_path();
+        if (parent.filename().string() == "logs" && !parent.parent_path().empty()) {
+            writeProgressPair(parent.parent_path() / progressPath.filename());
+        }
     } catch (...) {}
 }
 
@@ -2706,7 +2726,10 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
             recStmt.bind(16, effectiveFullPath); recStmt.bind(17, recordState); recStmt.bind(18, logicalSizeOf(item)); recStmt.bind(19, physicalSizeOf(item)); recStmt.stepDone(); recStmt.reset();
             ++counts.rawRecords;
 
-            const bool iosDefaultFilteredKvMode = isLikelyIosCoreSpotlightStorePath(store.storePath) && !persistAllNativeKeyValues_;
+            const bool iosPathSensitiveMatch = isLikelyIosCoreSpotlightStorePath(store.storePath);
+            const bool iosDefaultFilteredKvMode = !persistAllNativeKeyValues_ &&
+                (nativePersistenceMode_ == NativePersistenceMode::IosCoreSpotlightCompact ||
+                 (nativePersistenceMode_ == NativePersistenceMode::AutoPathSensitive && iosPathSensitiveMatch));
             std::size_t persistedKeyValuesForRecord = 0;
             std::size_t persistedDateCandidatesForRecord = 0;
             bool persistedReferenceForRecord = false;
@@ -2757,6 +2780,11 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
             ++storeOrdinal;
             const std::string storeAttemptStartedUtc = nowUtc();
             appendNativeProgress(progressPath_, 36, "native_parse_store_start", "store=" + std::to_string(storeOrdinal) + "/" + std::to_string(totalStores) + " guid=" + store.storeGuid);
+            appendNativeProgress(progressPath_, 36, "native_parse_store_persistence_mode",
+                                 std::string("mode=") +
+                                 (nativePersistenceMode_ == NativePersistenceMode::MacOSStoreV2 ? "macos_storev2" :
+                                  (nativePersistenceMode_ == NativePersistenceMode::IosCoreSpotlightCompact ? "ios_corespotlight_compact" : "auto_path_sensitive")) +
+                                 "; path_looks_ios=" + (isLikelyIosCoreSpotlightStorePath(store.storePath) ? "1" : "0"));
             const std::size_t beforeMetadataBlocks = counts.metadataBlocks;
             const std::size_t beforeDecompressedBlocks = counts.decompressedBlocks;
             const std::size_t beforeRawRecords = counts.rawRecords;
@@ -2806,14 +2834,14 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                 if (h.version == 1) {
                     parseBlockSequence(in, h, h.idx03, BlockType::StringsV1, [&](const auto& raw, int logical){ parsePropertiesV1(raw, properties, logical); });
                 } else if (shouldLoadExternalDbStrMaps(h, store)) {
-                    dbStrResults = loadIosDbStrMapsForStore(store.storePath.parent_path(), properties, categories, indexes1, indexes2);
+                    dbStrResults = loadExternalDbStrMapsForStore(store.storePath.parent_path(), properties, categories, indexes1, indexes2);
                     insertNativeDbStrMapInventory(db, source, store, dbStrResults);
                     std::ostringstream dbStrMsg;
                     for (const auto& r : dbStrResults) {
                         if (dbStrMsg.tellp() > 0) dbStrMsg << "; ";
                         dbStrMsg << "dbStr-" << r.mapId << "=" << r.status << ":" << r.parsedEntries << "/" << r.offsetEntries;
                     }
-                    log.info("iOS CoreSpotlight dbStr map load: store=" + pathString(store.storePath) + " " + dbStrMsg.str());
+                    log.info("External Store-V2 dbStr map load: store=" + pathString(store.storePath) + " " + dbStrMsg.str());
                 } else {
                     parseBlockSequence(in, h, h.idx11, BlockType::Property, [&](const auto& raw, int logical){ parsePropertiesV2(raw, properties, logical); });
                     parseBlockSequence(in, h, h.idx21, BlockType::Category, [&](const auto& raw, int logical){ parseCategories(raw, categories, logical); });
@@ -2827,7 +2855,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                 insertNativeIndexDictionarySummary(db, source, store, h.version, "index_1", indexes1);
                 insertNativeIndexDictionarySummary(db, source, store, h.version, "index_2", indexes2);
                 if (shouldLoadExternalDbStrMaps(h, store) && dbStrResults.empty()) {
-                    insertFailure(db, source, store, "ios_dbstr_maps", "iOS-like store has header idx11=0 but dbStr loading was not attempted");
+                    insertFailure(db, source, store, "external_dbstr_maps", "Store-V2 header idx11=0 but external dbStr map loading was not attempted");
                 }
                 log.info("Dictionaries: properties=" + std::to_string(properties.size()) + " categories=" + std::to_string(categories.size()) +
                          " index1=" + std::to_string(indexes1.size()) + " index2=" + std::to_string(indexes2.size()) +

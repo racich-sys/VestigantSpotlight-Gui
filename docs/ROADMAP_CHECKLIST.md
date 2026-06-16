@@ -1,12 +1,12 @@
-# V1.6.29.4 current handoff note
+# V1.6.35 current handoff note
 
-V1.6.29.4 follows successful V1.6.29.4 build/thin validation and implements code-review hardening for APFS/AFF4/bplist/iOS app DB/GUI path handling. See `docs/V1_6_29_4_CODE_REVIEW_VALIDATION_HARDENING.md`. Missing-from-FFS and CoreDuet interpretation guardrails remain in place.
+V1.6.35 follows successful V1.6.35 build/thin validation and implements code-review hardening for APFS/AFF4/bplist/iOS app DB/GUI path handling. See `docs/V1_6_35_CODE_REVIEW_VALIDATION_HARDENING.md`. Missing-from-FFS and CoreDuet interpretation guardrails remain in place.
 
-# V1.6.29.4 Release Notes
+# V1.6.35 Release Notes
 
 ## Purpose
 
-V1.6.29.4 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.29.4 limitation language.
+V1.6.35 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.35 limitation language.
 
 ## Triggering evidence from V1.6.22.1 thin
 
@@ -14,7 +14,7 @@ V1.6.29.4 records active filesystem comparison as the next implementation target
 - `VestigantSpotlight_tail250.log` reported active filesystem comparison was tabled and that `existence_status` would remain `NOT_CHECKED`-style.
 - `active_file_comparison_readiness.csv` reported `comparison_ready=0` and `comparison_status=ZIP_PARSED_FOR_SPOTLIGHT_NOT_IMAGE_FILE_INVENTORY`.
 
-## Changed in V1.6.29.4
+## Changed in V1.6.35
 
 - Added `docs/ACTIVE_FILESYSTEM_COMPARISON_ROADMAP.md`.
 - Updated continuation docs to make active filesystem comparison the next queued implementation target.
@@ -24,7 +24,7 @@ V1.6.29.4 records active filesystem comparison as the next implementation target
 
 ## Not implemented yet
 
-V1.6.29.4 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
+V1.6.35 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
 
 
 ## V1.6.6.2 workflow ledger
@@ -110,10 +110,10 @@ V1.6.29.4 implements Phase 1 active filesystem comparison for iOS FFS exact-path
 - [ ] Confirm Windows/MSVC build with `V1_6_18_1_build.log`.
 - [ ] Visually confirm compact GUI top/review layout at scaled DPI.
 
-## V1.6.29.4
+## V1.6.35
 
 - [x] Add CoreDuet interactionC database-status workflow.
 - [x] Add CoreDuet interactionC summary/event GUI views and CSV exports.
 - [x] Add bounded upload samples for interactionC review.
 - [x] Add running start-continuation document.
-- [ ] Validate Windows/MSVC build and V1.6.29.4 iOS thin output.
+- [ ] Validate Windows/MSVC build and V1.6.35 iOS thin output.

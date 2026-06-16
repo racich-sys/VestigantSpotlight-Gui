@@ -1,0 +1,16 @@
+V1.6.35 iOS CoreSpotlight validation-support wrapper
+
+Use this after the V1.6.35 Windows build passes and the V1.6.35 thin run completes. It is the next validation step before removing any remaining iOS workflow guardrails.
+
+It enables:
+- source-container SHA256 hashing
+- full native metadata value decoding
+- support export profile
+- iOS FFS/app DB support materialization
+- required upload-sample checks for CoreDuet interactionC status, summary, and event review
+
+Command:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_35\scripts\Run-V1_6_35-iOS-ValidationSupport-AndZip.ps1 -CleanOut
+
+Expected upload:
+D:\Downloads\Upload_ValidationSupport_iOS_CoreSpotlight_V1_6_35.zip

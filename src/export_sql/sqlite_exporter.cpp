@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <atomic>
+#include <cstring>
 
 namespace vestigant::spotlight {
 namespace {
@@ -87,21 +88,32 @@ fs::path ioPath(const fs::path& p) {
 #endif
 }
 
-void writeCsvFieldFast(std::ofstream& out, const char* text) {
+void writeCsvFieldFast(std::ofstream& out, const char* text, int byteLen = -1) {
     if (!text) return;
+    const int len = byteLen >= 0 ? byteLen : static_cast<int>(std::strlen(text));
     bool needQuotes = false;
-    for (const char* p = text; *p; ++p) {
-        const char c = *p;
-        if (c == ',' || c == '"' || c == '\r' || c == '\n') { needQuotes = true; break; }
+    for (int i = 0; i < len; ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == ',' || c == '"' || c == '\r' || c == '\n' || c == 0U || c < 0x20U) { needQuotes = true; break; }
     }
-    if (!needQuotes) { out << text; return; }
+    if (!needQuotes) { out.write(text, len); return; }
     out << '"';
-    for (const char* p = text; *p; ++p) {
-        if (*p == '"') out << "\"\"";
-        else out << *p;
+    for (int i = 0; i < len; ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == '"') out << "\"\"";
+        else if (c == 0U) out << "[NUL]";
+        else if (c == '\r') out << "\\r";
+        else if (c == '\n') out << "\\n";
+        else if (c == '\t') out << "\\t";
+        else if (c < 0x20U) {
+            const char* hex = "0123456789ABCDEF";
+            out << "[0x" << hex[(c >> 4U) & 0x0fU] << hex[c & 0x0fU] << "]";
+        }
+        else out << static_cast<char>(c);
     }
     out << '"';
 }
+
 
 void writeHeader(std::ofstream& out, sqlite3_stmt* stmt) {
     const int n = sqlite3_column_count(stmt);
@@ -118,7 +130,8 @@ void writeRow(std::ofstream& out, sqlite3_stmt* stmt) {
     for (int i = 0; i < n; ++i) {
         if (i) out << ',';
         const unsigned char* raw = sqlite3_column_text(stmt, i);
-        writeCsvFieldFast(out, reinterpret_cast<const char*>(raw));
+        const int rawLen = raw ? sqlite3_column_bytes(stmt, i) : 0;
+        writeCsvFieldFast(out, reinterpret_cast<const char*>(raw), rawLen);
     }
     out << "\n";
 }
@@ -335,7 +348,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.29.4 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.35 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";

@@ -1,4 +1,25 @@
-# V1.6.29.4 code-review issue tracker
+# V1.6.35 Suggestions / Fixes Tracker Update
+
+- [x] Review uploaded macOS Store-V2 sidecar files.
+- [x] Enable external dbStr map loading for macOS Store-V2 based on component presence.
+- [ ] Validate MSVC build.
+- [ ] Rerun macOS zipped Spotlight thin test and compare dictionary counts / GUI placeholder rate.
+
+# V1.6.35 Suggestions / Fixes Tracker Update
+
+- [x] Promote macOS Store-V2 native path probe values into artifact display/path fields where GUI rows had placeholder names.
+- [ ] Validate V1.6.35 with MSVC build log.
+- [ ] Rerun macOS zipped Spotlight thin test and compare GUI `------NONAME------` rate.
+
+# V1_6_35 note
+
+V1_6_35 skips the parent-inode path apply UPDATE when `new_reconstructed_paths=0`, based on the V1.6.32 macOS zipped Spotlight thin result. Build success remains unverified until the Windows log is uploaded.
+
+# V1_6_35 note
+
+V1_6_35 fixes recurring build-blocking release-readiness failures: release-readiness is advisory from the build wrapper, while wrapper compatibility and raw-string risk remain fatal. Expected CLI version is read dynamically from `VERSION`.
+
+# V1.6.35 code-review issue tracker
 
 - [x] APFS OMAP vertical B-tree cycle detection.
 - [x] AFF4 LZ4 subtraction-based overflow-safe bounds checks.
@@ -11,11 +32,11 @@
 - [x] Folder picker now warns on unresolved or MAX_PATH-boundary paths.
 - [ ] AFF4/APFS image-backed active filesystem comparison remains pending.
 
-# V1.6.29.4 Release Notes
+# V1.6.35 Release Notes
 
 ## Purpose
 
-V1.6.29.4 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.29.4 limitation language.
+V1.6.35 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.35 limitation language.
 
 ## Triggering evidence from V1.6.22.1 thin
 
@@ -23,7 +44,7 @@ V1.6.29.4 records active filesystem comparison as the next implementation target
 - `VestigantSpotlight_tail250.log` reported active filesystem comparison was tabled and that `existence_status` would remain `NOT_CHECKED`-style.
 - `active_file_comparison_readiness.csv` reported `comparison_ready=0` and `comparison_status=ZIP_PARSED_FOR_SPOTLIGHT_NOT_IMAGE_FILE_INVENTORY`.
 
-## Changed in V1.6.29.4
+## Changed in V1.6.35
 
 - Added `docs/ACTIVE_FILESYSTEM_COMPARISON_ROADMAP.md`.
 - Updated continuation docs to make active filesystem comparison the next queued implementation target.
@@ -33,7 +54,7 @@ V1.6.29.4 records active filesystem comparison as the next implementation target
 
 ## Not implemented yet
 
-V1.6.29.4 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
+V1.6.35 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
 
 
 ## V1.6.18 implemented / queued validation
@@ -131,10 +152,10 @@ Remaining:
 - [ ] Confirm Windows/MSVC build with `V1_6_18_1_build.log`.
 - [ ] Visually confirm compact GUI top/review layout at scaled DPI.
 
-## V1.6.29.4
+## V1.6.35
 
 - [x] Add CoreDuet interactionC database-status workflow.
 - [x] Add CoreDuet interactionC summary/event GUI views and CSV exports.
 - [x] Add bounded upload samples for interactionC review.
 - [x] Add running start-continuation document.
-- [ ] Validate Windows/MSVC build and V1.6.29.4 iOS thin output.
+- [ ] Validate Windows/MSVC build and V1.6.35 iOS thin output.

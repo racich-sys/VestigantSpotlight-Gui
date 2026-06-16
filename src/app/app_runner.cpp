@@ -203,6 +203,10 @@ int stagePercent(const std::string& stage) {
     if (stage == "rediscover_preserved_stores") return 25;
     if (stage == "open_sqlite") return 30;
     if (stage == "native_parse_start") return 35;
+    if (stage == "native_kv_persistence_macos_storev2") return 36;
+    if (stage == "native_kv_persistence_ios_corespotlight_compact") return 36;
+    if (stage == "native_kv_persistence_auto_path_sensitive") return 36;
+    if (stage == "native_parse_configuration") return 36;
     if (stage == "native_parse_call") return 36;
     if (stage == "native_parse_complete") return 75;
     if (stage == "enrichment_start") return 82;
@@ -5660,14 +5664,28 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         NativeStoreDbParser parser(decodeMode, nativeRecordLimit, opt.maxNativeBlocks);
         parser.setProgressPath(caseDir / "logs" / "run_progress.tsv");
         parser.setPersistAllNativeKeyValues(opt.diagnosticFullNativeDb);
+        const NativePersistenceMode nativePersistenceMode =
+            (profile == SourceProfileKind::IOS) ? NativePersistenceMode::IosCoreSpotlightCompact :
+            ((profile == SourceProfileKind::MacOS) ? NativePersistenceMode::MacOSStoreV2 : NativePersistenceMode::AutoPathSensitive);
+        parser.setNativePersistenceMode(nativePersistenceMode);
         parser.setDbSizeGuardrailBytes(opt.dbSizeGuardrailBytes);
         if (opt.diagnosticFullNativeDb) {
             appendRunStatus(caseDir, "native_kv_persistence_full", "full native key/value persistence explicitly enabled for diagnostics");
-            log.warn("Diagnostic full native key/value persistence is enabled. iOS CoreSpotlight databases can grow very large.");
+            log.warn("Diagnostic full native key/value persistence is enabled. Native Store-V2/CoreSpotlight databases can grow very large.");
+        } else if (nativePersistenceMode == NativePersistenceMode::IosCoreSpotlightCompact) {
+            appendRunStatus(caseDir, "native_kv_persistence_ios_corespotlight_compact", "iOS CoreSpotlight compact mode keeps high-value key/value rows and bounded per-record date provenance");
+            log.info("iOS CoreSpotlight key/value/date persistence is compact: broad dbStr/property rows and broad date candidates are summarized/suppressed. Use --diagnostic-full-native-db only for bounded support runs.");
+        } else if (nativePersistenceMode == NativePersistenceMode::MacOSStoreV2) {
+            appendRunStatus(caseDir, "native_kv_persistence_macos_storev2", "macOS Store-V2 mode uses macOS native metadata persistence; iOS CoreSpotlight compact filtering is disabled");
+            log.info("macOS Store-V2 native metadata persistence selected. iOS CoreSpotlight compact filtering is disabled for this source profile.");
         } else {
-            appendRunStatus(caseDir, "native_kv_persistence_filtered", "default iOS CoreSpotlight mode keeps compact high-value key/value rows and bounded per-record date provenance");
-            log.info("Default iOS CoreSpotlight key/value/date persistence is compact: broad dbStr/property rows and broad date candidates are summarized/suppressed. Use --diagnostic-full-native-db only for bounded support runs.");
+            appendRunStatus(caseDir, "native_kv_persistence_auto_path_sensitive", "auto profile uses path-sensitive native persistence mode selection");
+            log.info("Auto profile native persistence selected. iOS compact filtering is applied only to iOS-looking CoreSpotlight paths.");
         }
+        appendRunStatus(caseDir, "native_parse_configuration",
+                        std::string("decode_mode=") + (decodeMode == NativeDecodeMode::FullValues ? "FullValues" : (decodeMode == NativeDecodeMode::CoreFields ? "CoreFields" : "HeaderOnly")) +
+                        "; max_native_records=" + std::to_string(nativeRecordLimit) +
+                        "; max_native_blocks=" + std::to_string(opt.maxNativeBlocks));
         if (nativeRecordLimit > 0) log.info("Native parser record limit enabled: max_native_records=" + std::to_string(nativeRecordLimit));
         else log.info("Native parser record limit disabled: max_native_records=0 (unlimited)");
         if (opt.maxNativeBlocks > 0) log.info("Native parser metadata block limit enabled: max_native_blocks=" + std::to_string(opt.maxNativeBlocks));
@@ -5717,7 +5735,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Direct --evidence-root comparison is not used in V1.6.29.4. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.35. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);

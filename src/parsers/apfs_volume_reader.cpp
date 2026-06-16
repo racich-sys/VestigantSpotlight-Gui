@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <set>
 
@@ -125,12 +126,25 @@ ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& 
         const std::uint64_t oid = readLe64Local(data, off);
         if (oid != 0) nx.fsOids.push_back(oid);
     }
-    if (nx.blockSize < 4096 || nx.blockSize > 65536 || (nx.blockSize & (nx.blockSize - 1U)) != 0U) {
-        nx.validationStatus = "NXSB_FOUND_BLOCK_SIZE_SUSPICIOUS";
-        nx.notes = "NXSB magic was present, but nx_block_size is outside the APFS expected power-of-two range.";
+    constexpr std::uint32_t kApfsMinAcceptedBlockSize = 4096U;
+    constexpr std::uint32_t kApfsMaxAcceptedBlockSize = 65536U;
+    const std::uint32_t rawBlockSize = nx.blockSize;
+    if (rawBlockSize < kApfsMinAcceptedBlockSize ||
+        rawBlockSize > kApfsMaxAcceptedBlockSize ||
+        (rawBlockSize & (rawBlockSize - 1U)) != 0U) {
+        nx.found = false;
+        nx.blockSize = 0;
+        nx.validationStatus = "NXSB_FOUND_BLOCK_SIZE_REJECTED";
+        nx.notes = "NXSB magic was present, but nx_block_size=" + std::to_string(rawBlockSize) +
+                   " is outside the accepted APFS power-of-two range 4096..65536; rejected before allocation/use.";
     } else if (nx.blockCount == 0) {
+        nx.found = false;
         nx.validationStatus = "NXSB_FOUND_BLOCK_COUNT_ZERO";
-        nx.notes = "NXSB magic was present, but nx_block_count is zero.";
+        nx.notes = "NXSB magic was present, but nx_block_count is zero; rejected before allocation/use.";
+    } else if (nx.blockCount > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(rawBlockSize))) {
+        nx.found = false;
+        nx.validationStatus = "NXSB_FOUND_CONTAINER_SIZE_OVERFLOW";
+        nx.notes = "NXSB magic was present, but nx_block_count * nx_block_size would overflow uint64; rejected before allocation/use.";
     } else {
         nx.containerSizeBytes = static_cast<std::uint64_t>(nx.blockSize) * nx.blockCount;
         nx.validationStatus = "NXSB_PARSED";
