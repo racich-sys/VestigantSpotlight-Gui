@@ -362,57 +362,69 @@ void configureGuiSqliteConnection(sqlite3* db) {
 class ReadOnlyDb {
 public:
     explicit ReadOnlyDb(const std::wstring& path) {
-        std::lock_guard<std::mutex> lock(poolMutex_);
-        if (sharedDb_ && currentPath_ == path) {
-            db_ = sharedDb_;
-            return;
-        }
-        if (sharedDb_) {
-            sqlite3_close_v2(sharedDb_);
-            sharedDb_ = nullptr;
-            currentPath_.clear();
-        }
-        const std::string p = narrow(path);
-        if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
-            configureGuiSqliteConnection(sharedDb_);
-            if (schemaEnsuredPaths_.insert(path).second) {
-                ensureInvestigatorUiSchemaNoThrow(sharedDb_);
+        {
+            std::lock_guard<std::mutex> lock(poolMutex_);
+            auto it = pool_.find(path);
+            if (it != pool_.end() && it->second != nullptr) {
+                db_ = it->second;
+                return;
             }
-            currentPath_ = path;
-            db_ = sharedDb_;
+        }
+
+        sqlite3* newDb = nullptr;
+        bool openedReadWrite = false;
+        const std::string p = narrow(path);
+        if (sqlite3_open_v2(p.c_str(), &newDb, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
+            openedReadWrite = true;
+        } else {
+            std::string writeMsg = newDb ? sqlite3_errmsg(newDb) : "unknown";
+            if (newDb) {
+                sqlite3_close_v2(newDb);
+                newDb = nullptr;
+            }
+            if (sqlite3_open_v2(p.c_str(), &newDb, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+                std::string msg = newDb ? sqlite3_errmsg(newDb) : writeMsg;
+                if (newDb) sqlite3_close_v2(newDb);
+                throw std::runtime_error("Unable to open case database: " + msg);
+            }
+        }
+
+        configureGuiSqliteConnection(newDb);
+        if (openedReadWrite) {
+            bool shouldEnsure = false;
+            {
+                std::lock_guard<std::mutex> lock(poolMutex_);
+                shouldEnsure = schemaEnsuredPaths_.find(path) == schemaEnsuredPaths_.end();
+            }
+            if (shouldEnsure) {
+                ensureInvestigatorUiSchemaNoThrow(newDb);
+            }
+        }
+
+        std::lock_guard<std::mutex> lock(poolMutex_);
+        auto it = pool_.find(path);
+        if (it != pool_.end() && it->second != nullptr) {
+            sqlite3_close_v2(newDb);
+            db_ = it->second;
             return;
         }
-        std::string writeMsg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : "unknown";
-        if (sharedDb_) {
-            sqlite3_close_v2(sharedDb_);
-            sharedDb_ = nullptr;
-        }
-        if (sqlite3_open_v2(p.c_str(), &sharedDb_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
-            std::string msg = sharedDb_ ? sqlite3_errmsg(sharedDb_) : writeMsg;
-            if (sharedDb_) sqlite3_close_v2(sharedDb_);
-            sharedDb_ = nullptr;
-            currentPath_.clear();
-            throw std::runtime_error("Unable to open case database: " + msg);
-        }
-        configureGuiSqliteConnection(sharedDb_);
-        currentPath_ = path;
-        db_ = sharedDb_;
+        pool_[path] = newDb;
+        if (openedReadWrite) schemaEnsuredPaths_.insert(path);
+        db_ = newDb;
     }
     ~ReadOnlyDb() = default;
     sqlite3* get() const { return db_; }
     static void closePoolNoThrow() {
         std::lock_guard<std::mutex> lock(poolMutex_);
-        if (sharedDb_) {
-            sqlite3_close_v2(sharedDb_);
-            sharedDb_ = nullptr;
+        for (auto& kv : pool_) {
+            if (kv.second) sqlite3_close_v2(kv.second);
         }
-        currentPath_.clear();
+        pool_.clear();
         schemaEnsuredPaths_.clear();
     }
 private:
     sqlite3* db_ = nullptr;
-    static inline sqlite3* sharedDb_ = nullptr;
-    static inline std::wstring currentPath_;
+    static inline std::map<std::wstring, sqlite3*> pool_;
     static inline std::set<std::wstring> schemaEnsuredPaths_;
     static inline std::mutex poolMutex_;
 };
@@ -3025,7 +3037,8 @@ void createProcessControls(HWND hwnd) {
     addProcess(CreateWindowW(L"STATIC", L"Evidence preservation and core/native metadata decoding are always enabled for GUI runs.", WS_CHILD | WS_VISIBLE | SS_LEFT, 16, y0 + 404, 560, 20, hwnd, nullptr, gInst, nullptr));
     gVerbose = addProcess(CreateWindowW(L"BUTTON", L"Verbose log", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 16, y0 + 428, 110, 22, hwnd, nullptr, gInst, nullptr));
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
-    gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"SQLite only", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 136, y0 + 428, 110, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
+    gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"Exclude CSV exports", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 136, y0 + 428, 180, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
+    SendMessageW(gSuppressCsvExports, BM_SETCHECK, BST_CHECKED, 0);
     labelP(hwnd, L"Export profile", 590, y0 + 430, 92, 20); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 684, y0 + 426, 144, 92, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Minimal", L"Investigator", L"Diagnostics", L"Full CSV"}) SendMessageW(gExportProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gExportProfile, CB_SETCURSEL, 1, 0);
 
@@ -3287,7 +3300,7 @@ void layoutControls(HWND hwnd) {
     moveIf(gEvidenceRoot, 224, y0 + 278, std::max(220, rightBrowseX - 234), 22);
     moveIf(gBrowse7z, rightBrowseX, y0 + 307, browseW, 24);
     moveIf(gSevenZip, 224, y0 + 308, std::max(220, rightBrowseX - 234), 22);
-    moveIf(gSuppressCsvExports, 136, y0 + 428, 110, 22);
+    moveIf(gSuppressCsvExports, 136, y0 + 428, 180, 22);
     moveIf(gExportProfile, right - 144, y0 + 426, 144, 92);
     moveIf(gIngestStatus, 128, y0 + 456, right - 128, 42);
     moveIf(gIngestProgress, 128, y0 + 504, right - 128, 20);

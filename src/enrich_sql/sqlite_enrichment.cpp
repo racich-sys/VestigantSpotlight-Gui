@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <set>
+#include <cctype>
 
 namespace vestigant::spotlight {
 namespace {
@@ -47,6 +48,23 @@ std::string basenameFromNativeProbePath(std::string p) {
     if (base.empty() || base == "." || base == "..") return {};
     return base;
 }
+bool isUsefulBasenameForEnrichment(const std::string& candidate) {
+    const auto s = trimEnrichmentAscii(candidate);
+    if (isPlaceholderNameForEnrichment(s)) return false;
+    if (s.size() < 2 || s.size() > 255) return false;
+    if (s.find('/') != std::string::npos || s.find('\\') != std::string::npos) return false;
+    if (s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0 || s.rfind("file://", 0) == 0) return false;
+    int alnum = 0;
+    int controls = 0;
+    for (unsigned char c : s) {
+        if (c < 0x20 || c == 0x7f) ++controls;
+        if (std::isalnum(c)) ++alnum;
+    }
+    if (controls > 0) return false;
+    if (alnum < 2) return false;
+    return true;
+}
+
 bool shouldApplyNativeProbePath(const std::string& currentPath, const std::string& currentName, const std::string& candidatePath) {
     const auto path = normalizeNativeProbePath(candidatePath);
     if (path.empty()) return false;
@@ -184,8 +202,17 @@ SELECT r.source_id,
        r.store_guid,
        r.inode_num,
        r.parent_inode_num,
-       r.file_name,
-       r.display_name,
+       CASE
+         WHEN r.valid_file_name<>'' THEN r.file_name
+         WHEN COALESCE(NULLIF(trim(r.file_name),''),'') IN ('','------NONAME------','------PLIST------','(null)','NULL','.') THEN 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_' || r.inode_num
+         ELSE r.file_name
+       END,
+       CASE
+         WHEN COALESCE(NULLIF(trim(r.display_name),''),'') NOT IN ('','------NONAME------','------PLIST------','(null)','NULL','.') THEN r.display_name
+         WHEN r.valid_file_name<>'' THEN r.valid_file_name
+         WHEN COALESCE(NULLIF(trim(r.file_name),''),'') IN ('','------NONAME------','------PLIST------','(null)','NULL','.') THEN 'Unresolved Spotlight object inode=' || r.inode_num
+         ELSE r.file_name
+       END,
        CASE
          WHEN r.usable_full_path<>'' THEN r.usable_full_path
          WHEN r.valid_file_name<>'' THEN r.valid_file_name
@@ -198,7 +225,7 @@ SELECT r.source_id,
          WHEN r.usable_full_path<>'' THEN 'RAW_RECORD_PATH_VALUE'
          WHEN r.valid_file_name<>'' THEN 'RAW_RECORD_FILE_NAME_ONLY'
          WHEN COALESCE(NULLIF(trim(r.full_path),''),'')='/' AND COALESCE(NULLIF(trim(r.parent_inode_num),''),'0') NOT IN ('0','') THEN 'HEADER_ONLY_ROOT_PLACEHOLDER_SUPPRESSED'
-         ELSE 'RAW_RECORD_NO_PATH'
+         ELSE 'RAW_RECORD_UNRESOLVED_IDENTIFIER_LABEL'
        END,
        CASE
          WHEN r.usable_full_path='/' THEN 'ROOT_OR_VOLUME_PATH'
@@ -207,7 +234,7 @@ SELECT r.source_id,
          WHEN r.valid_file_name<>'' AND COALESCE(NULLIF(r.parent_inode_num,''),'0') NOT IN ('0','') THEN 'FILE_NAME_ONLY_PARENT_RECONSTRUCTION_PENDING'
          WHEN r.valid_file_name<>'' THEN 'FILE_NAME_ONLY_NO_PARENT_CONTEXT'
          WHEN COALESCE(NULLIF(trim(r.full_path),''),'')='/' AND COALESCE(NULLIF(trim(r.parent_inode_num),''),'0') NOT IN ('0','') THEN 'HEADER_ONLY_NO_USABLE_PATH'
-         ELSE 'NO_USABLE_PATH'
+         ELSE 'UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL'
        END,
        r.content_type,
        r.content_type_tree,
@@ -217,7 +244,7 @@ SELECT r.source_id,
        r.last_updated_utc,
        CASE
          WHEN r.usable_full_path<>'' OR r.valid_file_name<>'' THEN 'MEDIUM'
-         ELSE 'LOW_HEADER_ONLY_PATH_CONTEXT'
+         ELSE 'LOW_HEADER_ONLY_IDENTIFIER_LABEL'
        END
 FROM normalized r;
 )SQL");
@@ -258,12 +285,6 @@ WHERE a.source_id=?
   AND kv.field_name LIKE '__native_probe_file_path_candidate_%'
   AND trim(COALESCE(kv.field_value,'')) LIKE '/%'
   AND trim(COALESCE(kv.field_value,''))<>'/'
-  AND (
-    COALESCE(NULLIF(trim(a.best_path),''),'')=''
-    OR COALESCE(a.best_path,'') NOT LIKE '/%'
-    OR COALESCE(NULLIF(trim(a.file_name),''),'') IN ('------NONAME------','------PLIST------','(null)','NULL','.')
-    OR COALESCE(NULLIF(trim(a.display_name),''),'')=''
-  )
 ORDER BY a.artifact_id, length(kv.field_value) DESC, kv.raw_kv_id
 )SQL");
             q.bind(1, source.sourceId);
@@ -306,6 +327,57 @@ WHERE artifact_id=? AND source_id=?
         insertMetric(db, source.sourceId, "native_path_probe_artifacts_updated", std::to_string(nativePathProbeUpdated));
         appendEnrichmentRunStatus(db, 79, "enrichment_native_path_probe_apply_complete", "artifacts_updated=" + std::to_string(nativePathProbeUpdated));
 
+        std::size_t nativeBasenameProbeUpdated = 0;
+        {
+            auto q = db.prepare(R"SQL(
+SELECT a.artifact_id,
+       COALESCE(a.file_name,''),
+       COALESCE(a.display_name,''),
+       COALESCE(kv.field_value,'')
+FROM artifacts a
+JOIN raw_key_values kv
+  ON kv.source_id=a.source_id
+ AND kv.store_guid=a.store_guid
+ AND kv.inode_num=a.inode_num
+WHERE a.source_id=?
+  AND kv.field_name LIKE '__native_probe_basename_candidate_%'
+  AND (
+    COALESCE(NULLIF(trim(a.file_name),''),'') IN ('','------NONAME------','------PLIST------','(null)','NULL','.')
+    OR COALESCE(NULLIF(trim(a.display_name),''),'') IN ('','------NONAME------','------PLIST------','(null)','NULL','.')
+  )
+ORDER BY a.artifact_id, length(kv.field_value) DESC, kv.raw_kv_id
+)SQL");
+            q.bind(1, source.sourceId);
+            auto up = db.prepare(R"SQL(
+UPDATE artifacts
+SET file_name=?,
+    display_name=?,
+    path_status=CASE WHEN COALESCE(path_status,'')='' OR path_status='NO_USABLE_PATH' THEN 'RAW_NATIVE_BASENAME_PROBE_PRESENT' ELSE path_status END,
+    confidence=CASE WHEN COALESCE(confidence,'') LIKE 'HIGH%' THEN confidence ELSE 'MEDIUM_NATIVE_BASENAME_PROBE_NAME' END
+WHERE artifact_id=? AND source_id=?
+)SQL");
+            std::set<long long> appliedArtifactIds;
+            while (q.stepRow()) {
+                const long long artifactId = q.colInt64(0);
+                if (!appliedArtifactIds.insert(artifactId).second) continue;
+                const std::string currentName = q.colText(1);
+                const std::string currentDisplay = q.colText(2);
+                std::string candidate = trimEnrichmentAscii(q.colText(3));
+                if (!isUsefulBasenameForEnrichment(candidate)) continue;
+                const std::string newName = isPlaceholderNameForEnrichment(currentName) ? candidate : currentName;
+                const std::string newDisplay = isPlaceholderNameForEnrichment(currentDisplay) ? newName : currentDisplay;
+                up.bind(1, newName);
+                up.bind(2, newDisplay);
+                up.bind(3, artifactId);
+                up.bind(4, source.sourceId);
+                up.stepDone();
+                up.reset();
+                ++nativeBasenameProbeUpdated;
+            }
+        }
+        insertMetric(db, source.sourceId, "native_basename_probe_artifacts_updated", std::to_string(nativeBasenameProbeUpdated));
+        appendEnrichmentRunStatus(db, 79, "enrichment_native_basename_probe_apply_complete", "artifacts_updated=" + std::to_string(nativeBasenameProbeUpdated));
+
         db.exec(R"SQL(
 INSERT INTO source_copy_comparison(source_id,store_guid,inode_num,source_instance_count,has_store_db,has_dotstore_db,comparison_status,preferred_source_db)
 SELECT source_id,
@@ -327,6 +399,7 @@ GROUP BY source_id, store_guid, inode_num;
 )SQL");
 
         appendEnrichmentRunStatus(db, 79, "enrichment_build_artifacts_complete", "artifacts=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=?", source.sourceId)));
+        insertMetric(db, source.sourceId, "unresolved_identifier_label_artifacts", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL'", source.sourceId)));
         log.info("Building parent inode relationship links and same-folder group counts.");
         appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_links_start", "source_id=" + source.sourceId);
         db.exec(R"SQL(
@@ -350,15 +423,21 @@ WITH sibling_counts AS (
          p.best_path AS parent_best_path,
          COALESCE(sc.sibling_count, 0) AS sibling_count,
          CASE
-           WHEN COALESCE(NULLIF(trim(c.file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN trim(c.file_name)
+           WHEN COALESCE(NULLIF(trim(c.file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.')
+                AND trim(c.file_name) NOT LIKE 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_%'
+                AND trim(c.file_name) NOT LIKE 'Unresolved Spotlight object inode=%' THEN trim(c.file_name)
            ELSE ''
          END AS child_valid_name,
          CASE
-           WHEN COALESCE(NULLIF(trim(p.file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.') THEN trim(p.file_name)
+           WHEN COALESCE(NULLIF(trim(p.file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.')
+                AND trim(p.file_name) NOT LIKE 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_%'
+                AND trim(p.file_name) NOT LIKE 'Unresolved Spotlight object inode=%' THEN trim(p.file_name)
            ELSE ''
          END AS parent_valid_name,
          CASE
-           WHEN COALESCE(NULLIF(trim(p.best_path),''),'') <> '' THEN trim(p.best_path)
+           WHEN COALESCE(NULLIF(trim(p.best_path),''),'') <> ''
+                AND instr(trim(p.best_path),'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_')=0
+                AND instr(trim(p.best_path),'Unresolved Spotlight object inode=')=0 THEN trim(p.best_path)
            ELSE ''
          END AS parent_valid_path
   FROM artifacts c
@@ -437,13 +516,19 @@ SELECT artifact_id,
        inode_num,
        parent_inode_num,
        CASE
-         WHEN COALESCE(NULLIF(trim(file_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(file_name)
-         WHEN COALESCE(NULLIF(trim(display_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(display_name)
+         WHEN COALESCE(NULLIF(trim(file_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.')
+              AND trim(file_name) NOT LIKE 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_%'
+              AND trim(file_name) NOT LIKE 'Unresolved Spotlight object inode=%' THEN trim(file_name)
+         WHEN COALESCE(NULLIF(trim(display_name),''),'') NOT IN ('------NONAME------','------PLIST------','(null)','NULL','.')
+              AND trim(display_name) NOT LIKE 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_%'
+              AND trim(display_name) NOT LIKE 'Unresolved Spotlight object inode=%' THEN trim(display_name)
          ELSE ''
        END AS valid_name,
        CASE
          WHEN trim(COALESCE(best_path,''))='/' AND COALESCE(NULLIF(parent_inode_num,''),'0') IN ('0','') THEN '/'
-         WHEN COALESCE(NULLIF(trim(best_path),''),'') NOT IN ('/','------NONAME------','------PLIST------','(null)','NULL','.') THEN trim(best_path)
+         WHEN COALESCE(NULLIF(trim(best_path),''),'') NOT IN ('/','------NONAME------','------PLIST------','(null)','NULL','.')
+              AND instr(trim(best_path),'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_')=0
+              AND instr(trim(best_path),'Unresolved Spotlight object inode=')=0 THEN trim(best_path)
          ELSE ''
        END AS existing_path,
        path_status
@@ -509,7 +594,9 @@ SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_pat
        length(candidate_path) AS candidate_len
 FROM path_chain
 WHERE COALESCE(candidate_path,'')<>''
-  AND instr(candidate_path,'/')>0;
+  AND instr(candidate_path,'/')>0
+  AND instr(candidate_path,'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_')=0
+  AND instr(candidate_path,'Unresolved Spotlight object inode=')=0;
 
 CREATE TEMP TABLE temp_best_parent_inode_path AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_path,method,confidence,quality,depth
@@ -1066,6 +1153,7 @@ SELECT COALESCE(MAX(c),0) FROM (
         insertMetric(db, source.sourceId, "parent_inode_links_with_path_context_candidate", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_with_existing_path_context", std::to_string(scalarCount(db, R"SQL(SELECT COUNT(*) FROM parent_inode_links pl LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id WHERE pl.source_id=? AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND COALESCE(a.best_path,'')=COALESCE(pl.reconstructed_path_candidate,'') AND COALESCE(a.path_source,'') NOT IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW'))SQL", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_with_new_reconstructed_path", std::to_string(scalarCount(db, R"SQL(SELECT COUNT(*) FROM parent_inode_links pl LEFT JOIN artifacts a ON a.artifact_id=pl.child_artifact_id WHERE pl.source_id=? AND COALESCE(pl.reconstructed_path_candidate,'')<>'' AND (COALESCE(a.best_path,'')<>COALESCE(pl.reconstructed_path_candidate,'') OR COALESCE(a.path_source,'') IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')))SQL", source.sourceId)));
+        insertMetric(db, source.sourceId, "unresolved_identifier_labels_suppressed_from_parent_path_reconstruction", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND (file_name LIKE 'UNRESOLVED_SPOTLIGHT_OBJECT_INODE_%' OR display_name LIKE 'Unresolved Spotlight object inode=%')", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_artifacts_updated_from_reconstruction", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_source IN ('PARENT_INODE_RECONSTRUCTION','PARENT_INODE_CHAIN_RECONSTRUCTION','PARENT_INODE_RELATIVE_CHAIN_REVIEW')", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_without_child_name", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND path_reconstruction_method='PARENT_INODE_MATCH_NO_CHILD_NAME'", source.sourceId)));
         insertMetric(db, source.sourceId, "parent_inode_links_with_child_name", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(NULLIF(trim(child_file_name),''),'') NOT IN ('------NONAME------','(null)','NULL','.')", source.sourceId)));
@@ -1100,9 +1188,9 @@ void SqliteEnrichment::classifyFilesystem(CaseDatabase& db, const EvidenceSource
 
         if (!hasIosFfsLookup) {
             if (!source.evidenceRoot.empty()) {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.35; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.38; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
             } else {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.35; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.38; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
             }
             db.exec(R"SQL(
 UPDATE artifacts
@@ -1136,7 +1224,7 @@ WHERE source_id=)SQL" + sid + ";");
             return;
         }
 
-        log.info("Active filesystem comparison enabled in V1.6.35 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
+        log.info("Active filesystem comparison enabled in V1.6.38 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
 
         db.exec("DROP TABLE IF EXISTS temp_ios_active_ffs_paths;");
         db.exec(R"SQL(

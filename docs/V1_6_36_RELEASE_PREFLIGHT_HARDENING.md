@@ -1,8 +1,8 @@
-# V1_6_35 Release Preflight Hardening
+# V1_6_38 Release Preflight Hardening
 
 ## Purpose
 
-V1_6_35 fixes the recurring build-blocking release-readiness failure pattern observed during the 1.6.29.x and 1.6.31 build attempts.
+V1_6_38 fixes the recurring build-blocking release-readiness failure pattern observed during the 1.6.29.x and 1.6.31 build attempts.
 
 ## Problem
 

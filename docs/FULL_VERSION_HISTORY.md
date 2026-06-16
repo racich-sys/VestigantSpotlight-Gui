@@ -1,4 +1,4 @@
-# V1.6.35 - CoreDuet interactionC workflow
+# V1.6.38 - CoreDuet interactionC workflow
 
 - Added CoreDuet `interactionC.db` database-status, summary, and event-review views.
 - Added GUI review entries and CSV exports for CoreDuet People / interactionC workflow.

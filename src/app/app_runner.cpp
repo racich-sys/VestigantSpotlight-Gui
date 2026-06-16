@@ -5579,6 +5579,9 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                     log.info("Normal iOS Spotlight-first mode will parse only already-extracted high-value app databases for investigator summaries.");
                     parseIosAppDatabaseRecordInventories(db, caseDir, source.sourceId, log);
                 }
+            } else {
+                appendRunStatus(caseDir, "ios_source_specific_parsers_skipped_non_ios_profile", "non-iOS source profile; iOS FFS and iOS app-database parser stages were not run");
+                log.info("Source profile is not iOS; skipping iOS-specific FFS inventory and app-database parser stages.");
             }
         }
 
@@ -5735,7 +5738,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Direct --evidence-root comparison is not used in V1.6.35. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.38. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);

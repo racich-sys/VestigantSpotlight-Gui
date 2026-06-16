@@ -8,6 +8,8 @@
 #include <vector>
 #include <stdexcept>
 #include <chrono>
+#include <cctype>
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 
@@ -348,7 +350,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.35 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.38 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";
@@ -507,6 +509,11 @@ long long tableRowCount(CaseDatabase& db, const std::string& tableName) {
 }
 
 
+std::string lowerAsciiCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
 std::string caseInfoValue(CaseDatabase& db, const std::string& key, const std::string& fallback = {}) {
     try {
         auto stmt = db.prepare("SELECT value FROM case_info WHERE key=? LIMIT 1");
@@ -534,6 +541,8 @@ void writeParserLimitsAndSuppressionSummary(CaseDatabase& db, const fs::path& fi
     const std::string materializeFfs = caseInfoValue(db, "materialize_ios_ffs_inventory", "not_recorded");
     const std::string materializeAppDb = caseInfoValue(db, "materialize_ios_app_db_records", "not_recorded");
     const std::string exportProfile = caseInfoValue(db, "export_profile", "not_recorded");
+    const std::string sourceProfile = caseInfoValue(db, "profile", "not_recorded");
+    const std::string sourceProfileLower = lowerAsciiCopy(sourceProfile);
     const std::string skipHash = caseInfoValue(db, "skip_container_hash", "not_recorded");
     const std::string forceHash = caseInfoValue(db, "force_container_hash", "not_recorded");
     const std::string containerIntegrityStatus = scalarText(db, "SELECT COALESCE(MAX(integrity_status),'') FROM preserved_evidence_sets WHERE archive_format IN ('zip','aff4','raw','img','dd','container') OR archive_path<>''");
@@ -557,7 +566,7 @@ void writeParserLimitsAndSuppressionSummary(CaseDatabase& db, const fs::path& fi
     row("native_record_parse_limit", (maxNativeRecords == "0" ? "UNLIMITED" : maxNativeRecords), "Controls whether Store-V2/CoreSpotlight records are intentionally capped.", maxNativeRecords == "0" ? "No deliberate record-count cap recorded." : "Records may be intentionally sampled/capped.", "run without --max-native-records for full record enumeration", "raw_records=" + std::to_string(rawRecords) + "; native_decode_attempts=" + std::to_string(decodeAttempts));
     row("native_metadata_block_limit", (maxNativeBlocks == "0" ? "UNLIMITED" : maxNativeBlocks), "Controls whether native metadata block scanning is capped.", maxNativeBlocks == "0" ? "No deliberate block-count cap recorded." : "Metadata block scan may be intentionally capped.", "run without --max-native-blocks for full block enumeration", "case_info.max_native_blocks=" + maxNativeBlocks);
     row("native_decode_mode", decodeMode.empty() ? "not_recorded" : decodeMode, "Indicates native parser mode reported by native_decode_attempts.", "FullValues still may use compact persistence in normal iOS mode.", "use diagnostic flags only for bounded support runs", "native_decode_attempts.decode_mode=" + decodeMode);
-    row("raw_key_value_persistence", diagFullNativeDb == "true" ? "FULL_NATIVE_DB_DIAGNOSTIC_MODE" : "COMPACT_IOS_NORMAL_MODE", "Normal iOS mode keeps high-value reference rows and one synthetic same-record text-context row instead of every decoded property.", "raw_key_values is not a complete property table in normal mode; use field coverage and text context views for investigation.", "--diagnostic-full-native-db with explicit --max-native-records for bounded support runs", "raw_key_values=" + std::to_string(rawKv) + "; raw_key_values_per_raw_record=" + ratio(rawKv, rawRecords));
+    row("raw_key_value_persistence", sourceProfileLower == "macos" ? "MACOS_STOREV2_NATIVE_METADATA_MODE" : (diagFullNativeDb == "true" ? "FULL_NATIVE_DB_DIAGNOSTIC_MODE" : "COMPACT_IOS_NORMAL_MODE"), "Describes whether native key/value persistence is macOS Store-V2, diagnostic full native, or compact iOS mode.", sourceProfileLower == "macos" ? "macOS Store-V2 runs retain native probe rows for reviewed fields; full structured value decoding remains experimental." : "raw_key_values is not a complete property table in normal iOS mode; use field coverage and text context views for investigation.", "--diagnostic-full-native-db with explicit --max-native-records for bounded support runs", "raw_key_values=" + std::to_string(rawKv) + "; raw_key_values_per_raw_record=" + ratio(rawKv, rawRecords));
     row("spotlight_text_context", "SAME_RECORD_CONTEXT_SYNTHETIC_ROW", "Adds __spotlight_investigator_text_context when a record has persisted reference/path/account/contact-style evidence.", "Context is a compact sample, not a full raw property dump.", "diagnostic native DB mode for full raw values", "__spotlight_investigator_text_context rows=" + std::to_string(textContext));
     row("date_candidate_persistence", "COMPACT_ONE_HIGH_VALUE_DATE_PER_RECORD_MAX_IN_NORMAL_IOS_MODE", "Normal iOS mode avoids raw_date_candidates cross-product expansion and keeps Last_Updated on raw_records instead of duplicating it as a date candidate.", "raw_date_candidates is not every date-like property in normal iOS mode.", "diagnostic/full support mode for wider date expansion after bounded validation", "raw_date_candidates=" + std::to_string(rawDates) + "; raw_dates_per_raw_record=" + ratio(rawDates, rawRecords));
     row("string_probe_values", "DERIVED_VIEW_FROM_COMPACT_RAW_VALUES", "String probe views expose reviewable decoded text categories without requiring every raw property row.", "Counts are review surfaces, not a guarantee of all original binary strings.", "diagnostic full-native DB plus targeted export for full support review", "vw_ios_string_probe_values rows=" + std::to_string(probeValues));
@@ -1053,6 +1062,7 @@ void SqliteExporter::exportReviewPackage(CaseDatabase& db, const fs::path& expor
         appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_thin_suppression", "full iOS FFS/record/date exports suppressed; bounded samples and summaries only");
     }
     appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_profile_start", "profile=" + profile);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_source_profile_filter", "source_profile=" + caseInfoValue(db, "profile", "not_recorded"));
     writeParserLimitsAndSuppressionSummary(db, exportDir / "parser_limits_and_suppression_summary.csv", log);
     exportQuery(db, exportDir / "ios_production_readiness_summary.csv", "SELECT * FROM vw_ios_production_readiness_summary ORDER BY readiness_order", log);
 
@@ -2566,6 +2576,13 @@ void SqliteExporter::exportQuery(CaseDatabase& db, const fs::path& file, const s
     if (cancelToken_ && cancelToken_->load()) {
         appendExportRunStatus(file, 91, "export_query_skipped_cancelled", file.filename().string());
         log.warn("CSV export skipped because cancellation was already requested: " + pathString(file));
+        return;
+    }
+    const std::string sourceProfileLower = lowerAsciiCopy(caseInfoValue(db, "profile", ""));
+    const std::string outputNameLower = lowerAsciiCopy(file.filename().string());
+    if (sourceProfileLower == "macos" && outputNameLower.rfind("ios_", 0) == 0) {
+        appendExportRunStatus(file, 91, "export_query_skipped_source_profile", file.filename().string() + " source_profile=macos");
+        log.info("Skipping iOS-specific CSV export for macOS source profile: " + pathString(file));
         return;
     }
     appendExportRunStatus(file, 91, "export_query_prepare", file.filename().string());

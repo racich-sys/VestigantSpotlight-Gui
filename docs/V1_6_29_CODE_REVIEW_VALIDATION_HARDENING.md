@@ -1,6 +1,6 @@
 # V1.6.29 Code Review Validation Hardening
 
-This document is retained in V1.6.35 because release readiness requires the V1.6.29 code-review hardening record.
+This document is retained in V1.6.38 because release readiness requires the V1.6.29 code-review hardening record.
 
 ## Implemented hardening carried forward
 

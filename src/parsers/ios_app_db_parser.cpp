@@ -236,6 +236,15 @@ IosCommunicationDerivedFields deriveIosCommunicationFields(const std::string& re
             addProv("THREAD_OR_IDENTIFIER_TEXT_PATTERN_RECOVERY=True");
         }
     }
+    const std::string bundleMatch = firstMetadataWindow(combined, {"kMDItemBundleID", "bundleId", "bundle_id", "bundleIdentifier"}, 96);
+    if (!bundleMatch.empty()) {
+        addProv("APP_ATTRIBUTION=" + bundleMatch);
+        if (out.title.empty() || out.title == "parsed_generic_app_db_row" || out.title == "Generic App DB Row") {
+            out.title = "Spotlight Record (" + bundleMatch + ")";
+        } else if (out.title.find(bundleMatch) == std::string::npos && out.title.find("Bundle:") == std::string::npos) {
+            out.title += " [Bundle: " + bundleMatch + "]";
+        }
+    }
     if (suppressIdentityRecovery) {
         addProv("IDENTITY_PROMOTION_SUPPRESSED_FOR_COREDUET_INTERACTIONC=True");
     }
@@ -357,6 +366,8 @@ struct BplistDecodeContext {
     std::set<std::uint64_t> expandingComplexUids;
 };
 
+constexpr std::size_t BplistJsonStringLimit = 16384U;
+
 std::string resolveUid(std::uint64_t uid,
                        int depth,
                        const std::vector<std::uint64_t>& objOffsets,
@@ -413,11 +424,16 @@ std::string resolveUid(std::uint64_t uid,
         std::string json = "[";
         const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
         for (std::uint64_t i = 0; i < displayCount; ++i) {
+            if (json.size() > BplistJsonStringLimit) {
+                if (i > 0) json += ", ";
+                json += "\"<truncation_size_limit_reached>\"";
+                break;
+            }
             const std::uint64_t childUid = readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             if (i > 0) json += ", ";
             json += resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
         }
-        if (count > displayCount) json += ", \"<array_truncated>\"";
+        if (count > displayCount && json.size() <= BplistJsonStringLimit) json += ", \"<array_truncated>\"";
         ctx.expandingComplexUids.erase(uid);
         return json + "]";
     }
@@ -439,12 +455,17 @@ std::string resolveUid(std::uint64_t uid,
         std::string json = "{";
         const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
         for (std::uint64_t i = 0; i < displayCount; ++i) {
+            if (json.size() > BplistJsonStringLimit) {
+                if (i > 0) json += ", ";
+                json += "\"<truncation_size_limit_reached>\": true";
+                break;
+            }
             const std::uint64_t keyUid = readBplistUintBe(bplist, keyBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             const std::uint64_t valUid = readBplistUintBe(bplist, valBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             if (i > 0) json += ", ";
             json += resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize, ctx) + ": " + resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
         }
-        if (count > displayCount) json += ", \"<dictionary_truncated>\": true";
+        if (count > displayCount && json.size() <= BplistJsonStringLimit) json += ", \"<dictionary_truncated>\": true";
         ctx.expandingComplexUids.erase(uid);
         return json + "}";
     }
@@ -658,8 +679,14 @@ std::string formatUnixSecondsUtc(long long seconds) {
 }
 
 std::pair<std::string, std::string> normalizeIosAppTimestamp(const std::string& raw, const std::string& columnName) {
-    const std::string v = trim(raw);
+    std::string v = trim(raw);
     if (v.empty()) return {};
+    if (v.size() >= 2U && v.front() == '[' && v.back() == ']') {
+        v = trim(v.substr(1U, v.size() - 2U));
+        const std::size_t commaPos = v.find(',');
+        if (commaPos != std::string::npos) v = trim(v.substr(0U, commaPos));
+        if (v.empty()) return {};
+    }
     if (v.find('-') != std::string::npos && v.find('T') != std::string::npos) return {v, columnName + ":iso"};
     try {
         long double n = std::stold(v);

@@ -1,4 +1,4 @@
-# V1.6.35 macOS Store-V2 Native Path Probe Promotion
+# V1.6.38 macOS Store-V2 Native Path Probe Promotion
 
 ## Triggering evidence
 
@@ -6,7 +6,7 @@ A GUI current-page export from the macOS zipped Spotlight Store-V2 validation ca
 
 ## Fix
 
-V1.6.35 adds a SQLite-native enrichment pass immediately after artifact creation and before source-copy comparison, parent-inode linking, and timeline materialization.
+V1.6.38 adds a SQLite-native enrichment pass immediately after artifact creation and before source-copy comparison, parent-inode linking, and timeline materialization.
 
 The new pass:
 
