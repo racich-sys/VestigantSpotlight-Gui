@@ -1,8 +1,8 @@
-# V1.6.40.1.1 macOS unresolved Store-V2 object labels
+# V1.6.41.1 macOS unresolved Store-V2 object labels
 
-V1.6.40.1.1 confirmed external Store-V2 dictionary loading and native path-probe promotion, but the same macOS thin showed that most first-page GUI artifacts were still displayed as `------NONAME------` because the safe Store-V2 decoder cannot yet resolve structured names for many records.
+V1.6.41.1 confirmed external Store-V2 dictionary loading and native path-probe promotion, but the same macOS thin showed that most first-page GUI artifacts were still displayed as `------NONAME------` because the safe Store-V2 decoder cannot yet resolve structured names for many records.
 
-V1.6.40.1.1 does not claim those unresolved records have real filenames. Instead, artifacts without a usable name/path now receive an explicit, non-evidentiary review label:
+V1.6.41.1 does not claim those unresolved records have real filenames. Instead, artifacts without a usable name/path now receive an explicit, non-evidentiary review label:
 
 - `file_name = UNRESOLVED_SPOTLIGHT_OBJECT_INODE_<inode>`
 - `display_name = Unresolved Spotlight object inode=<inode>`

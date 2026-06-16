@@ -403,7 +403,10 @@ std::vector<std::uint8_t> decompressLz4RawBlock(const std::uint8_t* src, std::si
     constexpr std::size_t MaxLz4OutputBytes = 128ull * 1024ull * 1024ull;
     if (expectedOutputSize > MaxLz4OutputBytes) throw std::runtime_error("LZ4 output exceeded safety cap");
     std::vector<std::uint8_t> out;
-    out.reserve(expectedOutputSize ? expectedOutputSize : std::min<std::size_t>(srcSize * 4ull, MaxLz4OutputBytes));
+    const std::size_t reserveGuess = expectedOutputSize
+        ? expectedOutputSize
+        : (srcSize > MaxLz4OutputBytes / 4ull ? MaxLz4OutputBytes : std::min<std::size_t>(srcSize * 4ull, MaxLz4OutputBytes));
+    out.reserve(reserveGuess);
     std::size_t pos = 0;
     auto readLength = [&](std::size_t base) -> std::size_t {
         std::size_t len = base;
@@ -411,6 +414,7 @@ std::vector<std::uint8_t> decompressLz4RawBlock(const std::uint8_t* src, std::si
             for (;;) {
                 if (pos >= srcSize) throw std::runtime_error("LZ4 length overrun");
                 const std::uint8_t b = src[pos++];
+                if (static_cast<std::size_t>(b) > MaxLz4OutputBytes - len) throw std::runtime_error("LZ4 length exceeded safety cap");
                 len += b;
                 if (len > MaxLz4OutputBytes) throw std::runtime_error("LZ4 length exceeded safety cap");
                 if (b != 255) break;
@@ -421,18 +425,21 @@ std::vector<std::uint8_t> decompressLz4RawBlock(const std::uint8_t* src, std::si
     while (pos < srcSize) {
         const std::uint8_t token = src[pos++];
         const std::size_t literalLen = readLength(static_cast<std::size_t>(token >> 4));
-        if (pos + literalLen > srcSize) throw std::runtime_error("LZ4 literal overrun");
-        if (out.size() + literalLen > MaxLz4OutputBytes) throw std::runtime_error("LZ4 literal output exceeded safety cap");
+        if (literalLen > MaxLz4OutputBytes) throw std::runtime_error("LZ4 literal length exceeded safety cap");
+        if (literalLen > srcSize - pos) throw std::runtime_error("LZ4 literal overrun");
+        if (literalLen > MaxLz4OutputBytes - out.size()) throw std::runtime_error("LZ4 literal output exceeded safety cap");
         out.insert(out.end(), src + pos, src + pos + literalLen);
         pos += literalLen;
         if (expectedOutputSize != 0 && out.size() == expectedOutputSize) break;
         if (pos >= srcSize) break;
-        if (pos + 2 > srcSize) throw std::runtime_error("LZ4 match offset missing");
+        if (srcSize - pos < 2) throw std::runtime_error("LZ4 match offset missing");
         const std::size_t matchOffset = static_cast<std::size_t>(src[pos]) | (static_cast<std::size_t>(src[pos + 1]) << 8);
         pos += 2;
         if (matchOffset == 0 || matchOffset > out.size()) throw std::runtime_error("LZ4 invalid match offset");
-        std::size_t matchLen = readLength(static_cast<std::size_t>(token & 0x0f)) + 4;
-        if (out.size() + matchLen > MaxLz4OutputBytes) throw std::runtime_error("LZ4 match output exceeded safety cap");
+        std::size_t matchLen = readLength(static_cast<std::size_t>(token & 0x0f));
+        if (matchLen > MaxLz4OutputBytes - 4U) throw std::runtime_error("LZ4 match length exceeded safety cap");
+        matchLen += 4U;
+        if (matchLen > MaxLz4OutputBytes - out.size()) throw std::runtime_error("LZ4 match output exceeded safety cap");
         while (matchLen-- > 0) {
             out.push_back(out[out.size() - matchOffset]);
         }
@@ -2093,13 +2100,13 @@ std::vector<std::string> extractHighValueProbeStrings(const std::vector<std::uin
     };
     for (std::size_t i = startPos; i < endPos; ++i) {
         const auto ch = data[i];
-        const bool printable = (ch >= 0x20 && ch <= 0x7Eu) || ch == '\t';
+        const bool printable = ((ch >= 0x20u && ch != 0x7fu) || ch == '\t' || ch == '\n' || ch == '\r');
         if (printable) {
             if (cur.size() < maxLen) cur.push_back(static_cast<char>(ch));
             else flush();
-        } else if (ch == 0x00u && i + 1 < endPos && data[i + 1] >= 0x20u && data[i + 1] <= 0x7Eu) {
-            // UTF-16BE ASCII-ish run: null followed by printable byte. Preserve
-            // the printable byte when the next loop iteration sees it.
+        } else if (ch == 0x00u && i + 1 < endPos && ((data[i + 1] >= 0x20u && data[i + 1] != 0x7fu) || data[i + 1] == '\t' || data[i + 1] == '\n' || data[i + 1] == '\r')) {
+            // UTF-16BE byte-order hint: null followed by printable or UTF-8/high-bit byte. Preserve
+            // the printable byte when the next loop iteration sees it; exact null bytes remain delimiters.
             continue;
         } else if (ch >= 0xC0u) {
             // Preserve UTF-8 lead bytes in bounded probes instead of discarding

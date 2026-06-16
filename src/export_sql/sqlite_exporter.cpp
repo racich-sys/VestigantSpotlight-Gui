@@ -416,7 +416,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.40.1.1 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.41.1 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";

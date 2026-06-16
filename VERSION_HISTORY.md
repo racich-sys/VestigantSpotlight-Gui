@@ -1,18 +1,28 @@
 
-## V1.6.40.1 - MSVC raw-string safety hotfix
+## V1.6.41 - iOS Unicode, LZ4 hardening, and communication review safety
 
-- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.40 iOS index-update timeline view change.
-- No parser, enrichment, or GUI behavior change from V1.6.40.
+- Hardened native Store-V2 LZ4 raw-block decompression against integer-overflow bounds bypasses by converting addition-based checks to subtraction/capacity checks and by guarding length accumulation.
+- Widened native CoreSpotlight high-value string probing to preserve high-bit UTF-8, tabs, CR, and LF while still treating exact NUL bytes as delimiters.
+- Widened iOS bplist string ripping to preserve high-bit UTF-8 and CR/LF/TAB; UTF-16 fallback remains bounded.
+- Added bounded UID/object-table hint expansion to the internal bplist/NSKeyedArchiver decoder while retaining recursion, object-count, and JSON-size caps.
+- Confirmed existing iOS communication anti-join view `vw_ios_spotlight_comms_missing_from_ffs` remains available in both core schema and GUI review schema.
+- Confirmed existing `tel:` and `mailto:` fallback identity recovery remains present in `deriveIosCommunicationFields`.
+
+
+## V1.6.41 - MSVC raw-string safety hotfix
+
+- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.41 iOS index-update timeline view change.
+- No parser, enrichment, or GUI behavior change from V1.6.41.
 - Local raw-string audit found no raw-string body over 5,000 characters.
 
 
-## V1.6.40.1.1 - CSV default, source-profile filtering, unresolved-label path guard
+## V1.6.41.1 - CSV default, source-profile filtering, unresolved-label path guard
 
 - GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
 - Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
 - macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
 - Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_40_1_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+- Added `docs/V1_6_41_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
 
 
 ## V1.6.37.1 macOS unresolved Store-V2 object labels
@@ -26,13 +36,13 @@
 - Fixed macOS Store-V2 GUI review rows showing `------NONAME------` despite native path probe candidates being present in parsed key/value rows.
 - Added native path probe promotion before timeline materialization so GUI and exports can use recovered macOS path evidence.
 
-# 1.6.40.1
+# 1.6.41
 
 - Added parent-inode path-apply skip when no new reconstructed path candidates exist.
 - Added explicit run-status markers for skipped no-op path apply.
 - Kept V1.6.32 build-preflight hardening and V1.6.31 macOS Store-V2 persistence behavior.
 
-# 1.6.40.1
+# 1.6.41
 
 - Hardened build wrapper preflight behavior so brittle release-readiness documentation/version-marker checks cannot prevent MSVC compilation from starting.
 - Build wrapper now reads expected version from `VERSION` and uses that value for post-build CLI version verification.
@@ -43,7 +53,7 @@
 ## Compile hotfix
 
 - Fixes MSVC compile error in `src/parsers/aff4_probe_worker.cpp` by replacing `appendProbeNote(...)` with the in-file helper `aff4ApfsAppendProbeNote(...)` in OMAP vertical-cycle handling.
-- Hardens `Build-V1_6_40_1.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
+- Hardens `Build-V1_6_41.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
 - Carries forward V1.6.29.3 packaging and readiness fixes.
 
 # Vestigant Spotlight Investigator V1.6.37.1
@@ -78,7 +88,7 @@
 - Split oversized SQL raw strings and corrected V1.6.37.1 build/readiness version pinning.
 - Preserved Missing-from-FFS and CoreDuet interpretation guardrails.
 
-See `docs/V1_6_40_1_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
+See `docs/V1_6_41_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
 
 # Version History
 

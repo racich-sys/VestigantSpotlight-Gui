@@ -285,7 +285,7 @@ std::string ripBplistStrings(const std::string& raw) {
     };
     for (std::size_t i = 8; i < raw.size(); ++i) {
         const unsigned char c = static_cast<unsigned char>(raw[i]);
-        if ((c >= 32 && c != 0x7fU) || c == '\n' || c == '\t') {
+        if ((c >= 0x20U && c != 0x7fU) || c == '\n' || c == '\t' || c == '\r') {
             cur.push_back(static_cast<char>(c));
         } else {
             flushCur();
@@ -399,7 +399,7 @@ std::string resolveUid(std::uint64_t uid,
             if (cursor > bplist.size() || count > static_cast<std::uint64_t>(bplist.size() - cursor)) return "\"<invalid_string_bounds>\"";
             for (std::uint64_t i = 0; i < count && cursor + i < bplist.size() && text.size() < 4096; ++i) {
                 const unsigned char c = bplist[cursor + static_cast<std::size_t>(i)];
-                if ((c >= 0x20U && c != 0x7fU) || c == '\n' || c == '\t') text.push_back(static_cast<char>(c));
+                if ((c >= 0x20U && c != 0x7fU) || c == '\n' || c == '\t' || c == '\r') text.push_back(static_cast<char>(c));
                 else text.push_back(' ');
             }
         } else {
@@ -470,7 +470,14 @@ std::string resolveUid(std::uint64_t uid,
         return json + "}";
     }
     if (hi == 0x80U) {
-        return "\"<uid:" + std::to_string(readBplistUintBe(bplist, objOffset + 1, static_cast<std::size_t>(lo) + 1U)) + ">\"";
+        const std::uint64_t keyedUid = readBplistUintBe(bplist, objOffset + 1, static_cast<std::size_t>(lo) + 1U);
+        if (keyedUid < objOffsets.size() && keyedUid != uid && ctx.expandingComplexUids.find(keyedUid) == ctx.expandingComplexUids.end()) {
+            std::string resolved = resolveUid(keyedUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            if (!resolved.empty() && resolved.find("<invalid") == std::string::npos && resolved.find("<unparsed") == std::string::npos) {
+                return "{\"$uid\":" + std::to_string(keyedUid) + ",\"object_table_hint\":" + resolved + "}";
+            }
+        }
+        return "{\"$uid\":" + std::to_string(keyedUid) + "}";
     }
     return "\"<unparsed_bplist_type_0x" + std::to_string(marker) + ">\"";
 }

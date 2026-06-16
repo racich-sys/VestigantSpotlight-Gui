@@ -1,18 +1,28 @@
 
-## V1.6.40.1 - MSVC raw-string safety hotfix
+## V1.6.41 - iOS Unicode, LZ4 hardening, and communication review safety
 
-- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.40 iOS index-update timeline view change.
-- No parser, enrichment, or GUI behavior change from V1.6.40.
+- Hardened native Store-V2 LZ4 raw-block decompression against integer-overflow bounds bypasses by converting addition-based checks to subtraction/capacity checks and by guarding length accumulation.
+- Widened native CoreSpotlight high-value string probing to preserve high-bit UTF-8, tabs, CR, and LF while still treating exact NUL bytes as delimiters.
+- Widened iOS bplist string ripping to preserve high-bit UTF-8 and CR/LF/TAB; UTF-16 fallback remains bounded.
+- Added bounded UID/object-table hint expansion to the internal bplist/NSKeyedArchiver decoder while retaining recursion, object-count, and JSON-size caps.
+- Confirmed existing iOS communication anti-join view `vw_ios_spotlight_comms_missing_from_ffs` remains available in both core schema and GUI review schema.
+- Confirmed existing `tel:` and `mailto:` fallback identity recovery remains present in `deriveIosCommunicationFields`.
+
+
+## V1.6.41 - MSVC raw-string safety hotfix
+
+- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.41 iOS index-update timeline view change.
+- No parser, enrichment, or GUI behavior change from V1.6.41.
 - Local raw-string audit found no raw-string body over 5,000 characters.
 
 
-## V1.6.40.1.1 - CSV default, source-profile filtering, unresolved-label path guard
+## V1.6.41.1 - CSV default, source-profile filtering, unresolved-label path guard
 
 - GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
 - Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
 - macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
 - Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_40_1_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+- Added `docs/V1_6_41_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
 
 
 ## V1.6.37.1 macOS unresolved Store-V2 object labels
@@ -25,11 +35,11 @@
 
 MacOS Store-V2 path enrichment hotfix. V1.6.37.1 promotes `__native_probe_file_path_candidate_%` values to artifact display/path fields when raw record headers lack usable names or paths.
 
-# 1.6.40.1
+# 1.6.41
 
 V1.6.37.1 follows the V1.6.32 macOS zipped Spotlight thin review. The source parsed successfully, but enrichment spent several minutes in a no-op parent-inode path apply step. This version skips that UPDATE when `new_reconstructed_paths=0`.
 
-# 1.6.40.1
+# 1.6.41
 
 Release-preflight hardening. The build wrapper no longer treats release-readiness documentation/static marker assertions as fatal compile gates. Fatal preflight remains in place for PowerShell wrapper compatibility and MSVC raw-string literal risk.
 
@@ -38,7 +48,7 @@ Release-preflight hardening. The build wrapper no longer treats release-readines
 ## Compile hotfix
 
 - Fixes MSVC compile error in `src/parsers/aff4_probe_worker.cpp` by replacing `appendProbeNote(...)` with the in-file helper `aff4ApfsAppendProbeNote(...)` in OMAP vertical-cycle handling.
-- Hardens `Build-V1_6_40_1.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
+- Hardens `Build-V1_6_41.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
 - Carries forward V1.6.29.3 packaging and readiness fixes.
 
 # Vestigant Spotlight Investigator V1.6.37.1
@@ -73,7 +83,7 @@ Release-preflight hardening. The build wrapper no longer treats release-readines
 - Split oversized SQL raw strings and corrected V1.6.37.1 build/readiness version pinning.
 - Preserved Missing-from-FFS and CoreDuet interpretation guardrails.
 
-See `docs/V1_6_40_1_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
+See `docs/V1_6_41_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
 
 # Consolidated Version History
 

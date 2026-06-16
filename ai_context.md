@@ -1,18 +1,23 @@
 
-## V1.6.40.1 - MSVC raw-string safety hotfix
+## V1.6.41 status
 
-- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.40 iOS index-update timeline view change.
-- No parser, enrichment, or GUI behavior change from V1.6.40.
+Queued after V1.6.40.1: harden LZ4 raw-block bounds checks, preserve Unicode/high-bit UTF-8 in native/iOS string probes, add bounded UID/object-table hints to bplist decoding, and retain iOS comms anti-join plus tel/mailto fallback identity recovery. Windows/MSVC build pending user validation.
+
+
+## V1.6.41 - MSVC raw-string safety hotfix
+
+- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after the V1.6.41 iOS index-update timeline view change.
+- No parser, enrichment, or GUI behavior change from V1.6.41.
 - Local raw-string audit found no raw-string body over 5,000 characters.
 
 
-## V1.6.40.1.1 - CSV default, source-profile filtering, unresolved-label path guard
+## V1.6.41.1 - CSV default, source-profile filtering, unresolved-label path guard
 
 - GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
 - Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
 - macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
 - Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_40_1_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+- Added `docs/V1_6_41_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
 
 
 ## V1.6.37.1 macOS unresolved Store-V2 object labels
@@ -25,13 +30,13 @@
 
 Current version: V1.6.37.1. The immediate focus is macOS Store-V2 GUI path/name quality. Uploaded GUI page evidence showed most rows as `------NONAME------`; V1.6.37.1 adds enrichment promotion of native path probe candidates into artifact display/path fields with explicit provenance. Continue to avoid claiming file existence without active filesystem inventory.
 
-# AI Context - 1.6.40.1
+# AI Context - 1.6.41
 
-Current package: V1_6_40_1. V1.6.37.1 was created after reviewing a V1.6.32 macOS zipped Spotlight thin run. Evidence showed correct macOS Store-V2 persistence and complete success, but a no-op parent-inode path apply phase took several minutes despite `new_reconstructed_paths=0`. V1.6.37.1 skips that no-op UPDATE and logs explicit skipped status.
+Current package: V1_6_41. V1.6.37.1 was created after reviewing a V1.6.32 macOS zipped Spotlight thin run. Evidence showed correct macOS Store-V2 persistence and complete success, but a no-op parent-inode path apply phase took several minutes despite `new_reconstructed_paths=0`. V1.6.37.1 skips that no-op UPDATE and logs explicit skipped status.
 
-# AI Context - 1.6.40.1
+# AI Context - 1.6.41
 
-Current package: V1_6_40_1. This version specifically fixes recurring build-blocking release-readiness failures by limiting fatal preflight to build-safety checks and making release-readiness advisory during build. Post-build CLI version checking now reads the expected version dynamically from `VERSION`. Continue to require uploaded build logs before claiming Windows/MSVC build success.
+Current package: V1_6_41. This version specifically fixes recurring build-blocking release-readiness failures by limiting fatal preflight to build-safety checks and making release-readiness advisory during build. Post-build CLI version checking now reads the expected version dynamically from `VERSION`. Continue to require uploaded build logs before claiming Windows/MSVC build success.
 
 # AI Context - Vestigant Spotlight V1.6.37.1
 
@@ -39,7 +44,7 @@ Current baseline: V1.6.37.1.
 
 V1.6.29.3 failed MSVC compile in `aff4_probe_worker.cpp` because OMAP vertical-cycle handling called `appendProbeNote`, which is not available in that context. V1.6.37.1 changes those calls to `aff4ApfsAppendProbeNote`. The build wrapper also now fails before version probing if the CLI executable is missing or if compiler/linker errors appear in the build log.
 
-Next validation: build V1.6.37.1 on Windows/MSVC, upload `V1_6_40_1_build.log`, then run/upload the V1.6.37.1 iOS CoreSpotlight thin.
+Next validation: build V1.6.37.1 on Windows/MSVC, upload `V1_6_41_build.log`, then run/upload the V1.6.37.1 iOS CoreSpotlight thin.
 
 ## V1.6.37.1 context
 

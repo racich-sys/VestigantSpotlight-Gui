@@ -1,4 +1,4 @@
-# V1.6.40.1.1 iOS CoreSpotlight Small-File Validation
+# V1.6.41.1 iOS CoreSpotlight Small-File Validation
 
 ## Evidence reviewed
 
@@ -22,7 +22,7 @@ The package full inventory showed the `NSFileProtectionCompleteUntilFirstUserAut
 
 3. A CSV export path could write invalid UTF-8 bytes from raw SQLite text values. Null/control-byte visibility had already been improved, but invalid UTF-8 bytes were still being emitted unchanged.
 
-## V1.6.40.1.1 changes
+## V1.6.41.1 changes
 
 1. Store-V2 item identifiers are treated as unsigned 64-bit values in the native parser. This applies to inode/object ID, item ID, and parent object ID. Values are still stored as decimal text in SQLite.
 
@@ -32,15 +32,15 @@ The package full inventory showed the `NSFileProtectionCompleteUntilFirstUserAut
 
 ## Local validation after patch
 
-The V1.6.40.1.1 Linux build completed and the schema/iOS/APFS smoke test passed:
+The V1.6.41.1 Linux build completed and the schema/iOS/APFS smoke test passed:
 
 ```text
-Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.40.1.1
+Schema/iOS/APFS module smoke test passed for Vestigant Spotlight v1.6.41.1
 ```
 
-The uploaded iOS small-file package was rerun through the V1.6.40.1.1 Linux CLI using profile `ios`, CoreFields native decode, diagnostics export profile, a 50,000-record cap, and a 100,000-native-block cap.
+The uploaded iOS small-file package was rerun through the V1.6.41.1 Linux CLI using profile `ios`, CoreFields native decode, diagnostics export profile, a 50,000-record cap, and a 100,000-native-block cap.
 
-Observed SQLite case metrics after V1.6.40.1.1:
+Observed SQLite case metrics after V1.6.41.1:
 
 ```text
 raw_records=38340

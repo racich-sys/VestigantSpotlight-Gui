@@ -1,10 +1,10 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_40_1",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_41",
   [string]$ZipInput = "E:\test second\Spotlight\Spotlight-V100.zip",
-  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_ZippedSpotlight_Thin_V1_6_40_1",
-  [string]$ThinZipPath = "D:\Downloads\Upload_Thin_MacOS_ZippedSpotlight_V1_6_40_1.zip",
-  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_ZippedSpotlight_V1_6_40_1_UploadWork",
-  [string]$RunLog = "D:\Downloads\V1_6_40_1_macos_zipped_spotlight_thin.log",
+  [string]$CaseRoot = "Q:\SpotlightCase\TestMacOS_ZippedSpotlight_Thin_V1_6_41",
+  [string]$ThinZipPath = "D:\Downloads\Upload_Thin_MacOS_ZippedSpotlight_V1_6_41.zip",
+  [string]$UploadWorkRoot = "D:\Downloads\Upload_Thin_MacOS_ZippedSpotlight_V1_6_41_UploadWork",
+  [string]$RunLog = "D:\Downloads\V1_6_41_macos_zipped_spotlight_thin.log",
   [int]$MaxNativeRecords = 50000,
   [int]$MaxNativeBlocks = 200000,
   [int]$TimeoutMinutes = 30,
@@ -59,8 +59,8 @@ function Invoke-NativeLogged {
     [string]$LogPath,
     [int]$TimeoutMinutes
   )
-  $stdout = Join-Path (Split-Path -Parent $LogPath) "V1_6_40_1_macos_zipped_spotlight_stdout.txt"
-  $stderr = Join-Path (Split-Path -Parent $LogPath) "V1_6_40_1_macos_zipped_spotlight_stderr.txt"
+  $stdout = Join-Path (Split-Path -Parent $LogPath) "V1_6_41_macos_zipped_spotlight_stdout.txt"
+  $stderr = Join-Path (Split-Path -Parent $LogPath) "V1_6_41_macos_zipped_spotlight_stderr.txt"
   Remove-Item -LiteralPath $stdout,$stderr -Force -ErrorAction SilentlyContinue
   $argString = ($Arguments | ForEach-Object { Quote-NativeArg $_ }) -join ' '
   Add-Content -LiteralPath $LogPath -Value "COMMAND: $ExePath $argString"
@@ -92,14 +92,14 @@ function Invoke-NativeLogged {
 }
 
 Remove-Item -LiteralPath $RunLog -Force -ErrorAction SilentlyContinue
-Write-LogLine "Starting V1.6.40.1.1 macOS zipped Spotlight thin test"
+Write-LogLine "Starting V1.6.41.1 macOS zipped Spotlight thin test"
 Write-LogLine "SourceRoot=$SourceRoot"
 Write-LogLine "ZipInput=$ZipInput"
 Write-LogLine "CaseRoot=$CaseRoot"
 Write-LogLine "ThinZipPath=$ThinZipPath"
 
 $cli = Join-Path $SourceRoot "build-msvc\Release\VestigantSpotlightCli.exe"
-if (!(Test-Path -LiteralPath $cli)) { throw "CLI executable not found. Build V1.6.40.1.1 first: $cli" }
+if (!(Test-Path -LiteralPath $cli)) { throw "CLI executable not found. Build V1.6.41.1 first: $cli" }
 if (!(Test-Path -LiteralPath $ZipInput)) { throw "Spotlight ZIP not found: $ZipInput" }
 
 if ($CleanOut) {
@@ -155,8 +155,8 @@ $args = @(
   "--profile", "macos",
   "--input", $ZipInput,
   "--out", $CaseRoot,
-  "--case-name", "MacOS_ZippedSpotlight_Thin_V1_6_40_1",
-  "--investigator", "V1.6.40.1.1 macOS zipped Spotlight thin validation",
+  "--case-name", "MacOS_ZippedSpotlight_Thin_V1_6_41",
+  "--investigator", "V1.6.41.1 macOS zipped Spotlight thin validation",
   "--decode-core-native-values",
   "--export-profile", "diagnostics",
   "--max-native-records", [string]$MaxNativeRecords,
@@ -202,12 +202,12 @@ if (Test-Path -LiteralPath $CaseRoot) {
 }
 
 Copy-FileIfExists -Path $RunLog -DestinationDirectory $UploadWorkRoot
-Copy-FileIfExists -Path (Join-Path (Split-Path -Parent $RunLog) "V1_6_40_1_macos_zipped_spotlight_stdout.txt") -DestinationDirectory $UploadWorkRoot
-Copy-FileIfExists -Path (Join-Path (Split-Path -Parent $RunLog) "V1_6_40_1_macos_zipped_spotlight_stderr.txt") -DestinationDirectory $UploadWorkRoot
+Copy-FileIfExists -Path (Join-Path (Split-Path -Parent $RunLog) "V1_6_41_macos_zipped_spotlight_stdout.txt") -DestinationDirectory $UploadWorkRoot
+Copy-FileIfExists -Path (Join-Path (Split-Path -Parent $RunLog) "V1_6_41_macos_zipped_spotlight_stderr.txt") -DestinationDirectory $UploadWorkRoot
 
 $summary = Join-Path $UploadWorkRoot "WRAPPER_SUMMARY.txt"
 @(
-  "wrapper=Run-V1_6_40_1-macOS-ZippedSpotlight-Thin-AndZip.ps1",
+  "wrapper=Run-V1_6_41-macOS-ZippedSpotlight-Thin-AndZip.ps1",
   "expected_profile=macos",
   "expected_native_stage=native_kv_persistence_macos_storev2",
   "unexpected_native_stage=native_kv_persistence_ios_corespotlight_compact",

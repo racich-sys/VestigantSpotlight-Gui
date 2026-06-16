@@ -1,4 +1,4 @@
-# V1.6.40.1.1 iOS Full Validation and View Cleanup
+# V1.6.41.1 iOS Full Validation and View Cleanup
 
 ## Evidence reviewed
 
@@ -28,7 +28,7 @@ NSFileProtectionCompleteUntilFirstUserAuthentication raw_record_count=33121
 
 The iOS index-update timeline view still used raw `raw_records.file_name` and `raw_records.full_path`. As a result, the export/view could show `------NONAME------` even where artifact enrichment had already assigned an unresolved review label or better display path.
 
-## V1.6.40.1.1 changes
+## V1.6.41.1 changes
 
 1. `vw_ios_timeline_index_updates` now joins through `artifact_source_instances` to `artifacts` and uses enriched artifact file name, display name, and best path where available.
 
@@ -44,9 +44,9 @@ The checkbox is intentionally unchecked by default.
 
 ## Local validation
 
-Linux build completed and smoke tests passed for V1.6.40.1.1.
+Linux build completed and smoke tests passed for V1.6.41.1.
 
-A quick iOS small-file validation run with V1.6.40.1.1 produced:
+A quick iOS small-file validation run with V1.6.41.1 produced:
 
 ```text
 raw_records=10000
