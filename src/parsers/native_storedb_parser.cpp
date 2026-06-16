@@ -83,9 +83,9 @@ struct PropertyDef {
 };
 
 struct ParsedItem {
-    std::int64_t inodeId = 0;
-    std::int64_t itemId = 0;
-    std::int64_t parentId = 0;
+    std::uint64_t inodeId = 0;
+    std::uint64_t itemId = 0;
+    std::uint64_t parentId = 0;
     std::uint64_t rawDateUpdated = 0;
     std::string lastUpdatedUtc;
     std::map<std::string, std::string, std::less<>> metadata;
@@ -2274,10 +2274,10 @@ public:
 
     ParsedItem parseV2HeaderOnly() {
         ParsedItem item;
-        item.inodeId = readInt64Var("v2 inode id");
+        item.inodeId = readVar("v2 inode id");
         readByte();
-        item.itemId = readInt64Var("v2 item id");
-        item.parentId = readInt64Var("v2 parent id");
+        item.itemId = readVar("v2 item id");
+        item.parentId = readVar("v2 parent id");
         item.rawDateUpdated = readVar("v2 raw date updated");
         item.lastUpdatedUtc = epochMicrosToUtc(item.rawDateUpdated);
         return item;
@@ -2285,11 +2285,11 @@ public:
 
     ParsedItem parseV1HeaderOnly(std::uint64_t rawId) {
         ParsedItem item;
-        item.inodeId = static_cast<std::int64_t>(rawId);
+        item.inodeId = rawId;
         item.rawDateUpdated = readUInt64();
         item.lastUpdatedUtc = epochMicrosToUtc(item.rawDateUpdated);
         if (remaining() >= 8) readUInt64();
-        if (remaining() >= 8) item.itemId = static_cast<std::int64_t>(readUInt64());
+        if (remaining() >= 8) item.itemId = readUInt64();
         item.parentId = 0;
         return item;
     }
@@ -2631,13 +2631,13 @@ std::string logicalSizeOf(const ParsedItem& item) {
 std::string physicalSizeOf(const ParsedItem& item) {
     return firstMetadataValue(item, {"kMDItemPhysicalSize", "_kMDItemPhysicalSize", "physicalSize"});
 }
-std::string reconstructPath(std::int64_t inode, const std::unordered_map<std::int64_t, std::pair<std::int64_t, std::string>>& nodes) {
+std::string reconstructPath(std::uint64_t inode, const std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::string>>& nodes) {
     auto it0 = nodes.find(inode);
     if (it0 == nodes.end()) return {};
     if (inode == 2) return "/";
     std::vector<std::string> parts;
-    std::int64_t current = inode;
-    std::set<std::int64_t> seen;
+    std::uint64_t current = inode;
+    std::set<std::uint64_t> seen;
     while (true) {
         auto it = nodes.find(current);
         if (it == nodes.end()) break;
@@ -2767,7 +2767,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                     ++counts.rawKeyValues;
                 }
             }
-            if (!item.lastUpdatedUtc.empty() && !iosDefaultFilteredKvMode) {
+            if (!item.lastUpdatedUtc.empty()) {
                 dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, pathString(store.storePath.parent_path())); dateStmt.bind(4, pathString(store.storePath)); dateStmt.bind(5, inode); dateStmt.bind(6, std::to_string(item.itemId)); dateStmt.bind(7, "Last_Updated"); dateStmt.bind(8, item.lastUpdatedUtc); dateStmt.bind(9, item.lastUpdatedUtc); dateStmt.bind(10, "native_epoch_microseconds"); dateStmt.stepDone(); dateStmt.reset();
                 ++counts.rawDateCandidates;
             }
@@ -2869,7 +2869,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                     log.warn("Experimental full native metadata value parsing is enabled. This may be unstable on some store.db files.");
                 }
 
-                std::unordered_map<std::int64_t, std::pair<std::int64_t, std::string>> pathNodes;
+                std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::string>> pathNodes;
                 std::size_t storeItems = 0;
                 std::size_t storeMetadataBlocks = 0;
                 std::size_t blockOrdinal = 0;

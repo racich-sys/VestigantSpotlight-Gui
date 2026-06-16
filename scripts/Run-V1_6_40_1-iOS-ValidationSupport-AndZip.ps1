@@ -1,11 +1,10 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_38",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_40_1",
   [string]$InputZipOrFolder = "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip",
-  [string]$CaseRoot = "Q:\SpotlightCase\ProductionIOS_CoreSpotlight_V1_6_38",
-  [string]$ZipPath = "D:\Downloads\Upload_Production_iOS_CoreSpotlight_V1_6_38.zip",
+  [string]$CaseRoot = "Q:\SpotlightCase\ValidationSupportIOS_CoreSpotlight_V1_6_40_1",
+  [string]$ZipPath = "D:\Downloads\Upload_ValidationSupport_iOS_CoreSpotlight_V1_6_40_1.zip",
   [switch]$CleanOut,
-  [switch]$NoClipboardOrExplorer,
-  [switch]$MaterializeIosSupportDb
+  [switch]$NoClipboardOrExplorer
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,13 +16,13 @@ $args = @{
   Out = $CaseRoot
   ZipPath = $ZipPath
   RunMode = "run"
-  ExportProfile = "investigator"
+  ExportProfile = "support"
   ForceContainerHash = $true
   FullNativeValues = $true
+  MaterializeIosSupportDb = $true
 }
 if ($CleanOut) { $args.CleanOut = $true }
 if ($NoClipboardOrExplorer) { $args.NoClipboardOrExplorer = $true }
-if ($MaterializeIosSupportDb) { $args.MaterializeIosSupportDb = $true }
 
 & $runner @args
 if ($LASTEXITCODE -ne 0) {
@@ -31,9 +30,9 @@ if ($LASTEXITCODE -ne 0) {
   if (Test-Path -LiteralPath $ZipPath) {
     Remove-Item -LiteralPath $failedZip -Force -ErrorAction SilentlyContinue
     Move-Item -LiteralPath $ZipPath -Destination $failedZip -Force
-    Write-Warning "iOS production run failed; upload ZIP renamed to: $failedZip"
+    Write-Warning "iOS validation support run failed; upload ZIP renamed to: $failedZip"
   }
-  throw "iOS CoreSpotlight V1.6.38 production wrapper failed with exit code $LASTEXITCODE"
+  throw "iOS CoreSpotlight V1.6.40.1.1 validation support wrapper failed with exit code $LASTEXITCODE"
 }
-Write-Host "iOS CoreSpotlight production upload ZIP: $ZipPath"
-Write-Host "Review exports/ios_production_readiness_summary.csv in the local case folder before reporting."
+Write-Host "iOS CoreSpotlight validation-support upload ZIP: $ZipPath"
+Write-Host "Review parser_limits_and_suppression_summary.csv, ios_production_readiness_summary.csv, and CoreDuet interactionC samples before retiring any remaining guardrail."

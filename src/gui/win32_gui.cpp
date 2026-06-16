@@ -54,7 +54,7 @@ namespace {
 HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
-HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{};
+HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{}, gFullNoGuardrails{};
 HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
@@ -137,7 +137,7 @@ void cancelAndJoinReviewThreadNoThrow() {
     }
 }
 
-constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008;
+constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008, ID_FULL_NO_GUARDRAILS = 1009;
 constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
@@ -2921,6 +2921,7 @@ void worker() {
         int exportProfile = static_cast<int>(SendMessageW(gExportProfile, CB_GETCURSEL, 0, 0));
         opt.exportProfile = exportProfile == 1 ? "investigator" : exportProfile == 2 ? "diagnostics" : exportProfile == 3 ? "full" : "minimal";
         opt.suppressCsvExports = (gSuppressCsvExports && SendMessageW(gSuppressCsvExports, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        const bool fullNoGuardrails = (gFullNoGuardrails && SendMessageW(gFullNoGuardrails, BM_GETCHECK, 0, 0) == BST_CHECKED);
         if (opt.suppressCsvExports) {
             opt.exportProfile = "none";
             postLog(L"CSV review exports disabled for this run. SQLite case database will remain available for GUI review.");
@@ -2938,6 +2939,18 @@ void worker() {
         if (prof == 2) {
             opt.fullScan = true;
             postLog(L"iOS/CoreSpotlight profile selected: GUI enables full-scan/focused extraction behavior; parser selects one primary database per CoreSpotlight store group and preserves store.db/.store.db alternates for review to avoid duplicate record counts.");
+        }
+        if (fullNoGuardrails) {
+            opt.maxNativeRecords = 0;
+            opt.maxNativeBlocks = 0;
+            opt.dbSizeGuardrailBytes = 0;
+            opt.forceContainerHash = true;
+            opt.skipContainerHash = false;
+            opt.diagnosticFullNativeDb = true;
+            opt.materializeIosFfsInventory = true;
+            opt.materializeIosAppDbRecords = true;
+            if (!opt.suppressCsvExports) opt.exportProfile = "full";
+            postLog(L"Full no-guardrails validation enabled: native record/block limits and DB/WAL guardrail are disabled; full iOS FFS/app DB materialization and full native key/value persistence are enabled. Expect very large DB/WAL files and long runtime.");
         }
         if (opt.experimentalFullNativeValues) postLog(L"Full native metadata parsing is enabled for the selected workflow.");
         else postLog(L"Stable native header/core parsing is enabled. Full native metadata parsing is available through the checkbox above.");
@@ -3039,6 +3052,7 @@ void createProcessControls(HWND hwnd) {
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
     gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"Exclude CSV exports", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 136, y0 + 428, 180, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
     SendMessageW(gSuppressCsvExports, BM_SETCHECK, BST_CHECKED, 0);
+    gFullNoGuardrails = addProcess(CreateWindowW(L"BUTTON", L"Full no-guardrails validation", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 324, y0 + 428, 252, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_FULL_NO_GUARDRAILS)), gInst, nullptr));
     labelP(hwnd, L"Export profile", 590, y0 + 430, 92, 20); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 684, y0 + 426, 144, 92, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Minimal", L"Investigator", L"Diagnostics", L"Full CSV"}) SendMessageW(gExportProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gExportProfile, CB_SETCURSEL, 1, 0);
 
@@ -3301,6 +3315,7 @@ void layoutControls(HWND hwnd) {
     moveIf(gBrowse7z, rightBrowseX, y0 + 307, browseW, 24);
     moveIf(gSevenZip, 224, y0 + 308, std::max(220, rightBrowseX - 234), 22);
     moveIf(gSuppressCsvExports, 136, y0 + 428, 180, 22);
+    moveIf(gFullNoGuardrails, 324, y0 + 428, 252, 22);
     moveIf(gExportProfile, right - 144, y0 + 426, 144, 92);
     moveIf(gIngestStatus, 128, y0 + 456, right - 128, 42);
     moveIf(gIngestProgress, 128, y0 + 504, right - 128, 20);

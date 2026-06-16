@@ -1,4 +1,4 @@
-# V1.6.38 macOS Native Probe Promotion SQL Filter Fix
+# V1.6.40.1.1 macOS Native Probe Promotion SQL Filter Fix
 
 ## Triggering evidence
 
@@ -12,9 +12,9 @@ The V1.6.34 native path probe promotion added a C++ safety decision that can rec
 
 ## Fix
 
-V1.6.38 removes the premature weak-path SQL pre-filter for native file path probe rows. SQL now selects absolute native path probe candidates, and C++ performs the final safety decision with `shouldApplyNativeProbePath()`.
+V1.6.40.1.1 removes the premature weak-path SQL pre-filter for native file path probe rows. SQL now selects absolute native path probe candidates, and C++ performs the final safety decision with `shouldApplyNativeProbePath()`.
 
-V1.6.38 also adds a second bounded promotion pass for `__native_probe_basename_candidate_%` values. This pass only updates artifact names/display names when the current name/display value is blank or a known placeholder, and it rejects URLs, paths, control bytes, tiny/noisy values, and overlong names.
+V1.6.40.1.1 also adds a second bounded promotion pass for `__native_probe_basename_candidate_%` values. This pass only updates artifact names/display names when the current name/display value is blank or a known placeholder, and it rejects URLs, paths, control bytes, tiny/noisy values, and overlong names.
 
 ## New metrics/status
 

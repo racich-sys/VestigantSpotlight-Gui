@@ -1,4 +1,4 @@
-# V1.6.38 macOS Store-V2 Profile Fix
+# V1.6.40.1.1 macOS Store-V2 Profile Fix
 
 ## Evidence trigger
 

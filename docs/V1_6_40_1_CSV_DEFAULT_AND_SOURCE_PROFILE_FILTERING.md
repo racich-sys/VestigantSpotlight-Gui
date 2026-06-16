@@ -1,8 +1,8 @@
-# V1.6.38 CSV Default, Source-Profile Filtering, and Unresolved Label Path Guard
+# V1.6.40.1.1 CSV Default, Source-Profile Filtering, and Unresolved Label Path Guard
 
 ## Scope
 
-V1.6.38 implements the queued post-V1.6.37.1 workflow changes and one thin-run-derived corrective fix:
+V1.6.40.1.1 implements the queued post-V1.6.37.1 workflow changes and one thin-run-derived corrective fix:
 
 1. GUI processing now defaults to suppressing generated CSV review exports.
 2. macOS source profiles now skip iOS-specific parser/export surfaces where they are not applicable.
@@ -32,4 +32,4 @@ The V1.6.37.1 macOS zipped Spotlight thin run proved that macOS profile selectio
 
 ## Validation
 
-Local Linux build and smoke test completed for V1.6.38. Windows/MSVC validation still requires the user-provided build log.
+Local Linux build and smoke test completed for V1.6.40.1.1. Windows/MSVC validation still requires the user-provided build log.

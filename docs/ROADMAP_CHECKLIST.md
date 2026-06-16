@@ -1,21 +1,21 @@
 
-## V1.6.38 - CSV default, source-profile filtering, unresolved-label path guard
+## V1.6.40.1.1 - CSV default, source-profile filtering, unresolved-label path guard
 
 - GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
 - Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
 - macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
 - Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_38_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+- Added `docs/V1_6_40_1_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
 
-# V1.6.38 current handoff note
+# V1.6.40.1.1 current handoff note
 
-V1.6.38 follows successful V1.6.38 build/thin validation and implements code-review hardening for APFS/AFF4/bplist/iOS app DB/GUI path handling. See `docs/V1_6_38_CODE_REVIEW_VALIDATION_HARDENING.md`. Missing-from-FFS and CoreDuet interpretation guardrails remain in place.
+V1.6.40.1.1 follows successful V1.6.40.1.1 build/thin validation and implements code-review hardening for APFS/AFF4/bplist/iOS app DB/GUI path handling. See `docs/V1_6_40_1_CODE_REVIEW_VALIDATION_HARDENING.md`. Missing-from-FFS and CoreDuet interpretation guardrails remain in place.
 
-# V1.6.38 Release Notes
+# V1.6.40.1.1 Release Notes
 
 ## Purpose
 
-V1.6.38 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.38 limitation language.
+V1.6.40.1.1 records active filesystem comparison as the next implementation target and replaces stale `v0.6.4` log/CLI wording with current V1.6.40.1.1 limitation language.
 
 ## Triggering evidence from V1.6.22.1 thin
 
@@ -23,7 +23,7 @@ V1.6.38 records active filesystem comparison as the next implementation target a
 - `VestigantSpotlight_tail250.log` reported active filesystem comparison was tabled and that `existence_status` would remain `NOT_CHECKED`-style.
 - `active_file_comparison_readiness.csv` reported `comparison_ready=0` and `comparison_status=ZIP_PARSED_FOR_SPOTLIGHT_NOT_IMAGE_FILE_INVENTORY`.
 
-## Changed in V1.6.38
+## Changed in V1.6.40.1.1
 
 - Added `docs/ACTIVE_FILESYSTEM_COMPARISON_ROADMAP.md`.
 - Updated continuation docs to make active filesystem comparison the next queued implementation target.
@@ -33,7 +33,7 @@ V1.6.38 records active filesystem comparison as the next implementation target a
 
 ## Not implemented yet
 
-V1.6.38 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
+V1.6.40.1.1 implements Phase 1 active filesystem comparison for iOS FFS exact-path lookup. `MISSING_FROM_IOS_FFS_EXACT_PATH_CANDIDATE` rows are investigative leads only, not deletion proof. AFF4/APFS image-inventory joins remain pending.
 
 
 ## V1.6.6.2 workflow ledger
@@ -119,10 +119,10 @@ V1.6.38 implements Phase 1 active filesystem comparison for iOS FFS exact-path l
 - [ ] Confirm Windows/MSVC build with `V1_6_18_1_build.log`.
 - [ ] Visually confirm compact GUI top/review layout at scaled DPI.
 
-## V1.6.38
+## V1.6.40.1.1
 
 - [x] Add CoreDuet interactionC database-status workflow.
 - [x] Add CoreDuet interactionC summary/event GUI views and CSV exports.
 - [x] Add bounded upload samples for interactionC review.
 - [x] Add running start-continuation document.
-- [ ] Validate Windows/MSVC build and V1.6.38 iOS thin output.
+- [ ] Validate Windows/MSVC build and V1.6.40.1.1 iOS thin output.

@@ -1,8 +1,8 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_38",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_40_1",
   [string]$InputZipOrFolder = "F:\0446_0001-IT006\00008130-001A75AA1A21001C-2025-12-03-T224939\00008130-001A75AA1A21001C_files_full.zip",
-  [string]$CaseRoot = "Q:\SpotlightCase\BoundedFullNativeIOS_CoreSpotlight_V1_6_38",
-  [string]$ZipPath = "D:\Downloads\Upload_BoundedFullNative_iOS_CoreSpotlight_V1_6_38.zip",
+  [string]$CaseRoot = "Q:\SpotlightCase\BoundedFullNativeIOS_CoreSpotlight_V1_6_40_1",
+  [string]$ZipPath = "D:\Downloads\Upload_BoundedFullNative_iOS_CoreSpotlight_V1_6_40_1.zip",
   [int]$MaxNativeRecords = 25000,
   [switch]$CleanOut,
   [switch]$NoClipboardOrExplorer
@@ -36,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
     Move-Item -LiteralPath $ZipPath -Destination $failedZip -Force
     Write-Warning "iOS bounded full-native DB validation failed; upload ZIP renamed to: $failedZip"
   }
-  throw "iOS CoreSpotlight V1.6.38 bounded full-native DB wrapper failed with exit code $LASTEXITCODE"
+  throw "iOS CoreSpotlight V1.6.40.1.1 bounded full-native DB wrapper failed with exit code $LASTEXITCODE"
 }
 Write-Host "iOS CoreSpotlight bounded full-native DB upload ZIP: $ZipPath"
 Write-Host "Use parser_limits_and_suppression_summary.csv to decide whether MaxNativeRecords can be raised or removed in a later run."

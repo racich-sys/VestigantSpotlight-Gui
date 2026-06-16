@@ -1,4 +1,4 @@
-# V1.6.38 Code Review Validation Hardening
+# V1.6.40.1.1 Code Review Validation Hardening
 
 Generated from the V1.6.29.4 build/thin evidence and the follow-on issue list covering `win32_gui.cpp`, `aff4_probe_worker.cpp`, `ios_app_db_parser.cpp`, and `sqlite_exporter.cpp`.
 
@@ -9,7 +9,7 @@ Generated from the V1.6.29.4 build/thin evidence and the follow-on issue list co
 - Active filesystem validation checks all passed in the V1.6.29.4 thin output.
 - CoreDuet `interactionC.db` validation checks all passed in the V1.6.29.4 thin output.
 
-## Implemented in V1.6.38
+## Implemented in V1.6.40.1.1
 
 1. **Checked-artifact state synchronization**
    - `gCheckedArtifactIds` reads and writes now route through locked helper functions or explicit `gReviewStateMutex` critical sections.

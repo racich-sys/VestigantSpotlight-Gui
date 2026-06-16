@@ -90,13 +90,72 @@ fs::path ioPath(const fs::path& p) {
 #endif
 }
 
+bool validUtf8Sequence(const char* text, int len, int i, int& seqLen) {
+    const unsigned char c = static_cast<unsigned char>(text[i]);
+    seqLen = 1;
+    if (c < 0x80U) return true;
+    auto cont = [&](int j) -> bool {
+        if (j >= len) return false;
+        const unsigned char cc = static_cast<unsigned char>(text[j]);
+        return (cc & 0xC0U) == 0x80U;
+    };
+    if (c >= 0xC2U && c <= 0xDFU) {
+        seqLen = 2;
+        return cont(i + 1);
+    }
+    if (c == 0xE0U) {
+        seqLen = 3;
+        if (i + 2 >= len) return false;
+        const unsigned char c1 = static_cast<unsigned char>(text[i + 1]);
+        return c1 >= 0xA0U && c1 <= 0xBFU && cont(i + 2);
+    }
+    if ((c >= 0xE1U && c <= 0xECU) || (c >= 0xEEU && c <= 0xEFU)) {
+        seqLen = 3;
+        return cont(i + 1) && cont(i + 2);
+    }
+    if (c == 0xEDU) {
+        seqLen = 3;
+        if (i + 2 >= len) return false;
+        const unsigned char c1 = static_cast<unsigned char>(text[i + 1]);
+        return c1 >= 0x80U && c1 <= 0x9FU && cont(i + 2);
+    }
+    if (c == 0xF0U) {
+        seqLen = 4;
+        if (i + 3 >= len) return false;
+        const unsigned char c1 = static_cast<unsigned char>(text[i + 1]);
+        return c1 >= 0x90U && c1 <= 0xBFU && cont(i + 2) && cont(i + 3);
+    }
+    if (c >= 0xF1U && c <= 0xF3U) {
+        seqLen = 4;
+        return cont(i + 1) && cont(i + 2) && cont(i + 3);
+    }
+    if (c == 0xF4U) {
+        seqLen = 4;
+        if (i + 3 >= len) return false;
+        const unsigned char c1 = static_cast<unsigned char>(text[i + 1]);
+        return c1 >= 0x80U && c1 <= 0x8FU && cont(i + 2) && cont(i + 3);
+    }
+    return false;
+}
+
+void writeHexByte(std::ofstream& out, unsigned char c) {
+    const char* hex = "0123456789ABCDEF";
+    out << "[0x" << hex[(c >> 4U) & 0x0fU] << hex[c & 0x0fU] << "]";
+}
+
 void writeCsvFieldFast(std::ofstream& out, const char* text, int byteLen = -1) {
     if (!text) return;
     const int len = byteLen >= 0 ? byteLen : static_cast<int>(std::strlen(text));
     bool needQuotes = false;
+    bool hasInvalidUtf8 = false;
     for (int i = 0; i < len; ++i) {
         const unsigned char c = static_cast<unsigned char>(text[i]);
-        if (c == ',' || c == '"' || c == '\r' || c == '\n' || c == 0U || c < 0x20U) { needQuotes = true; break; }
+        if (c == ',' || c == '"' || c == '\r' || c == '\n' || c == 0U || c < 0x20U) { needQuotes = true; }
+        if (c >= 0x80U) {
+            int seqLen = 1;
+            if (validUtf8Sequence(text, len, i, seqLen)) i += seqLen - 1;
+            else { needQuotes = true; hasInvalidUtf8 = true; }
+        }
     }
     if (!needQuotes) { out.write(text, len); return; }
     out << '"';
@@ -107,12 +166,19 @@ void writeCsvFieldFast(std::ofstream& out, const char* text, int byteLen = -1) {
         else if (c == '\r') out << "\\r";
         else if (c == '\n') out << "\\n";
         else if (c == '\t') out << "\\t";
-        else if (c < 0x20U) {
-            const char* hex = "0123456789ABCDEF";
-            out << "[0x" << hex[(c >> 4U) & 0x0fU] << hex[c & 0x0fU] << "]";
+        else if (c < 0x20U) writeHexByte(out, c);
+        else if (c >= 0x80U) {
+            int seqLen = 1;
+            if (validUtf8Sequence(text, len, i, seqLen)) {
+                out.write(text + i, seqLen);
+                i += seqLen - 1;
+            } else {
+                writeHexByte(out, c);
+            }
         }
         else out << static_cast<char>(c);
     }
+    (void)hasInvalidUtf8;
     out << '"';
 }
 
@@ -350,7 +416,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.38 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.40.1.1 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";

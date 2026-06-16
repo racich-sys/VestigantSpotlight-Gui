@@ -1,4 +1,4 @@
-# V1.6.38 macOS Store-V2 External dbStr Map Loading
+# V1.6.40.1.1 macOS Store-V2 External dbStr Map Loading
 
 ## Triggering evidence
 
@@ -20,7 +20,7 @@ That caused weak structured decoding and pushed the GUI to placeholder names eve
 
 ## Fix
 
-V1.6.38 changes external dbStr map detection to be component-driven instead of iOS-path-driven.
+V1.6.40.1.1 changes external dbStr map detection to be component-driven instead of iOS-path-driven.
 
 The parser now loads external `dbStr-*` maps when:
 

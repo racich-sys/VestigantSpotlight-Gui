@@ -1188,9 +1188,9 @@ void SqliteEnrichment::classifyFilesystem(CaseDatabase& db, const EvidenceSource
 
         if (!hasIosFfsLookup) {
             if (!source.evidenceRoot.empty()) {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.38; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.40.1.1; evidenceRoot was supplied but no live/missing or deleted/orphaned classification will be performed in this run.");
             } else {
-                log.info("Active filesystem comparison has no validated inventory rows in V1.6.38; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
+                log.info("Active filesystem comparison has no validated inventory rows in V1.6.40.1.1; existence_status will remain NOT_CHECKED-style and deleted/orphaned candidates will not be generated.");
             }
             db.exec(R"SQL(
 UPDATE artifacts
@@ -1224,7 +1224,7 @@ WHERE source_id=)SQL" + sid + ";");
             return;
         }
 
-        log.info("Active filesystem comparison enabled in V1.6.38 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
+        log.info("Active filesystem comparison enabled in V1.6.40.1.1 using exact iOS FFS path lookup: ios_ffs_file_inventory_rows=" + std::to_string(iosFullInventoryRows) + " ios_ffs_path_lookup_rows=" + std::to_string(iosPathLookupRows) + ". Missing rows are investigative leads only, not deletion proof.");
 
         db.exec("DROP TABLE IF EXISTS temp_ios_active_ffs_paths;");
         db.exec(R"SQL(

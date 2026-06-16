@@ -58,7 +58,7 @@ void usage() {
               << "Notes:\n"
               << "  --mode diagnostics skips 7z preservation by default for fast parser diagnostics and enables safe core native probes.\n"
               << "  --preserve can be added to diagnostics mode when archive-first testing is needed.\n"
-              << "  Active filesystem comparison uses in-case iOS FFS exact-path lookup when available. --evidence-root is accepted for compatibility but direct evidence-root comparison remains pending in V1.6.38.\n"
+              << "  Active filesystem comparison uses in-case iOS FFS exact-path lookup when available. --evidence-root is accepted for compatibility but direct evidence-root comparison remains pending in V1.6.40.1.1.\n"
               << "  Stable native header-only parsing is the default in run mode. Use --decode-core-native-values to test safe native string/path probe decoding.\n"
               << "  --full-validation is an operator-safe shortcut for --mode run --profile auto --experimental-full-native-values --export-profile investigator --verbose.\n"
               << "  --diagnostic-full-native-exports enables support/diagnostic CSV exports that are intentionally skipped in normal investigator runs.\n"

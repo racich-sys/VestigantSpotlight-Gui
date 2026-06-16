@@ -1826,14 +1826,21 @@ JOIN agg a
  AND a.store_id = r.store_id
 WHERE r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store_path LIKE '%CoreSpotlight%';
 
-DROP VIEW IF EXISTS vw_ios_timeline_index_updates;
+)VSQLFIX" R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_timeline_index_updates;
 CREATE VIEW vw_ios_timeline_index_updates AS
-SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,content_type,display_name,full_path,last_updated_utc,
+SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_id,r.parent_inode_num,
+       COALESCE(NULLIF(a.file_name,''), NULLIF(NULLIF(r.file_name,'------NONAME------'),''), r.file_name) AS file_name,
+       r.content_type,
+       COALESCE(NULLIF(a.display_name,''), NULLIF(r.display_name,''), NULLIF(a.file_name,''), r.display_name) AS display_name,
+       COALESCE(NULLIF(a.best_path,''), NULLIF(r.full_path,''), r.full_path) AS full_path,
+       r.last_updated_utc,
        'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
-       record_state
-FROM raw_records
-WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
-  AND COALESCE(last_updated_utc,'')<>'';
+       r.record_state
+FROM raw_records r
+LEFT JOIN artifact_source_instances asi ON asi.raw_record_id = r.raw_record_id
+LEFT JOIN artifacts a ON a.artifact_id = asi.artifact_id
+WHERE (r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store_path LIKE '%CoreSpotlight%')
+  AND COALESCE(r.last_updated_utc,'')<>'';
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_date_provenance;
@@ -7038,14 +7045,22 @@ JOIN agg a
  AND a.store_id = r.store_id
 WHERE r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store_path LIKE '%CoreSpotlight%';
 
-DROP VIEW IF EXISTS vw_ios_timeline_index_updates;
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_timeline_index_updates;
 CREATE VIEW vw_ios_timeline_index_updates AS
-SELECT raw_record_id,source_id,store_guid,source_db,inode_num,store_id,parent_inode_num,file_name,content_type,display_name,full_path,last_updated_utc,
+SELECT r.raw_record_id,r.source_id,r.store_guid,r.source_db,r.inode_num,r.store_id,r.parent_inode_num,
+       COALESCE(NULLIF(a.file_name,''), NULLIF(NULLIF(r.file_name,'------NONAME------'),''), r.file_name) AS file_name,
+       r.content_type,
+       COALESCE(NULLIF(a.display_name,''), NULLIF(r.display_name,''), NULLIF(a.file_name,''), r.display_name) AS display_name,
+       COALESCE(NULLIF(a.best_path,''), NULLIF(r.full_path,''), r.full_path) AS full_path,
+       r.last_updated_utc,
 )VSGUI" R"VSGUI(       'metadata/index update time - not usage without supporting decoded fields' AS time_interpretation,
-       record_state
-FROM raw_records
-WHERE (store_guid LIKE 'ios_%' OR source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%')
-  AND COALESCE(last_updated_utc,'')<>'';
+       r.record_state
+FROM raw_records r
+LEFT JOIN artifact_source_instances asi ON asi.raw_record_id = r.raw_record_id
+LEFT JOIN artifacts a ON a.artifact_id = asi.artifact_id
+WHERE (r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store_path LIKE '%CoreSpotlight%')
+  AND COALESCE(r.last_updated_utc,'')<>'';
 
 
 DROP VIEW IF EXISTS vw_ios_spotlight_date_provenance;

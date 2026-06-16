@@ -1,7 +1,7 @@
 param(
-  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_38.zip",
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_38",
-  [string]$BuildLog = "D:\Downloads\V1_6_38_build.log",
+  [string]$ZipPath = "D:\Downloads\VestigantSpotlightInv_V1_6_40_1.zip",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_40_1",
+  [string]$BuildLog = "D:\Downloads\V1_6_40_1_build.log",
   [switch]$CleanExtract
 )
 
@@ -51,7 +51,7 @@ $MsvcStringCheck = Join-Path $SourceRoot "tools\Verify-MsvcStringLiteralRisk.ps1
 Invoke-CheckedPreflightScript -ScriptPath $MsvcStringCheck -Name "MSVC string literal risk check"
 
 # Release-readiness includes documentation and packaging assertions. It is useful, but must not block compilation.
-$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_38-ReleaseReadiness.ps1"
+$ReleaseReadiness = Join-Path $SourceRoot "tools\Verify-V1_6_40_1-ReleaseReadiness.ps1"
 Invoke-AdvisoryPreflightScript -ScriptPath $ReleaseReadiness -Name "Release readiness advisory check"
 
 if (!(Test-Path -LiteralPath "$SourceRoot\build_windows_msvc.bat")) { throw "Build script not found: $SourceRoot\build_windows_msvc.bat" }

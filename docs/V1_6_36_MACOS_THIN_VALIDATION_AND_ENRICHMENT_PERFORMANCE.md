@@ -1,4 +1,4 @@
-# V1_6_38 macOS zipped Spotlight thin validation and enrichment performance
+# V1_6_40_1 macOS zipped Spotlight thin validation and enrichment performance
 
 ## Evidence reviewed
 
@@ -12,7 +12,7 @@ The thin run showed `enrichment_parent_inode_links_complete` reported `new_recon
 
 ## Change
 
-V1.6.38 skips the parent-inode path apply UPDATE when `newReconstructedPathRows == 0`. It writes explicit run-status markers:
+V1.6.40.1.1 skips the parent-inode path apply UPDATE when `newReconstructedPathRows == 0`. It writes explicit run-status markers:
 
 - `enrichment_parent_inode_path_apply_skipped`
 - `enrichment_parent_inode_path_apply_complete ... skipped=1 reason=no_new_reconstructed_paths`

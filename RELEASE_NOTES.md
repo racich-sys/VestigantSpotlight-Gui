@@ -1,11 +1,11 @@
 
-## V1.6.38 - CSV default, source-profile filtering, unresolved-label path guard
+## V1.6.40.1.1 - CSV default, source-profile filtering, unresolved-label path guard
 
 - GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
 - Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
 - macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
 - Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_38_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+- Added `docs/V1_6_40_1_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
 
 
 ## V1.6.37.1 macOS unresolved Store-V2 object labels
@@ -20,7 +20,7 @@
 - Adds run-status and parser metric markers for native path probe promotion.
 - Preserves V1.6.33 parent-inode path-apply skip optimization and V1.6.32 advisory release-readiness build workflow.
 
-# Vestigant Spotlight 1.6.38
+# Vestigant Spotlight 1.6.40.1
 
 ## macOS zipped Spotlight thin performance fix
 
@@ -28,7 +28,7 @@
 - Added a guard to skip the parent-inode path apply UPDATE when link analysis reports `new_reconstructed_paths=0`.
 - This targets the observed no-op enrichment phase that consumed several minutes and ended with `artifacts_updated=0`.
 
-# Vestigant Spotlight 1.6.38
+# Vestigant Spotlight 1.6.40.1
 
 ## Release-preflight hardening
 
@@ -42,7 +42,7 @@
 ## Compile hotfix
 
 - Fixes MSVC compile error in `src/parsers/aff4_probe_worker.cpp` by replacing `appendProbeNote(...)` with the in-file helper `aff4ApfsAppendProbeNote(...)` in OMAP vertical-cycle handling.
-- Hardens `Build-V1_6_38.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
+- Hardens `Build-V1_6_40_1.ps1` so it fails before version probing if the CLI executable was not produced or if the build log contains compiler/linker errors.
 - Carries forward V1.6.29.3 packaging and readiness fixes.
 
 # Vestigant Spotlight Investigator V1.6.37.1
@@ -77,7 +77,7 @@
 - Split oversized SQL raw strings and corrected V1.6.37.1 build/readiness version pinning.
 - Preserved Missing-from-FFS and CoreDuet interpretation guardrails.
 
-See `docs/V1_6_38_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
+See `docs/V1_6_40_1_CODE_REVIEW_VALIDATION_HARDENING.md` for the detailed issue-by-issue audit.
 
 # Vestigant Spotlight Investigator V1.6.37.1
 
@@ -145,3 +145,9 @@ V1.6.25 validated the active filesystem comparison pipeline and materialized 7,7
 - macOS profile now disables iOS CoreSpotlight compact filtering by construction.
 - Adds `native_parse_configuration` and `native_parse_store_persistence_mode` progress/status visibility.
 - Mirrors native parser progress from `logs/run_progress.tsv` to root `run_progress.tsv` / `last_progress.tsv` so long native parses do not appear silent when root progress files are monitored.
+
+## V1.6.40.1 - MSVC raw-string safety hotfix
+
+- Split oversized SQL raw-string blocks in `src/db/case_db.cpp` after V1.6.40 changed the iOS index-update timeline view.
+- No parser, enrichment, or GUI behavior change from V1.6.40.
+- Local raw-string audit found no raw string bodies over 5,000 characters.
