@@ -2,59 +2,60 @@ name: Windows MSVC Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build with MSVC batch script
+      - name: Build with MSVC Batch Script
         shell: pwsh
         run: |
+          # Pipe output to log and ensure errors bubble up
           .\build_windows_msvc.bat 2>&1 | Tee-Object -FilePath windows_build.log
-          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlight.exe")) { throw "VestigantSpotlight.exe was not produced." }
-          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlightCli.exe")) { throw "VestigantSpotlightCli.exe was not produced." }
-          if (!(Test-Path ".\build-msvc\Release\VestigantSpotlightTests.exe")) { throw "VestigantSpotlightTests.exe was not produced." }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Build script exited with code $LASTEXITCODE"
+          }
 
-      - name: CLI version
+          # Verify all targets built successfully
+          $targets = @("VestigantSpotlight.exe", "VestigantSpotlightCli.exe", "VestigantSpotlightTests.exe")
+          foreach ($t in $targets) {
+            if (!(Test-Path ".\build-msvc\Release\$t")) {
+              throw "Required executable '$t' was not produced."
+            }
+          }
+
+      - name: Test CLI Version Output
         shell: pwsh
-        run: .\build-msvc\Release\VestigantSpotlightCli.exe --version
+        run: |
+          .\build-msvc\Release\VestigantSpotlightCli.exe --version
 
-      - name: Self test
+      - name: Run Self-Test Suite
         shell: pwsh
-        run: .\build-msvc\Release\VestigantSpotlightTests.exe ".\build-msvc\selftest_out"
+        run: |
+          .\build-msvc\Release\VestigantSpotlightTests.exe ".\build-msvc\selftest_out"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Self-tests failed with exit code $LASTEXITCODE"
+          }
 
-      - name: Upload build log
-        if: always()
+      - name: Upload Build Log
+        if: always() # Upload log even if the build or tests fail
         uses: actions/upload-artifact@v4
         with:
           name: windows-build-log
           path: windows_build.log
+          retention-days: 14
 
-      - name: Upload self-test output
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: selftest-output
-          path: build-msvc/selftest_out/
-
-      - name: Upload binaries
-        if: success()
+      - name: Upload Compiled Binaries
         uses: actions/upload-artifact@v4
         with:
           name: vestigantspotlight-windows-binaries
-          path: |
-            build-msvc/Release/VestigantSpotlight.exe
-            build-msvc/Release/VestigantSpotlightCli.exe
-            build-msvc/Release/VestigantSpotlightTests.exe
+          path: build-msvc/Release/*.exe
+          retention-days: 14
