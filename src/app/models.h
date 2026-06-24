@@ -37,6 +37,8 @@ struct RunOptions {
     bool fullScan = false;
     bool skipContainerHash = false;  // source-probe speed option for very large image containers; preserves registration with HASH_DEFERRED
     bool forceContainerHash = false; // explicitly hash large AFF4/raw containers during source-probe when a full evidentiary hash is needed
+    std::string externalSourceSha256; // externally verified source/container SHA256; avoids rehashing very large inputs when documented
+    std::string externalSourceHashNote; // provenance/note for externally supplied source hash
     bool strictSingleAff4 = false; // require input to be one explicit .aff4 file and prevent helper/library-driven AFF4 discovery
     bool enableAff4DynamicProbe = false; // opt-in only: libaff4 may perform container/volume discovery outside the selected file
     bool enableAff4StreamInventory = false; // opt-in only: external aff4imager stream listing

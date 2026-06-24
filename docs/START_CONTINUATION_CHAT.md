@@ -1,62 +1,77 @@
+# Continue the Vestigant Spotlight / Spotlight2 Project from V1.6.72
 
-## V1.6.41.1 - CSV default, source-profile filtering, unresolved-label path guard
+Mandatory first step for the next assistant: read `ai_context.md` first from the latest uploaded source package before making any code, script, documentation, or packaging changes.
 
-- GUI processing now defaults to `Exclude CSV exports` checked. SQLite case output remains the default review artifact unless CSV exports are explicitly enabled.
-- Non-iOS ZIP profiles now record that iOS FFS/app-database parser stages were skipped.
-- macOS-profile exports now skip `ios_*` CSV export calls rather than writing large groups of zero-row iOS CSVs.
-- Unresolved Store-V2 review labels are no longer accepted as valid filename/path components for parent-inode path reconstruction.
-- Added `docs/V1_6_41_CSV_DEFAULT_AND_SOURCE_PROFILE_FILTERING.md`.
+Latest package prepared: `VestigantSpotlightInv_V1_6_72.zip`.
 
+Latest version: `1.6.72`.
 
-## V1.6.41.1 macOS unresolved Store-V2 object labels
+## Current focus
 
-- Added explicit unresolved object labels for macOS Store-V2 records that still lack structured names after dictionary/path-probe enrichment.
-- Labels are forensic review handles, not asserted filenames.
-- Added parser metric `unresolved_identifier_label_artifacts`.
+Validate the V1.6.72 AFF4 stalled-parse hotfix. V1.6.70 showed that the AFF4 direct-map/APFS staging path had advanced, but the run appeared stalled during bounded FullValues Store-V2 parsing/finalization.
 
+Grounded V1.6.70 evidence:
 
-## V1.6.41.1 Late Review Addendum
+- `run_progress.tsv` reached `aff4_direct_map_reader_probe_complete` with `map_entries_scanned=1; chunks_decoded=14; apfs_hits=52`.
+- `run_progress.tsv` then reached `aff4_apfs_staged_storev2_parse_start` with `selected_stores=6 decode_mode=FullValues`.
+- `aff4_apfs_staged_storev2_parse_progress.tsv` showed store 2/6 with `blocks=2598` and by 20,000 parsed items had `raw_key_values=881055`, `raw_date_candidates=183222`, and DB size `1270317056` bytes.
+- `VestigantSpotlight.log` reported `Native parser record diagnostic limit reached. parsed_items=25000 limit=25000`.
+- The uploaded snapshot did not show parse-complete, enrichment-complete, upload-bundle-complete, or complete validation stage.
 
-- Added late-review fixes for iOS CoreSpotlight bundle attribution, bracketed timestamp-array normalization, per-path GUI read-only DB pooling, and bplist JSON stringification caps.
-- Confirmed null-byte-safe CSV export was already present before this addendum.
+V1.6.72 changes:
 
-# V1.6.41.1 Continuation Note
+- AFF4 staged Store-V2 validation defaults to bounded CoreFields mode unless full native values are explicitly requested.
+- One-click and wrapper scripts pass `-DecodeCoreNativeValues` by default and expose `-FullNativeValues`, `-MaxNativeRecords`, and `-MaxNativeBlocks`.
+- Native parser progress now writes `native_parse_record_limit_reached` when the cap is hit.
+- Wrapper heartbeat tails `aff4_apfs_staged_storev2_parse_progress.tsv` so parser progress is visible during the native parse stage.
+- AFF4 path resolution is deferred until after build/self-test so the one-click workflow builds first.
+- Current default AFF4 search root is `T:\` because the user reported the drive letter changed from `R:` to `T:`.
 
-Latest source package: V1.6.41.1. It follows V1.6.35, which confirmed external dbStr maps loaded, by fixing native path/basename probe promotion so GUI names/paths improve where native candidates exist. Validate with `V1_6_41_build.log` and a rerun of the same macOS zipped Spotlight thin test.
+## Copy/paste PowerShell command
 
-# V1.6.41.1 Continuation Note
+After downloading the ZIP and `Run-V1_6_72-AfterDownload.ps1` to `D:\Downloads`, run:
 
-Latest source package: V1.6.41.1. It fixes macOS Store-V2 external dbStr map loading after direct inspection of uploaded `store.db`, `.store.db`, and `dbStr-*` sidecar files. Validate with `V1_6_41_build.log`, rerun the macOS zipped Spotlight thin test, and inspect native dbStr inventory/property dictionary counts plus GUI `------NONAME------` rate.
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1
+```
 
-# V1.6.41.1 Continuation Note
+Expected uploads after AFF4 run:
 
-Latest source package: V1.6.41.1. It fixes macOS Store-V2 GUI rows showing `------NONAME------` by promoting native path probe candidates from `raw_key_values` into artifact path/display fields before timeline materialization. Next required evidence: `V1_6_41_build.log` and a rerun of the macOS zipped Spotlight thin test.
+```text
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip
+D:\Downloads\V1_6_72_build.log
+D:\Downloads\V1_6_72_AFF4_WRAPPER_RUN_SUMMARY.txt
+```
 
-# V1_6_41 note
+Targeted FullValues support run only:
 
-V1_6_41 skips the parent-inode path apply UPDATE when `new_reconstructed_paths=0`, based on the V1.6.32 macOS zipped Spotlight thin result. Build success remains unverified until the Windows log is uploaded.
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1 -FullNativeValues
+```
 
-# V1_6_41 note
+## Standing rules
 
-V1_6_41 fixes recurring build-blocking release-readiness failures: release-readiness is advisory from the build wrapper, while wrapper compatibility and raw-string risk remain fatal. Expected CLI version is read dynamically from `VERSION`.
+- Every release response must put a single copy/paste PowerShell command immediately after download links.
+- Every package must include one root-level one-click PowerShell script that builds, runs required self-test, and runs the needed validation workflow.
+- Do not claim Windows/MSVC, runtime, iOS, or AFF4 success without uploaded evidence.
+- Keep active Markdown consolidated to exactly: `.github/pull_request_template.md`, `ai_context.md`, `docs/PROJECT_REFERENCE_V<version>.md`, `docs/START_CONTINUATION_CHAT.md`, `third_party/lzfse/README.md`.
 
-# Start Continuation Chat - V1.6.41.1
+## Latest continuation update - V1.6.72
 
-Use `VestigantSpotlightInv_V1_6_41.zip` as the current source baseline.
+Read `ai_context.md` first. Current package is `VestigantSpotlightInv_V1_6_72.zip`.
 
-## Why this hotfix exists
+The latest uploaded V1.6.71 no-record-cap AFF4 run completed with `RunnerExitCode: 0` and wrapper `MaxNativeRecords: 0`, but the result still reported `max_records_used=25000` and `raw_record_count=25000`. V1.6.72 fixes the no-record-cap propagation path so explicit `0` remains uncapped at both wrapper and app levels.
 
-V1.6.29.3 failed MSVC compile in `aff4_probe_worker.cpp` at the new OMAP vertical-cycle note calls. V1.6.41.1 uses the existing `aff4ApfsAppendProbeNote` helper and hardens the build wrapper so a missing CLI executable stops the build before version probing.
+Copy/paste command for the next AFF4 no-record-cap CoreFields validation run:
 
-## Required next uploads
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1
+```
 
-- `D:\Downloads\V1_6_41_build.log`
-- `D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_6_41.zip`
+Upload after run:
 
-## Current package: V1.6.41.1
-
-Continue from `VestigantSpotlightInv_V1_6_41.zip`. First validate `V1_6_41_build.log`, then validate `Upload_Thin_iOS_CoreSpotlight_V1_6_41.zip`. V1.6.41.1 includes GUI checked-state locking, stale review-query detach, export-worker detach, length-aware CSV export for embedded NUL/control bytes, and APFS NXSB block-size rejection before use.
-
-## Current package: V1.6.41.1
-
-Continue from `VestigantSpotlightInv_V1_6_41.zip`. First validate `V1_6_41_build.log`. Then rerun the macOS folder Spotlight test against `E:\test second\Spotlight\.Spotlight-V100` and confirm that the run reports `native_kv_persistence_macos_storev2`, writes `native_parse_configuration`, and continues updating root progress during native parse.
+```text
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip
+D:\Downloads\V1_6_72_build.log
+D:\Downloads\V1_6_72_AFF4_WRAPPER_RUN_SUMMARY.txt
+```

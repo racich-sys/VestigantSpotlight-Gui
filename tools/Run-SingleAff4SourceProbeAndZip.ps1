@@ -1,8 +1,8 @@
 param(
-    [string]$Aff4Input = "O:\0109_0142-IT001\disk3 2024-10-01 10-43-40\0109_0142-IT001.aff4",
-    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_0_0",
-    [string]$ReaderToolsRoot = "T:\VestigantReaderTools\aff4-cpp-lite",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_0_0.zip",
+    [string]$Aff4Input = "",
+    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_72",
+    [string]$ReaderToolsRoot = "",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip",
     [switch]$SkipUploadZip,
     [switch]$ForceContainerHash,
     [switch]$FullScan,
@@ -17,6 +17,10 @@ param(
     [string]$UploadWorkRoot = "",
     [switch]$SkipExternalSpotlightHash,
     [switch]$DiagnosticOutputs,
+    [switch]$DecodeCoreNativeValues,
+    [switch]$FullNativeValues,
+    [int]$MaxNativeRecords = 25000,
+    [int]$MaxNativeBlocks = 0,
     [int]$CliTimeoutMinutes = 90
 )
 
@@ -44,7 +48,9 @@ function Get-LastMeaningfulLinesSafe {
         (Join-Path $CaseRoot "run_progress.tsv"),
         (Join-Path (Join-Path $CaseRoot "logs") "run_progress.tsv"),
         (Join-Path $CaseRoot "run_status.txt"),
-        (Join-Path (Join-Path $CaseRoot "logs") "run_status.txt")
+        (Join-Path (Join-Path $CaseRoot "logs") "run_status.txt"),
+        (Join-Path $CaseRoot "aff4_apfs_staged_storev2_parse_progress.tsv"),
+        (Join-Path (Join-Path $CaseRoot "logs") "aff4_apfs_staged_storev2_parse_progress.tsv")
     )
     foreach ($candidate in $candidates) {
         try {
@@ -255,7 +261,7 @@ function Write-PathManifest {
     $lines.Add("AFF4 input: $Aff4Input") | Out-Null
     $lines.Add("Case output: $Out") | Out-Null
     $lines.Add("Case logs folder: $(Join-Path $Out 'logs')") | Out-Null
-    $lines.Add("Reader tools: $ReaderToolsRoot") | Out-Null
+    $lines.Add("Reader tools: $(if ([string]::IsNullOrWhiteSpace($ReaderToolsRoot)) { 'not supplied' } else { $ReaderToolsRoot })") | Out-Null
     $lines.Add("Upload zip: $ZipPath") | Out-Null
     $lines.Add("External Spotlight root: $ExternalSpotlightRoot") | Out-Null
     $lines.Add("External compare output root: $ExternalCompareOutRoot") | Out-Null
@@ -313,7 +319,7 @@ function ConvertTo-ProcessArgumentString {
 
 Assert-NoWildcardPath -PathValue $Aff4Input -Description "AFF4 input path"
 Assert-NoWildcardPath -PathValue $Out -Description "Case output path"
-Assert-NoWildcardPath -PathValue $ReaderToolsRoot -Description "Reader tools path"
+if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot)) { Assert-NoWildcardPath -PathValue $ReaderToolsRoot -Description "Reader tools path" }
 Assert-NoWildcardPath -PathValue $ZipPath -Description "Upload ZIP path"
 if (![string]::IsNullOrWhiteSpace($ExternalSpotlightRoot)) { Assert-NoWildcardPath -PathValue $ExternalSpotlightRoot -Description "External Spotlight root path" }
 if (![string]::IsNullOrWhiteSpace($ExternalCompareOutRoot)) { Assert-NoWildcardPath -PathValue $ExternalCompareOutRoot -Description "External comparison output path" }
@@ -352,7 +358,7 @@ if ($item.PSIsContainer) {
 if ([System.IO.Path]::GetExtension($item.FullName) -ine ".aff4") {
     throw "AFF4 input must end in .aff4 for this single-test helper. Provided: $($item.FullName)"
 }
-if (!(Test-Path -LiteralPath $ReaderToolsRoot)) {
+if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot) -and !(Test-Path -LiteralPath $ReaderToolsRoot)) {
     throw "Reader tools folder not found: $ReaderToolsRoot"
 }
 if (![string]::IsNullOrWhiteSpace($ExternalSpotlightRoot) -and !(Test-Path -LiteralPath $ExternalSpotlightRoot)) {
@@ -380,17 +386,25 @@ Write-Host "Single AFF4 source-probe policy active."
 Write-Host "No recursive AFF4 discovery will be performed."
 Write-Host "AFF4 input: $($item.FullName)"
 Write-Host "Case output: $Out"
-Write-Host "Reader tools: $ReaderToolsRoot"
+if ([string]::IsNullOrWhiteSpace($ReaderToolsRoot)) { Write-Host "Reader tools: not supplied; dynamic AFF4 probe will rely on environment/PATH or report missing dependencies." } else { Write-Host "Reader tools: $ReaderToolsRoot" }
 if ($EnableAff4VirtualApfsProbe) { Write-Host "AFF4 virtual APFS probe enabled through guarded libaff4 dynamic reads for this one explicit AFF4 file." }
 Write-Host "CLI timeout: $CliTimeoutMinutes minute(s)"
+$nativeStoreMode = "application default"
+if ($FullNativeValues) { $nativeStoreMode = "FullValues" }
+elseif ($DecodeCoreNativeValues) { $nativeStoreMode = "CoreFields" }
+Write-Host "Native Store-V2 mode: $nativeStoreMode"
+Write-Host "Max native records: $MaxNativeRecords"
 
 $args = @(
     "--mode", "source-probe",
     "--input", $item.FullName,
     "--out", $Out,
-    "--reader-tools", $ReaderToolsRoot,
     "--strict-single-aff4"
 )
+if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot)) {
+    $args += "--reader-tools"
+    $args += $ReaderToolsRoot
+}
 if ($DiagnosticOutputs) {
     $args += "--aff4-apfs-diagnostic-outputs"
     $args += "--verbose"
@@ -399,6 +413,10 @@ if ($ForceContainerHash) { $args += "--force-container-hash" }
 if ($FullScan) { $args += "--full-scan" }
 if ($EnableAff4DynamicProbe -or $EnableAff4VirtualApfsProbe) { $args += "--enable-aff4-dynamic-probe" }
 if ($EnableAff4StreamInventory) { $args += "--enable-aff4-stream-inventory" }
+if ($DecodeCoreNativeValues) { $args += "--decode-core-native-values" }
+if ($FullNativeValues) { $args += "--experimental-full-native-values" }
+if ($MaxNativeRecords -ge 0) { $args += "--max-native-records"; $args += ([string]$MaxNativeRecords) }
+if ($MaxNativeBlocks -gt 0) { $args += "--max-native-blocks"; $args += ([string]$MaxNativeBlocks) }
 
 $ProbeTimedOut = $false
 $exitCode = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $args -CaseRoot $Out -IntervalSeconds 60 -TimeoutMinutes $CliTimeoutMinutes
@@ -427,7 +445,15 @@ if ($exitCode -ne 0 -and !$ProbeTimedOut) {
                 $failedZip = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($ZipPath), ([System.IO.Path]::GetFileNameWithoutExtension($ZipPath) + "_FAILED.zip"))
             }
             $failedWork = if ([string]::IsNullOrWhiteSpace($UploadWorkRoot)) { Join-Path $Out "Upload_Thin_Failed" } else { $UploadWorkRoot + "_FAILED" }
-            & $zipScript -CaseRoot $Out -ReaderToolsRoot $ReaderToolsRoot -ZipPath $failedZip -AdditionalOutputRoot $ExternalCompareOutRoot -UploadWorkRoot $failedWork -IncludeLogsTailOnly:$IncludeLogsTailOnly
+            $failedUploadArgs = @{
+                CaseRoot = $Out
+                ZipPath = $failedZip
+                UploadWorkRoot = $failedWork
+                IncludeLogsTailOnly = $IncludeLogsTailOnly
+            }
+            if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot)) { $failedUploadArgs["ReaderToolsRoot"] = $ReaderToolsRoot }
+            if (![string]::IsNullOrWhiteSpace($ExternalCompareOutRoot)) { $failedUploadArgs["AdditionalOutputRoot"] = $ExternalCompareOutRoot }
+            & $zipScript @failedUploadArgs
             Write-Warning "Source-probe failed with exit code $exitCode, but partial diagnostics were packaged: $failedZip"
         } catch {
             Write-Warning "Source-probe failed with exit code $exitCode and partial packaging also failed: $($_.Exception.Message)"
@@ -581,11 +607,11 @@ if (!$SkipUploadZip) {
     }
     $uploadArgs = @{
         CaseRoot = $Out
-        ReaderToolsRoot = $ReaderToolsRoot
         ZipPath = $ZipPath
         UploadWorkRoot = $EffectiveUploadWorkRoot
         IncludeLogsTailOnly = $IncludeLogsTailOnly
     }
+    if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot)) { $uploadArgs["ReaderToolsRoot"] = $ReaderToolsRoot }
     if (![string]::IsNullOrWhiteSpace($EffectiveExternalCompareOutRoot)) { $uploadArgs["AdditionalOutputRoot"] = $EffectiveExternalCompareOutRoot }
     if ($DiagnosticOutputs) { $uploadArgs["IncludeStructuralDiagnostics"] = $true }
     & $UploadTool @uploadArgs

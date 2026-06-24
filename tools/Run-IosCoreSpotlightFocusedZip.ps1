@@ -13,7 +13,10 @@ param(
     [int]$MaxNativeRecords = 0,
     [int]$MaxNativeBlocks = 0,
     [switch]$MaterializeIosSupportDb,
-    [switch]$NoCsvExports
+    [switch]$NoCsvExports,
+    [string]$ExternalSourceSha256 = "",
+    [string]$ExternalSourceHashNote = "",
+    [string]$ReuseIosCache = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -167,6 +170,8 @@ Write-Host "iOS full native metadata values: $($FullNativeValues.IsPresent)"
 Write-Host "iOS diagnostic full native DB persistence: $($DiagnosticFullNativeDb.IsPresent)"
 if ($MaxNativeRecords -gt 0) { Write-Host "iOS max native records override: $MaxNativeRecords" }
 if ($MaxNativeBlocks -gt 0) { Write-Host "iOS max native blocks override: $MaxNativeBlocks" }
+if (![string]::IsNullOrWhiteSpace($ExternalSourceSha256)) { Write-Host "External source SHA256 supplied; CLI will record or compare it according to hash mode." }
+if (![string]::IsNullOrWhiteSpace($ReuseIosCache)) { Write-Host "Reusing prior iOS source cache: $ReuseIosCache" }
 
 $cliArgs = @(
   "--mode", $RunMode,
@@ -185,6 +190,9 @@ if ($MaxNativeRecords -gt 0) { $cliArgs += @("--max-native-records", [string]$Ma
 if ($MaxNativeBlocks -gt 0) { $cliArgs += @("--max-native-blocks", [string]$MaxNativeBlocks) }
 if ($MaterializeIosSupportDb) { $cliArgs += "--materialize-ios-support-db" }
 if ($NoCsvExports) { $cliArgs += "--no-csv-exports" }
+if (![string]::IsNullOrWhiteSpace($ExternalSourceSha256)) { $cliArgs += @("--external-source-sha256", $ExternalSourceSha256) }
+if (![string]::IsNullOrWhiteSpace($ExternalSourceHashNote)) { $cliArgs += @("--external-source-hash-note", $ExternalSourceHashNote) }
+if (![string]::IsNullOrWhiteSpace($ReuseIosCache)) { $cliArgs += @("--reuse-ios-cache", $ReuseIosCache) }
 $cliExit = Start-ProcessWithTriageHeartbeat -ExePath $Cli -ArgumentList $cliArgs -CaseRoot $Out -IntervalSeconds 60
 $global:LASTEXITCODE = $cliExit
 if ($cliExit -ne 0) { Write-Warning "iOS CLI exited with code $cliExit; upload bundle will still be attempted for diagnostics." }
@@ -250,7 +258,7 @@ try {
           "status=incomplete_run_diagnostic_bundle",
           "cli_exit_code=$cliExit",
           "missing_required_upload_samples=$($missingRequiredUploadSamples -join ';')",
-          "note=V1.6.41.1 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
+          "note=V1.6.72 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
         ) -Encoding UTF8
       } catch {}
     } else {

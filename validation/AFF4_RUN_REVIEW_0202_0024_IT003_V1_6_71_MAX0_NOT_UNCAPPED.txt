@@ -1,0 +1,26 @@
+AFF4 run review: V1.6.71 MaxNativeRecords 0 did not actually remove parser cap
+
+Evidence reviewed:
+- Uploaded V1_6_71_AFF4_WRAPPER_RUN_SUMMARY.txt created 2026-06-24T13:09:04-04:00.
+- Uploaded Upload_Thin_MacOS_AFF4_V1_6_71.zip SHA256 9497504E999CB62DD413016007977B37187BE1CB26E93F5006644FEB56FE178C.
+- Extracted result ZIP case_summary.json and aff4_apfs_staged_storev2_parser_probe_summary.json.
+
+Verified observations:
+- Wrapper summary recorded MaxNativeRecords: 0, FullNativeValues: False, RunnerExitCode: 0.
+- The result ZIP completed successfully, but parser summary still reported max_records_used=25000 and parsed_items=25000.
+- case_summary.json still reported raw_record_count=25000 and timeline_event_count=25000.
+- Therefore the requested no-record-cap run was not actually uncapped.
+
+Root cause verified in V1.6.71 source:
+- scripts/BuildAndRun-V1_6_71-FromDownloadedZip.ps1 and related AFF4 scripts only passed -MaxNativeRecords when the value was greater than 0.
+- tools/Run-SingleAff4SourceProbeAndZip.ps1 only passed --max-native-records when the value was greater than 0.
+- src/app/app_runner.cpp used `opt.maxNativeRecords ? opt.maxNativeRecords : 25000U`, so even if --max-native-records 0 were passed, the app-level AFF4 staged parser would convert it back to 25000.
+
+V1.6.72 fix:
+- AFF4 wrappers now pass MaxNativeRecords when it is 0 or greater.
+- tools/Run-SingleAff4SourceProbeAndZip.ps1 now passes --max-native-records 0 to the CLI.
+- src/app/app_runner.cpp now uses opt.maxNativeRecordsExplicit to distinguish omitted max-record limit from explicit 0.
+- One-click Run-V1_6_72-AfterDownload.ps1 defaults MaxNativeRecords to 0 for the current AFF4 no-record-cap CoreFields validation target.
+
+First-fix guidance:
+- If a future no-cap AFF4 run still stops at 25000 records, inspect wrapper summary, parser summary max_records_used, case_summary raw_record_count, and source handling around maxNativeRecordsExplicit before changing Store-V2 parser logic.

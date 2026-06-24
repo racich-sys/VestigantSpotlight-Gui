@@ -1757,11 +1757,46 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
             return readExactFileBytes(originalInput, payload, static_cast<std::size_t>(it->second.compressedSize), out, err);
         };
 
-        const std::string mapUrn = "aff4%3A%2F%2F99930a27-3e61-419e-8b6b-65a3a40bedcb";
+        auto hasSuffix = [](const std::string& value, const std::string& suffix) -> bool {
+            return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+        };
+        auto hasPrefix = [](const std::string& value, const std::string& prefix) -> bool {
+            return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+        };
+        auto countDataEntriesForBase = [&](const std::string& base) -> std::size_t {
+            const std::string dataPrefix = base + "/data/";
+            std::size_t count = 0;
+            for (const auto& kv : byName) {
+                if (hasPrefix(kv.first, dataPrefix)) ++count;
+            }
+            return count;
+        };
+
+        std::string mapUrn;
+        std::size_t selectedDataEntryCount = 0;
+        std::uint64_t selectedMapBytes = 0;
+        for (const auto& kv : byName) {
+            if (!hasSuffix(kv.first, "/map")) continue;
+            const std::string candidateBase = kv.first.substr(0, kv.first.size() - 4U);
+            if (byName.find(candidateBase + "/idx") == byName.end()) continue;
+            const std::size_t dataEntryCount = countDataEntriesForBase(candidateBase);
+            const std::uint64_t mapBytesForCandidate = kv.second.uncompressedSize;
+            if (mapUrn.empty() || dataEntryCount > selectedDataEntryCount ||
+                (dataEntryCount == selectedDataEntryCount && mapBytesForCandidate > selectedMapBytes)) {
+                mapUrn = candidateBase;
+                selectedDataEntryCount = dataEntryCount;
+                selectedMapBytes = mapBytesForCandidate;
+            }
+        }
+
         std::vector<unsigned char> idxBytes;
         std::vector<unsigned char> mapBytes;
         std::string err;
-        if (!readStoredEntry(mapUrn + "/idx", idxBytes, err)) {
+        if (mapUrn.empty()) {
+            finalStatus = "MAP_STREAM_NOT_FOUND";
+            finalNotes = "No AFF4 stream base with both /idx and /map entries was found in the central directory.";
+            add("direct_map_stream_select", finalStatus, 0, 0, 0, 0, -1, {}, {}, finalNotes);
+        } else if (!readStoredEntry(mapUrn + "/idx", idxBytes, err)) {
             finalStatus = "IDX_READ_FAILED";
             finalNotes = err;
             add("direct_idx_read", finalStatus, 0, 0, 0, 0, -1, {}, {}, err);
@@ -1770,6 +1805,8 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
             finalNotes = err;
             add("direct_map_read", finalStatus, 0, 0, 0, 0, -1, {}, {}, err);
         } else {
+            add("direct_map_stream_select", "SELECTED", 0, 0, 0, 0, static_cast<long long>(selectedDataEntryCount), {}, {},
+                "Selected AFF4 stream base " + mapUrn + " from central-directory entries with /idx, /map, and " + std::to_string(selectedDataEntryCount) + " /data entries.");
             mapEntryCount = mapBytes.size() / 28U;
             add("direct_idx_read", "READ_OK", 0, 0, 0, 0, static_cast<long long>(idxBytes.size()), {}, hexSampleBytes(idxBytes.data(), std::min<std::size_t>(idxBytes.size(), 64U)), "AFF4 map stream index was read directly from the ZIP payload.");
             add("direct_map_read", "READ_OK", 0, 0, 0, 0, static_cast<long long>(mapBytes.size()), {}, hexSampleBytes(mapBytes.data(), std::min<std::size_t>(mapBytes.size(), 64U)), "AFF4 map entries were read directly from the ZIP payload.");

@@ -1,5 +1,0 @@
-V1.6.7.1 macOS AFF4/APFS probe wrapper
-
-AFF4/APFS thin/full is not required for the iOS production release unless Windows build, shared schema initialization, or APFS/AFF4 validation checks regress.
-
-powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_7_1\scripts\Run-V1_6_7_1-macOS-AFF4-Probe-AndZip.ps1 -CleanOut

@@ -29,6 +29,13 @@ std::string exportStatusClean(std::string s) {
 }
 
 fs::path inferCaseDirFromExportPath(fs::path p) {
+    const fs::path original = p;
+    if (original.has_filename()) {
+        const std::string fn = original.filename().string();
+        if (fn == "CASE_REVIEW_SUMMARY.txt" || fn == "review_index.html" || fn == "investigator_dashboard.html" || fn == "UPLOAD_README.txt" || fn == "TARGETED_EXPORT_README.txt" || fn == "Export-SpotlightTargetedData.ps1" || fn == "Create-UploadZip.ps1") {
+            return original.parent_path();
+        }
+    }
     if (p.has_filename()) p = p.parent_path();
     while (!p.empty()) {
         if (p.filename().string() == "exports") return p.parent_path();
@@ -362,6 +369,8 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
     out << "- Full FFS inventory materialized: " << caseInfoValue(db, "materialize_ios_ffs_inventory", "not_recorded") << "\n";
     out << "- App DB parsed records materialized: " << caseInfoValue(db, "materialize_ios_app_db_records", "not_recorded") << "\n";
     out << "- Detailed machine-readable limits report: exports/parser_limits_and_suppression_summary.csv\n";
+    appendExportRunStatus(file, 96, "export_case_summary_counts_complete", "counts and run-limit sections written");
+    appendExportRunStatus(file, 96, "export_case_summary_top_fields_start", "top populated field summary");
     out << "\nTop populated fields\n";
     {
         auto stmt = db.prepare("SELECT field_name,row_count,populated_count,substr(sample_value,1,160) FROM field_inventory ORDER BY row_count DESC, field_name LIMIT 25");
@@ -374,6 +383,8 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
             out << "- " << fieldName << " rows=" << stmt.colText(1) << " populated=" << stmt.colText(2) << " sample=" << sample << "\n";
         }
     }
+    appendExportRunStatus(file, 96, "export_case_summary_top_fields_complete", "top populated field summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_bplist_start", "iOS bplist/NSKeyedArchiver summary");
     out << "\niOS bplist / NSKeyedArchiver discovery\n";
     if (tableExists(db, "vw_ios_spotlight_bplist_nskeyedarchiver_summary")) {
         auto stmt = db.prepare("SELECT bplist_detection_status,SUM(spotlight_record_count),MIN(earliest_last_updated_utc),MAX(latest_last_updated_utc),substr(MAX(max_context_sample),1,180) FROM vw_ios_spotlight_bplist_nskeyedarchiver_summary GROUP BY bplist_detection_status ORDER BY SUM(spotlight_record_count) DESC LIMIT 10");
@@ -386,6 +397,8 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
     } else {
         out << "- bplist/NSKeyedArchiver views not available\n";
     }
+    appendExportRunStatus(file, 96, "export_case_summary_bplist_complete", "iOS bplist/NSKeyedArchiver summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_string_probe_start", "iOS CoreSpotlight string probe category summary");
     out << "\niOS CoreSpotlight string probe categories\n";
     {
         auto stmt = db.prepare("SELECT probe_category,row_count FROM vw_ios_string_probe_category_summary ORDER BY row_count DESC, probe_category");
@@ -393,9 +406,17 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
         while (stmt.stepRow()) { any = true; out << "- " << stmt.colText(0) << " rows=" << stmt.colText(1) << "\n"; }
         if (!any) out << "- none decoded in this run\n";
     }
+    appendExportRunStatus(file, 96, "export_case_summary_string_probe_complete", "iOS CoreSpotlight string probe category summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_communication_start", "iOS Spotlight communication review category summary");
     out << "\niOS Spotlight communication review categories\n";
-    if (tableExists(db, "vw_ios_spotlight_communication_summary")) {
-        auto stmt = db.prepare("SELECT communication_context_type,review_priority,SUM(spotlight_record_count),MIN(earliest_spotlight_date_utc),MAX(latest_spotlight_date_utc),substr(MAX(max_context_sample),1,160) FROM vw_ios_spotlight_communication_summary GROUP BY communication_context_type,review_priority ORDER BY MIN(review_priority_sort),SUM(spotlight_record_count) DESC LIMIT 20");
+    const bool hasCachedCommunicationSummary = tableExists(db, "temp_export_ios_communication_summary");
+    const bool hasCommunicationSummaryView = tableExists(db, "vw_ios_spotlight_communication_summary");
+    if (hasCachedCommunicationSummary || hasCommunicationSummaryView) {
+        appendExportRunStatus(file, 96, "export_case_summary_communication_source", hasCachedCommunicationSummary ? "source=temp_export_ios_communication_summary" : "source=vw_ios_spotlight_communication_summary");
+        const char* communicationSummarySql = hasCachedCommunicationSummary
+            ? "SELECT communication_context_type,review_priority,SUM(spotlight_record_count),MIN(earliest_spotlight_date_utc),MAX(latest_spotlight_date_utc),substr(MAX(max_context_sample),1,160) FROM temp_export_ios_communication_summary GROUP BY communication_context_type,review_priority ORDER BY MIN(review_priority_sort),SUM(spotlight_record_count) DESC LIMIT 20"
+            : "SELECT communication_context_type,review_priority,SUM(spotlight_record_count),MIN(earliest_spotlight_date_utc),MAX(latest_spotlight_date_utc),substr(MAX(max_context_sample),1,160) FROM vw_ios_spotlight_communication_summary GROUP BY communication_context_type,review_priority ORDER BY MIN(review_priority_sort),SUM(spotlight_record_count) DESC LIMIT 20";
+        auto stmt = db.prepare(communicationSummarySql);
         bool any = false;
         while (stmt.stepRow()) {
             any = true;
@@ -405,23 +426,30 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
     } else {
         out << "- communication summary view not available\n";
     }
+    appendExportRunStatus(file, 96, "export_case_summary_communication_complete", "iOS Spotlight communication review category summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_top_date_fields_start", "top date field summary");
     out << "\nTop date fields\n";
     {
         auto stmt = db.prepare("SELECT field_name,COUNT(*) AS row_count,COUNT(DISTINCT source_id || '|' || store_guid || '|' || source_db || '|' || inode_num || '|' || COALESCE(store_id,'')) AS record_count,MIN(COALESCE(NULLIF(parsed_utc,''),field_value)),MAX(COALESCE(NULLIF(parsed_utc,''),field_value)) FROM raw_date_candidates GROUP BY field_name ORDER BY row_count DESC, field_name LIMIT 25");
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " rows=" << stmt.colText(1) << " records=" << stmt.colText(2) << " range=" << stmt.colText(3) << " to " << stmt.colText(4) << "\n";
     }
+    appendExportRunStatus(file, 96, "export_case_summary_top_date_fields_complete", "top date field summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_top_content_types_start", "top content type summary");
     out << "\nTop content types\n";
     {
         auto stmt = db.prepare("SELECT COALESCE(NULLIF(content_type,''),'(blank)') AS content_type, COUNT(*) AS c FROM artifacts GROUP BY COALESCE(NULLIF(content_type,''),'(blank)') ORDER BY c DESC, content_type LIMIT 25");
         while (stmt.stepRow()) out << "- " << stmt.colText(0) << " count=" << stmt.colText(1) << "\n";
     }
+    appendExportRunStatus(file, 96, "export_case_summary_top_content_types_complete", "top content type summary written");
+    appendExportRunStatus(file, 96, "export_case_summary_limitations_start", "limitations section");
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.41.1 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.72 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";
     out << "- iOS CoreSpotlight formal property names, content_type values, and full path/display-name mapping remain incomplete unless explicitly decoded; generic string probe rows are currently the primary iOS content-bearing output.\n";
     out << "- iOS Last_Updated values are index/update timing indicators and must not be reported as user file opening or usage without supporting decoded fields.\n";
+    appendExportRunStatus(file, 96, "export_case_summary_limitations_complete", "limitations section written");
     log.info("Case review summary written: " + pathString(file));
 }
 
@@ -564,8 +592,15 @@ void writeReviewIndex(const fs::path& file, Logger& log) {
 }
 
 bool tableExists(CaseDatabase& db, const std::string& tableName) {
-    auto stmt = db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type IN ('table','view') AND name=?");
+    auto stmt = db.prepare(R"SQL(
+SELECT SUM(found) FROM (
+  SELECT COUNT(*) AS found FROM sqlite_master WHERE type IN ('table','view') AND name=?
+  UNION ALL
+  SELECT COUNT(*) AS found FROM sqlite_temp_master WHERE type IN ('table','view') AND name=?
+)
+)SQL");
     stmt.bind(1, tableName);
+    stmt.bind(2, tableName);
     return stmt.stepRow() && stmt.colInt64(0) > 0;
 }
 
@@ -574,6 +609,220 @@ long long tableRowCount(CaseDatabase& db, const std::string& tableName) {
     return scalarInt64(db, "SELECT COUNT(*) FROM " + sqlQuoteIdentifier(tableName));
 }
 
+
+bool prepareThinIosExportCaches(CaseDatabase& db, const fs::path& exportDir, Logger& log) {
+    try {
+        if (!tableExists(db, "vw_ios_spotlight_communication_record_review") ||
+            !tableExists(db, "vw_ios_spotlight_message_body_review") ||
+            !tableExists(db, "vw_ios_spotlight_message_media_review") ||
+            !tableExists(db, "vw_ios_spotlight_text_context_review")) {
+            appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_cache_skipped", "required iOS Spotlight review views not present");
+            return false;
+        }
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_cache_prepare_start", "materializing repeated iOS communication/text/message/timeline export inputs");
+        log.info("Preparing thin iOS export caches for repeated communication/text/message/timeline exports.");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_communication_record_review");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_communication_summary");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_entity_summary");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_message_text_review");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_text_context_review");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_message_body_review");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_message_media_review");
+        db.exec("DROP TABLE IF EXISTS temp_export_ios_normalized_timeline");
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_communication_record_cache_start", "source=vw_ios_spotlight_communication_record_review");
+        db.exec("CREATE TEMP TABLE temp_export_ios_communication_record_review AS SELECT * FROM vw_ios_spotlight_communication_record_review");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_comm_date ON temp_export_ios_communication_record_review(review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_comm_group ON temp_export_ios_communication_record_review(communication_context_type, review_priority, review_priority_sort, bundle_id, domain_identifier, message_service, content_type)");
+        const long long commRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_communication_record_review");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_communication_record_cache_complete", "rows=" + std::to_string(commRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_communication_summary_cache_start", "source=temp communication record review");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_export_ios_communication_summary AS
+SELECT communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       COUNT(NULLIF(best_title_or_name,'')) AS rows_with_title_or_name,
+       COUNT(NULLIF(investigator_visible_text,'')) AS rows_with_investigator_visible_text,
+       COUNT(NULLIF(description_or_snippet,'')) AS rows_with_description_or_snippet,
+       COUNT(NULLIF(attachment_or_media_path,'')) AS rows_with_attachment_or_media_path,
+       COUNT(NULLIF(url_or_content_reference,'')) AS rows_with_url_or_content_reference,
+       COUNT(NULLIF(phone_or_callback,'')) AS rows_with_phone_or_callback,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''),NULLIF(native_probe_context_sample,''))),1,1000) AS min_context_sample,
+       substr(MAX(COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(description_or_snippet,''),NULLIF(spotlight_text_context_sample,''),NULLIF(native_probe_context_sample,''))),1,1000) AS max_context_sample,
+       'Record-centric summary of communication-relevant Spotlight/CoreSpotlight records. Counts are Spotlight records, not live app database records.' AS interpretation_note
+FROM temp_export_ios_communication_record_review
+GROUP BY communication_context_type,review_priority,review_priority_sort,bundle_id,domain_identifier,message_service,content_type
+)SQL");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_comm_summary_order ON temp_export_ios_communication_summary(review_priority_sort, spotlight_record_count DESC, communication_context_type)");
+        const long long commSummaryRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_communication_summary");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_communication_summary_cache_complete", "rows=" + std::to_string(commSummaryRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_message_text_cache_start", "source=temp communication record review");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_export_ios_message_text_review AS
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
+       message_domain_handle_or_chat,best_title_or_name,investigator_visible_text,description_or_snippet,snippet,account_identifier,message_service,
+       phone_or_callback,callback_url,url_or_content_reference,attachment_or_media_path,message_identifier,mailbox_or_thread,mail_participants,
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,interpretation_note,validation_locator
+FROM temp_export_ios_communication_record_review
+WHERE communication_context_type IN ('APPLE_MESSAGES_SMS_RCS_IMESSAGE','APPLE_MAIL_OR_EMAIL','PHONE_OR_FACETIME_CALL')
+   OR communication_context_type LIKE '%WHATSAPP%'
+   OR communication_context_type LIKE '%SIGNAL%'
+   OR communication_context_type LIKE '%TELEGRAM%'
+   OR communication_context_type IN ('SPOTLIGHT_MESSAGE_OR_ATTACHMENT_TEXT_PROBE','SPOTLIGHT_MAIL_OR_ACCOUNT_TEXT_PROBE')
+)SQL");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_msg_text_date ON temp_export_ios_message_text_review(review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC)");
+        const long long msgTextRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_message_text_review");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_message_text_cache_complete", "rows=" + std::to_string(msgTextRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_text_context_cache_start", "source=vw_ios_spotlight_text_context_review");
+        db.exec("CREATE TEMP TABLE temp_export_ios_text_context_review AS SELECT * FROM vw_ios_spotlight_text_context_review");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_text_context_priority ON temp_export_ios_text_context_review(review_priority_sort, last_updated_utc DESC, raw_record_id DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_text_context_group ON temp_export_ios_text_context_review(text_context_category, review_priority, review_priority_sort)");
+        const long long textContextRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_text_context_review");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_text_context_cache_complete", "rows=" + std::to_string(textContextRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_message_body_cache_start", "source=vw_ios_spotlight_message_body_review");
+        db.exec("CREATE TEMP TABLE temp_export_ios_message_body_review AS SELECT * FROM vw_ios_spotlight_message_body_review");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_msg_body_date ON temp_export_ios_message_body_review(spotlight_date_utc DESC, raw_record_id DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_msg_body_noise ON temp_export_ios_message_body_review(noise_hint, spotlight_date_utc DESC, raw_record_id DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_msg_body_group ON temp_export_ios_message_body_review(communication_context_type, bundle_id, content_type, body_review_bucket, noise_hint)");
+        const long long bodyRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_message_body_review");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 91, "export_thin_ios_message_body_cache_complete", "rows=" + std::to_string(bodyRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 91, "export_thin_ios_message_media_cache_start", "source=temp communication record review");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_export_ios_message_media_review AS
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc,spotlight_date_source_field,communication_context_type,review_priority,review_priority_sort,content_type,bundle_id,domain_identifier,
+       saved_from_app,best_title_or_name,investigator_visible_text,description_or_snippet,attachment_or_media_path,url_or_content_reference,
+       native_probe_context_count,native_probe_context_sample,spotlight_text_context_sample,validation_locator,
+       'Media/photo/video Spotlight record with message-related saved-from-app or attachment context; review as message-adjacent media, not as a direct message body unless corroborated.' AS interpretation_note
+FROM temp_export_ios_communication_record_review
+WHERE communication_context_type='MEDIA_SAVED_OR_SHARED_FROM_MESSAGES'
+   OR COALESCE(saved_from_app,'')<>''
+   OR COALESCE(attachment_or_media_path,'')<>''
+)SQL");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_msg_media_date ON temp_export_ios_message_media_review(spotlight_date_utc DESC, raw_record_id DESC)");
+        const long long mediaRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_message_media_review");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 91, "export_thin_ios_message_media_cache_complete", "rows=" + std::to_string(mediaRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 91, "export_thin_ios_normalized_timeline_cache_start", "source=temp message/body/media review");
+        db.exec(R"SQL(
+CREATE TEMP TABLE temp_export_ios_normalized_timeline AS
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc AS event_time_utc,
+       'Spotlight Index/Record Date' AS event_type,
+       spotlight_date_source_field AS source_field,
+       communication_context_type AS review_category,
+       COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(investigator_visible_text,''),NULLIF(spotlight_text_context_sample,'')) AS event_summary,
+       message_domain_handle_or_chat AS contact_or_thread,
+       bundle_id,content_type,validation_locator,
+       CASE WHEN spotlight_date_utc>(SELECT COALESCE(MAX(value),'') FROM case_info WHERE key='created_utc') THEN 'DATE_AFTER_PARSE_RUN_REVIEW'
+            WHEN spotlight_date_utc<>'' AND spotlight_date_utc<'2010-01-01T00:00:00Z' THEN 'UNUSUALLY_OLD_DATE_REVIEW'
+            ELSE 'NO_BASIC_DATE_ANOMALY' END AS date_anomaly_flag,
+       'Normalized iOS Spotlight timeline row. Event type reflects Spotlight/index date provenance, not necessarily user action unless supported by message/content context.' AS interpretation_note
+FROM temp_export_ios_message_body_review
+WHERE COALESCE(spotlight_date_utc,'')<>''
+UNION ALL
+SELECT raw_record_id,source_id,store_guid,source_db,spotlight_inode_or_object_id,spotlight_store_id,parent_inode_num,
+       spotlight_date_utc AS event_time_utc,
+       'Spotlight Message Media/Attachment Reference' AS event_type,
+       spotlight_date_source_field AS source_field,
+       communication_context_type AS review_category,
+       COALESCE(NULLIF(investigator_visible_text,''),NULLIF(best_title_or_name,''),NULLIF(attachment_or_media_path,''),NULLIF(url_or_content_reference,''),NULLIF(spotlight_text_context_sample,'')) AS event_summary,
+       domain_identifier AS contact_or_thread,
+       bundle_id,content_type,validation_locator,
+       CASE WHEN spotlight_date_utc>(SELECT COALESCE(MAX(value),'') FROM case_info WHERE key='created_utc') THEN 'DATE_AFTER_PARSE_RUN_REVIEW'
+            WHEN spotlight_date_utc<>'' AND spotlight_date_utc<'2010-01-01T00:00:00Z' THEN 'UNUSUALLY_OLD_DATE_REVIEW'
+            ELSE 'NO_BASIC_DATE_ANOMALY' END AS date_anomaly_flag,
+       'Normalized iOS Spotlight media/attachment timeline row. Review attachment/path context before treating as message content.' AS interpretation_note
+FROM temp_export_ios_message_media_review
+WHERE COALESCE(spotlight_date_utc,'')<>''
+)SQL");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_norm_timeline_date ON temp_export_ios_normalized_timeline(event_time_utc DESC, raw_record_id DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_norm_timeline_group ON temp_export_ios_normalized_timeline(date_anomaly_flag, event_type, review_category)");
+        const long long timelineRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_normalized_timeline");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 92, "export_thin_ios_normalized_timeline_cache_complete", "rows=" + std::to_string(timelineRows));
+
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 92, "export_thin_ios_entity_summary_cache_start", "source=human_text/date/ffs/app link views");
+        const std::string entitySummarySql = std::string(R"SQL(
+DROP TABLE IF EXISTS temp_export_ios_entity_summary;
+CREATE TEMP TABLE temp_export_ios_entity_summary AS
+WITH entity_rows AS (
+  SELECT CASE
+           WHEN v.human_text_category IN ('WEB_OR_URL','MEETING_OR_CONFERENCE','CALENDAR_OR_INVITATION') THEN 'URL_OR_WEB_REFERENCE'
+           WHEN v.human_text_category='FILE_PATH_OR_ATTACHMENT' THEN 'FILE_OR_ATTACHMENT_REFERENCE'
+           WHEN v.human_text_category='EMAIL_OR_ACCOUNT_TEXT' THEN 'ACCOUNT_OR_EMAIL_REFERENCE'
+           WHEN v.human_text_category IN ('WHATSAPP_TEXT_OR_REFERENCE','SIGNAL_TEXT_OR_REFERENCE','TELEGRAM_TEXT_OR_REFERENCE') THEN 'COMMUNICATION_APP_REFERENCE'
+           WHEN v.human_text_category LIKE '%MESSAGE%' THEN 'MESSAGE_OR_COMMUNICATION_TEXT'
+           ELSE 'OTHER_SPOTLIGHT_TEXT_REFERENCE'
+         END AS entity_type,
+         v.human_text_category,
+         v.review_priority,
+         v.store_guid,
+         v.source_db,
+         v.field_name AS spotlight_value_source_field,
+         CASE
+           WHEN lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%creation%' OR lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%created%' THEN 'created_date_candidate'
+           WHEN lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%modification%' OR lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%modified%' THEN 'modified_date_candidate'
+           WHEN lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%access%' THEN 'accessed_date_candidate'
+           WHEN lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%open%' OR lower(COALESCE(dp.spotlight_date_source_fields,dp.spotlight_date_source_field,'')) LIKE '%used%' THEN 'opened_or_used_date_candidate'
+           WHEN lower(COALESCE(dp.spotlight_date_source_field,''))='last_updated' THEN 'metadata_seen_or_index_updated'
+           ELSE 'unclassified_spotlight_date_candidate'
+         END AS spotlight_date_semantic_class,
+         v.raw_record_id,
+         CASE
+           WHEN v.human_text_category IN ('WEB_OR_URL','MEETING_OR_CONFERENCE','CALENDAR_OR_INVITATION') AND instr(lower(COALESCE(v.readable_text_sample,'')),'https://')>0 THEN substr(lower(v.readable_text_sample),instr(lower(v.readable_text_sample),'https://'),512)
+           WHEN v.human_text_category IN ('WEB_OR_URL','MEETING_OR_CONFERENCE','CALENDAR_OR_INVITATION') AND instr(lower(COALESCE(v.readable_text_sample,'')),'http://')>0 THEN substr(lower(v.readable_text_sample),instr(lower(v.readable_text_sample),'http://'),512)
+           WHEN v.human_text_category IN ('WEB_OR_URL','MEETING_OR_CONFERENCE','CALENDAR_OR_INVITATION') AND instr(lower(COALESCE(v.readable_text_sample,'')),'www.')>0 THEN substr(lower(v.readable_text_sample),instr(lower(v.readable_text_sample),'www.'),512)
+           WHEN v.human_text_category='FILE_PATH_OR_ATTACHMENT' THEN replace(replace(replace(replace(lower(COALESCE(v.readable_text_sample,'')),'file://',''),'<',''),'>',''),'\','/')
+           ELSE trim(lower(COALESCE(v.readable_text_sample,'')))
+         END AS normalized_entity_value,
+         dp.spotlight_date_utc,
+         COALESCE(f.residency_status,'NO_FFS_LINK_CONTEXT') AS ffs_residency_status,
+         COALESCE(a.app_db_link_status,'NO_APP_DB_LINK_CONTEXT') AS app_db_link_status)SQL") + R"SQL(
+  FROM vw_ios_spotlight_human_text_values v
+  LEFT JOIN vw_ios_spotlight_date_provenance dp ON dp.raw_record_id=v.raw_record_id
+  LEFT JOIN vw_ios_spotlight_to_ffs_object_links f ON f.reference_id=v.raw_kv_id
+  LEFT JOIN vw_ios_spotlight_to_app_db_record_links a ON a.candidate_id=v.raw_kv_id
+)
+SELECT entity_type,human_text_category,review_priority,store_guid,source_db,spotlight_value_source_field,spotlight_date_semantic_class,
+       COUNT(*) AS entity_row_count,
+       COUNT(DISTINCT raw_record_id) AS distinct_spotlight_record_count,
+       COUNT(DISTINCT normalized_entity_value) AS distinct_normalized_entity_count,
+       SUM(CASE WHEN ffs_residency_status='PRESENT_AS_FILE_IN_FFS' THEN 1 ELSE 0 END) AS ffs_present_context_count,
+       SUM(CASE WHEN app_db_link_status LIKE 'PRESENT%' OR app_db_link_status LIKE '%PRESENT%' THEN 1 ELSE 0 END) AS app_db_present_context_count,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       MIN(substr(normalized_entity_value,1,240)) AS min_sample_entity,
+       MAX(substr(normalized_entity_value,1,240)) AS max_sample_entity,
+       'Spotlight entity summary. Counts are derived from recovered CoreSpotlight text/probe values and their Spotlight date provenance; app/FFS context is only supporting context.' AS interpretation_note
+FROM entity_rows
+GROUP BY entity_type,human_text_category,review_priority,store_guid,source_db,spotlight_value_source_field,spotlight_date_semantic_class;
+)SQL";
+        db.exec(entitySummarySql);
+        db.exec("CREATE INDEX IF NOT EXISTS idx_temp_export_ios_entity_summary_order ON temp_export_ios_entity_summary(entity_row_count DESC, entity_type, store_guid, spotlight_value_source_field)");
+        const long long entityRows = scalarInt64(db, "SELECT COUNT(*) FROM temp_export_ios_entity_summary");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 92, "export_thin_ios_entity_summary_cache_complete", "rows=" + std::to_string(entityRows));
+        return true;
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Thin iOS export cache preparation failed; falling back to source views: ") + ex.what());
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_cache_failed", ex.what());
+        try { db.exec("DROP TABLE IF EXISTS temp_export_ios_communication_record_review; DROP TABLE IF EXISTS temp_export_ios_communication_summary; DROP TABLE IF EXISTS temp_export_ios_message_text_review; DROP TABLE IF EXISTS temp_export_ios_text_context_review; DROP TABLE IF EXISTS temp_export_ios_communication_record_review; DROP TABLE IF EXISTS temp_export_ios_communication_summary; DROP TABLE IF EXISTS temp_export_ios_message_text_review; DROP TABLE IF EXISTS temp_export_ios_text_context_review; DROP TABLE IF EXISTS temp_export_ios_message_body_review; DROP TABLE IF EXISTS temp_export_ios_message_media_review; DROP TABLE IF EXISTS temp_export_ios_normalized_timeline; DROP TABLE IF EXISTS temp_export_ios_entity_summary;"); } catch (...) {}
+        return false;
+    } catch (...) {
+        log.warn("Thin iOS export cache preparation failed; falling back to source views.");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 90, "export_thin_ios_cache_failed", "unknown exception");
+        try { db.exec("DROP TABLE IF EXISTS temp_export_ios_communication_record_review; DROP TABLE IF EXISTS temp_export_ios_communication_summary; DROP TABLE IF EXISTS temp_export_ios_message_text_review; DROP TABLE IF EXISTS temp_export_ios_text_context_review; DROP TABLE IF EXISTS temp_export_ios_communication_record_review; DROP TABLE IF EXISTS temp_export_ios_communication_summary; DROP TABLE IF EXISTS temp_export_ios_message_text_review; DROP TABLE IF EXISTS temp_export_ios_text_context_review; DROP TABLE IF EXISTS temp_export_ios_message_body_review; DROP TABLE IF EXISTS temp_export_ios_message_media_review; DROP TABLE IF EXISTS temp_export_ios_normalized_timeline; DROP TABLE IF EXISTS temp_export_ios_entity_summary;"); } catch (...) {}
+        return false;
+    }
+}
 
 std::string lowerAsciiCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -1481,37 +1730,263 @@ LIMIT 5000
         if (supportDataExport) exportQuery(db, exportDir / "ios_coreduet_interactionc_events.csv", "SELECT * FROM vw_ios_coreduet_interactionc_event_review ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_knowledgec_interaction_summary.csv", "SELECT * FROM vw_ios_knowledgec_interaction_summary ORDER BY event_count DESC, latest_event_utc DESC, app_bundle_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_knowledgec_interaction_events.csv", "SELECT * FROM vw_ios_knowledgec_interaction_events ORDER BY record_timestamp_utc DESC, ios_app_record_id", log);
-        exportQuery(db, exportDir / "investigator_super_timeline_sample.csv", "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category LIMIT 5000", log);
+        const bool thinIosExportCachesReady = thinIosExportProfile && prepareThinIosExportCaches(db, exportDir, log);
+        exportQuery(db, exportDir / "investigator_super_timeline_sample.csv", thinIosExportCachesReady ? R"SQL(
+SELECT event_time_utc AS event_utc,
+       'Spotlight Index' AS source_module,
+       review_category AS category,
+       event_type AS action,
+       bundle_id AS app_context,
+       contact_or_thread AS target,
+       event_summary AS details,
+       validation_locator AS provenance,
+       interpretation_note
+FROM temp_export_ios_normalized_timeline
+WHERE COALESCE(event_time_utc,'')<>''
+UNION ALL
+SELECT record_timestamp_utc AS event_utc,
+       'App Database' AS source_module,
+       database_category AS category,
+       record_category AS action,
+       app_hint AS app_context,
+       contact_or_participant AS target,
+       COALESCE(title,'') || CASE WHEN COALESCE(text_snippet,'')<>'' THEN ' | ' || text_snippet ELSE '' END AS details,
+       provenance,
+       'Parsed iOS app database activity row; availability depends on targeted app DB extraction/materialization settings.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE COALESCE(record_timestamp_utc,'')<>''
+UNION ALL
+SELECT parsed_utc AS event_utc,
+       'Usage Evidence' AS source_module,
+       'FILE_USAGE' AS category,
+       field_name AS action,
+       '' AS app_context,
+       inode_num AS target,
+       field_value AS details,
+       'artifact_id=' || COALESCE(CAST(artifact_id AS TEXT),'') || '; source_id=' || COALESCE(source_id,'') || '; store_guid=' || COALESCE(store_guid,'') AS provenance,
+       'Usage evidence row with original field provenance. Validate raw source field before inferring user activity.' AS interpretation_note
+FROM usage_evidence
+WHERE COALESCE(parsed_utc,'')<>''
+ORDER BY event_utc DESC, source_module, category
+LIMIT 5000
+)SQL" : "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "investigator_super_timeline.csv", "SELECT * FROM vw_investigator_super_timeline ORDER BY event_utc DESC, source_module, category", log);
         exportQuery(db, exportDir / "ios_spotlight_field_coverage_summary.csv", "SELECT * FROM vw_ios_spotlight_field_coverage_summary ORDER BY value_row_count DESC, store_guid, field_name", log);
         exportQuery(db, exportDir / "ios_spotlight_text_category_summary.csv", "SELECT * FROM vw_ios_spotlight_text_category_summary ORDER BY text_value_count DESC, human_text_category", log);
-        exportQuery(db, exportDir / "ios_spotlight_text_context_priority_summary.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);
-        exportQuery(db, exportDir / "ios_spotlight_chat_app_attribution_summary.csv", "SELECT * FROM vw_ios_spotlight_chat_app_attribution_summary ORDER BY text_context_category, context_record_count DESC", log);
-        exportQuery(db, exportDir / "ios_spotlight_communication_summary.csv", "SELECT * FROM vw_ios_spotlight_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
-        exportQuery(db, exportDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_body_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_body_review ORDER BY noise_hint, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_user_focus_message_review_sample.csv", "SELECT * FROM vw_ios_spotlight_user_focus_message_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_contact_summary.csv", "SELECT * FROM vw_ios_spotlight_message_contact_summary ORDER BY noise_hint, spotlight_record_count DESC, latest_spotlight_date_utc DESC", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_contact_thread_detail_sample.csv", "SELECT * FROM vw_ios_spotlight_message_contact_thread_detail_sample ORDER BY CASE WHEN noise_hint='USER_REVIEW_CANDIDATE' THEN 0 ELSE 1 END, rows_with_extracted_message_text DESC, spotlight_record_count DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_body_focus_summary.csv", "SELECT * FROM vw_ios_spotlight_message_body_focus_summary ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_text_context_priority_summary.csv", R"SQL(
+SELECT text_context_category,review_priority,review_priority_sort,
+       COUNT(*) AS text_context_record_count,
+       COUNT(DISTINCT source_id || ':' || store_guid || ':' || COALESCE(spotlight_inode_or_object_id,'') || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       COUNT(NULLIF(last_updated_utc,'')) AS rows_with_last_updated,
+       MIN(last_updated_utc) AS earliest_last_updated_utc,
+       MAX(last_updated_utc) AS latest_last_updated_utc,
+       substr(MIN(spotlight_text_context_sample),1,1000) AS min_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,1000) AS max_text_context_sample,
+       MIN(classification_evidence) AS classification_evidence,
+       MIN(text_context_reason) AS text_context_reason,
+       'Priority summary for compact same-record Spotlight text retained in normal iOS mode. Priorities are triage labels, not final Apple schema classifications.' AS interpretation_note
+FROM temp_export_ios_text_context_review
+GROUP BY text_context_category,review_priority,review_priority_sort
+ORDER BY review_priority_sort, text_context_record_count DESC
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_text_context_priority_summary.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_chat_app_attribution_summary.csv", R"SQL(
+SELECT text_context_category,review_priority,classification_evidence,
+       COUNT(*) AS context_record_count,
+       COUNT(DISTINCT source_id || ':' || store_guid || ':' || COALESCE(spotlight_inode_or_object_id,'') || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       MIN(last_updated_utc) AS earliest_last_updated_utc,
+       MAX(last_updated_utc) AS latest_last_updated_utc,
+       substr(MIN(spotlight_text_context_sample),1,1000) AS min_text_context_sample,
+       substr(MAX(spotlight_text_context_sample),1,1000) AS max_text_context_sample,
+       MIN(text_context_reason) AS text_context_reason,
+       'V0_9_26 separates explicit chat-app bundle/domain/external-id attribution from plain keyword/link mentions so words like Signal Hill do not inflate Signal app evidence.' AS interpretation_note
+FROM temp_export_ios_text_context_review
+WHERE text_context_category IN ('WHATSAPP_APP_OR_CHAT_CONTEXT','SIGNAL_APP_OR_CHAT_CONTEXT','TELEGRAM_APP_OR_CHAT_CONTEXT','WHATSAPP_LINK_OR_TEXT_MENTION','TELEGRAM_LINK_OR_TEXT_MENTION')
+GROUP BY text_context_category,review_priority,classification_evidence
+ORDER BY text_context_category, context_record_count DESC
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_chat_app_attribution_summary.csv", "SELECT * FROM vw_ios_spotlight_chat_app_attribution_summary ORDER BY text_context_category, context_record_count DESC", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_communication_summary.csv", "SELECT * FROM temp_export_ios_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
+        else exportQuery(db, exportDir / "ios_spotlight_communication_summary.csv", "SELECT * FROM vw_ios_spotlight_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM temp_export_ios_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM temp_export_ios_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_body_review_sample.csv", "SELECT * FROM temp_export_ios_message_body_review ORDER BY noise_hint, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_body_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_body_review ORDER BY noise_hint, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_user_focus_message_review_sample.csv", R"SQL(
+SELECT * FROM temp_export_ios_message_body_review
+WHERE body_review_bucket NOT IN ('CONVERSATION_INDEX_RECORD_NO_BODY')
+  AND noise_hint='USER_REVIEW_CANDIDATE'
+  AND (COALESCE(extracted_message_text_or_subject,'')<>'' OR COALESCE(conversation_or_thread_title,'')<>'')
+ORDER BY spotlight_date_utc DESC, raw_record_id DESC
+LIMIT 5000
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_user_focus_message_review_sample.csv", "SELECT * FROM vw_ios_spotlight_user_focus_message_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_contact_summary.csv", R"SQL(
+WITH classified AS (
+  SELECT *, CASE
+    WHEN message_domain_handle_or_chat GLOB '[0-9][0-9][0-9][0-9][0-9]' OR message_domain_handle_or_chat GLOB '[0-9][0-9][0-9][0-9]' THEN 'SHORT_CODE_OR_MARKETING_HANDLE'
+    WHEN message_domain_handle_or_chat LIKE '+%' OR message_domain_handle_or_chat LIKE 'SMS;+;%' OR message_domain_handle_or_chat LIKE 'iMessage;%;+%' THEN 'PHONE_NUMBER_OR_HANDLE'
+    WHEN LOWER(message_domain_handle_or_chat) LIKE '%chat%' OR domain_identifier='chatDomain' THEN 'CHAT_OR_THREAD_IDENTIFIER'
+    WHEN message_domain_handle_or_chat LIKE '%@%' THEN 'EMAIL_OR_ACCOUNT_HANDLE'
+    WHEN COALESCE(message_domain_handle_or_chat,'')='' THEN 'NO_HANDLE_IN_COMPACT_CONTEXT'
+    ELSE 'OTHER_HANDLE_OR_DOMAIN' END AS handle_bucket
+  FROM temp_export_ios_message_body_review
+), summarized AS (
+  SELECT communication_context_type,bundle_id,content_type,body_review_bucket,noise_hint,handle_bucket,
+         COUNT(*) AS spotlight_record_count,
+         COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+         SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_message_text,
+         SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_thread_or_snippet_text,
+         COUNT(DISTINCT NULLIF(message_domain_handle_or_chat,'')) AS distinct_handle_or_thread_count,
+         MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+         MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+         substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(message_domain_handle_or_chat,''))),1,1200) AS min_message_sample,
+         substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(message_domain_handle_or_chat,''))),1,1200) AS max_message_sample
+  FROM classified
+  GROUP BY communication_context_type,bundle_id,content_type,body_review_bucket,noise_hint,handle_bucket
+)
+SELECT *, 'V0_9_32 compact contact/thread summary. This intentionally groups handles into buckets to avoid very large per-thread exports; use the detail sample or GUI record views for examples.' AS interpretation_note
+FROM summarized
+ORDER BY noise_hint, spotlight_record_count DESC, latest_spotlight_date_utc DESC
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_contact_summary.csv", "SELECT * FROM vw_ios_spotlight_message_contact_summary ORDER BY noise_hint, spotlight_record_count DESC, latest_spotlight_date_utc DESC", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_contact_thread_detail_sample.csv", R"SQL(
+SELECT communication_context_type,bundle_id,domain_identifier,message_domain_handle_or_chat,suggested_contact_name,conversation_or_thread_title,body_review_bucket,noise_hint,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_message_text,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(NULLIF(extracted_message_text_or_subject,'')),1,1200) AS min_message_sample,
+       substr(MAX(NULLIF(extracted_message_text_or_subject,'')),1,1200) AS max_message_sample,
+       'Bounded top contact/thread detail sample from Spotlight message body review. Counts are index rows, not live-app DB rows.' AS interpretation_note
+FROM temp_export_ios_message_body_review
+GROUP BY communication_context_type,bundle_id,domain_identifier,message_domain_handle_or_chat,suggested_contact_name,conversation_or_thread_title,body_review_bucket,noise_hint
+ORDER BY CASE WHEN noise_hint='USER_REVIEW_CANDIDATE' THEN 0 ELSE 1 END, rows_with_extracted_message_text DESC, spotlight_record_count DESC, latest_spotlight_date_utc DESC
+LIMIT 5000
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_contact_thread_detail_sample.csv", "SELECT * FROM vw_ios_spotlight_message_contact_thread_detail_sample ORDER BY CASE WHEN noise_hint='USER_REVIEW_CANDIDATE' THEN 0 ELSE 1 END, rows_with_extracted_message_text DESC, spotlight_record_count DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_body_focus_summary.csv", R"SQL(
+SELECT noise_hint,body_review_bucket,communication_context_type,bundle_id,content_type,
+       COUNT(*) AS spotlight_record_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_text,
+       SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_supporting_text,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS min_review_sample,
+       substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS max_review_sample,
+       'Compact summary of message/body review buckets. Use this first to triage user-facing message evidence before opening row-level samples.' AS interpretation_note
+FROM temp_export_ios_message_body_review
+GROUP BY noise_hint,body_review_bucket,communication_context_type,bundle_id,content_type
+ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_body_focus_summary.csv", "SELECT * FROM vw_ios_spotlight_message_body_focus_summary ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket", log);
         exportQuery(db, exportDir / "ios_spotlight_direct_user_message_review_sample.csv", "SELECT * FROM vw_ios_spotlight_direct_user_message_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_direct_user_message_thread_summary.csv", "SELECT * FROM vw_ios_spotlight_direct_user_message_thread_summary ORDER BY spotlight_message_record_count DESC, latest_spotlight_date_utc DESC", log);
-        exportQuery(db, exportDir / "ios_spotlight_timeline_month_summary.csv", "SELECT * FROM vw_ios_spotlight_timeline_month_summary ORDER BY event_month_utc DESC, timeline_event_count DESC", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_timeline_month_summary.csv", R"SQL(
+SELECT substr(event_time_utc,1,7) AS event_month_utc,review_category,event_type,bundle_id,content_type,date_anomaly_flag,
+       COUNT(*) AS timeline_event_count,
+       COUNT(DISTINCT raw_record_id) AS distinct_spotlight_record_count,
+       MIN(NULLIF(event_time_utc,'')) AS earliest_event_time_utc,
+       MAX(NULLIF(event_time_utc,'')) AS latest_event_time_utc,
+       substr(MIN(NULLIF(event_summary,'')),1,1200) AS min_event_sample,
+       substr(MAX(NULLIF(event_summary,'')),1,1200) AS max_event_sample,
+       'Monthly summary of normalized Spotlight timeline events. This is a triage surface for date ranges and anomaly buckets, not a replacement for row-level date provenance.' AS interpretation_note
+FROM temp_export_ios_normalized_timeline
+WHERE COALESCE(event_time_utc,'')<>''
+GROUP BY substr(event_time_utc,1,7),review_category,event_type,bundle_id,content_type,date_anomaly_flag
+ORDER BY event_month_utc DESC, timeline_event_count DESC
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_timeline_month_summary.csv", "SELECT * FROM vw_ios_spotlight_timeline_month_summary ORDER BY event_month_utc DESC, timeline_event_count DESC", log);
         exportQuery(db, exportDir / "ios_spotlight_investigator_overview.csv", "SELECT * FROM vw_ios_spotlight_investigator_overview ORDER BY review_order", log);
-        exportQuery(db, exportDir / "ios_spotlight_noise_reduction_summary.csv", "SELECT * FROM vw_ios_spotlight_noise_reduction_summary ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket", log);
-        exportQuery(db, exportDir / "ios_spotlight_normalized_timeline_sample.csv", "SELECT * FROM vw_ios_spotlight_normalized_timeline ORDER BY event_time_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_timeline_anomaly_summary.csv", "SELECT * FROM vw_ios_spotlight_timeline_anomaly_summary ORDER BY date_anomaly_flag, timeline_row_count DESC", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_noise_reduction_summary.csv", R"SQL(
+SELECT noise_hint,body_review_bucket,communication_context_type,
+       COUNT(*) AS spotlight_record_count,
+       SUM(CASE WHEN COALESCE(extracted_message_text_or_subject,'')<>'' THEN 1 ELSE 0 END) AS rows_with_extracted_text,
+       SUM(CASE WHEN COALESCE(conversation_or_thread_title,'')<>'' THEN 1 ELSE 0 END) AS rows_with_supporting_text,
+       MIN(NULLIF(spotlight_date_utc,'')) AS earliest_spotlight_date_utc,
+       MAX(NULLIF(spotlight_date_utc,'')) AS latest_spotlight_date_utc,
+       substr(MIN(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS min_sample,
+       substr(MAX(COALESCE(NULLIF(extracted_message_text_or_subject,''),NULLIF(conversation_or_thread_title,''),NULLIF(spotlight_text_context_sample,''))),1,1200) AS max_sample,
+       'Noise reduction summary is non-destructive. It helps triage conversation placeholders and likely marketing/short-code rows while keeping all Spotlight evidence available in the full review views.' AS interpretation_note
+FROM temp_export_ios_message_body_review
+GROUP BY noise_hint,body_review_bucket,communication_context_type
+ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_noise_reduction_summary.csv", "SELECT * FROM vw_ios_spotlight_noise_reduction_summary ORDER BY spotlight_record_count DESC, noise_hint, body_review_bucket", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_normalized_timeline_sample.csv", "SELECT * FROM temp_export_ios_normalized_timeline ORDER BY event_time_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_normalized_timeline_sample.csv", "SELECT * FROM vw_ios_spotlight_normalized_timeline ORDER BY event_time_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_timeline_anomaly_summary.csv", R"SQL(
+SELECT date_anomaly_flag,event_type,review_category,
+       COUNT(*) AS timeline_row_count,
+       COUNT(DISTINCT spotlight_inode_or_object_id || ':' || COALESCE(spotlight_store_id,'')) AS distinct_spotlight_object_count,
+       MIN(event_time_utc) AS earliest_event_utc,
+       MAX(event_time_utc) AS latest_event_utc,
+       substr(MIN(event_summary),1,1200) AS min_event_sample,
+       substr(MAX(event_summary),1,1200) AS max_event_sample,
+       'Basic anomaly summary for normalized iOS Spotlight timeline. Flags are triage indicators and require source-field validation.' AS interpretation_note
+FROM temp_export_ios_normalized_timeline
+GROUP BY date_anomaly_flag,event_type,review_category
+ORDER BY date_anomaly_flag, timeline_row_count DESC
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_timeline_anomaly_summary.csv", "SELECT * FROM vw_ios_spotlight_timeline_anomaly_summary ORDER BY date_anomaly_flag, timeline_row_count DESC", log);
         exportQuery(db, exportDir / "parser_diagnostics_summary.csv", "SELECT * FROM vw_parser_diagnostics_summary ORDER BY diagnostic_count DESC, diagnostic_source, diagnostic_category", log);
         exportQuery(db, exportDir / "parser_diagnostics_action_summary.csv", "SELECT * FROM vw_parser_diagnostics_action_summary ORDER BY CASE diagnostic_severity WHEN 'HIGH_VOLUME_NATIVE_ID_RANGE_GAP' THEN 0 WHEN 'HIGH_VOLUME_PARSER_DIAGNOSTIC' THEN 1 WHEN 'PARSER_GAP_REVIEW' THEN 2 ELSE 9 END, diagnostic_count DESC", log);
-        exportQuery(db, exportDir / "ios_spotlight_plaso_l2tcsv_timeline_sample.csv", "SELECT * FROM vw_ios_spotlight_plaso_l2tcsv_timeline_sample ORDER BY date DESC, time DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_case_quality_dashboard.csv", "SELECT * FROM vw_ios_spotlight_case_quality_dashboard ORDER BY quality_area, metric", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_plaso_l2tcsv_timeline_sample.csv", R"SQL(
+SELECT substr(event_time_utc,1,10) AS date,
+       substr(event_time_utc,12,8) AS time,
+       'UTC' AS timezone,
+       CASE WHEN event_type LIKE '%Created%' THEN '..CB' ELSE 'M...' END AS MACB,
+       'Spotlight' AS source,
+       'iOS CoreSpotlight' AS sourcetype,
+       event_type AS type,
+       '' AS user,
+       '' AS host,
+       substr(event_summary,1,80) AS short,
+       event_summary || ' | category=' || COALESCE(review_category,'') || ' | field=' || COALESCE(source_field,'') || ' | record=' || COALESCE(raw_record_id,'') AS desc,
+       '2' AS version,
+       COALESCE(contact_or_thread,'') AS filename,
+       COALESCE(spotlight_inode_or_object_id,'') AS inode,
+       'date_anomaly=' || COALESCE(date_anomaly_flag,'') || '; locator=' || COALESCE(validation_locator,'') AS notes,
+       'vestigant_spotlight_ios_normalized_timeline' AS format,
+       'bundle_id=' || COALESCE(bundle_id,'') || '; content_type=' || COALESCE(content_type,'') || '; store_guid=' || COALESCE(store_guid,'') AS extra
+FROM temp_export_ios_normalized_timeline
+WHERE COALESCE(event_time_utc,'')<>''
+ORDER BY event_time_utc DESC, raw_record_id DESC
+LIMIT 5000
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_plaso_l2tcsv_timeline_sample.csv", "SELECT * FROM vw_ios_spotlight_plaso_l2tcsv_timeline_sample ORDER BY date DESC, time DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_case_quality_dashboard.csv", R"SQL(
+SELECT 'case_summary' AS quality_area, 'raw_records' AS metric, CAST(COUNT(*) AS TEXT) AS value, 'Number of compact Spotlight/CoreSpotlight raw records in the case database.' AS interpretation_note FROM raw_records
+UNION ALL SELECT 'case_summary','compact_raw_key_values',CAST(COUNT(*) AS TEXT),'Compact persisted key/value rows; not a full raw-property dump in normal iOS mode.' FROM raw_key_values
+UNION ALL SELECT 'case_summary','compact_date_candidates',CAST(COUNT(*) AS TEXT),'Compact persisted date candidates used for timeline/date provenance.' FROM raw_date_candidates
+UNION ALL SELECT 'diagnostics','parser_diagnostic_rows',CAST(COALESCE(SUM(diagnostic_count),0) AS TEXT),'Visible parser failures/partial decode diagnostics. Review parser_diagnostics_action_summary for priority.' FROM vw_parser_diagnostics_summary WHERE diagnostic_source<>'native_decode_attempts'
+UNION ALL SELECT 'investigator_review','user_focus_message_rows',CAST(COUNT(*) AS TEXT),'Rows in user-focus Spotlight message review with compact extracted message/thread text.' FROM temp_export_ios_message_body_review WHERE body_review_bucket NOT IN ('CONVERSATION_INDEX_RECORD_NO_BODY') AND noise_hint='USER_REVIEW_CANDIDATE' AND (COALESCE(extracted_message_text_or_subject,'')<>'' OR COALESCE(conversation_or_thread_title,'')<>'')
+UNION ALL SELECT 'investigator_review','missing_from_ffs_candidates',CAST(COUNT(*) AS TEXT),'Spotlight path/reference candidates not matched in available FFS lookup.' FROM vw_ios_spotlight_missing_from_ffs_candidates
+ORDER BY quality_area, metric
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_case_quality_dashboard.csv", "SELECT * FROM vw_ios_spotlight_case_quality_dashboard ORDER BY quality_area, metric", log);
         exportQuery(db, exportDir / "parser_diagnostics_detail_sample.csv", "SELECT * FROM vw_parser_diagnostics_detail_sample ORDER BY diagnostic_source, diagnostic_row_id LIMIT 5000", log);
         exportQuery(db, exportDir / "case_provenance_summary.csv", "SELECT * FROM vw_case_provenance_summary ORDER BY provenance_scope, provenance_key", log);
-        exportQuery(db, exportDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM temp_export_ios_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_attachment_reference_review_sample.csv", "SELECT * FROM vw_ios_spotlight_attachment_reference_review ORDER BY spotlight_date_utc DESC, communication_context_type, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_high_value_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_high_value_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_high_value_text_context_review_sample.csv", R"SQL(
+SELECT * FROM temp_export_ios_text_context_review
+WHERE review_priority_sort <= 12
+   OR lower(COALESCE(source_field_name,'')) LIKE '%snippet%'
+   OR lower(COALESCE(source_field_name,'')) LIKE '%title%'
+   OR lower(COALESCE(source_field_name,'')) LIKE '%body%'
+   OR LENGTH(COALESCE(spotlight_text_context_sample,'')) >= 80
+ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC
+LIMIT 5000
+)SQL", log);
+        else exportQuery(db, exportDir / "ios_spotlight_high_value_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_high_value_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM temp_export_ios_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
+        else exportQuery(db, exportDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
         exportQuery(db, exportDir / "ios_spotlight_object_inode_diagnostic_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_diagnostic_summary ORDER BY raw_record_count DESC, object_count DESC, source_id, store_guid, object_record_bucket", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_object_inode_summary.csv", "SELECT * FROM vw_ios_spotlight_object_inode_summary ORDER BY raw_record_count DESC, raw_key_value_rows DESC, latest_last_updated_utc DESC, source_id, store_guid, spotlight_inode_or_object_id, spotlight_store_id", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_record_review.csv", "SELECT * FROM vw_ios_spotlight_record_review ORDER BY spotlight_review_priority, spotlight_date_utc DESC, raw_record_id", log);
@@ -1624,7 +2099,8 @@ LIMIT 5000
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_account_contact_reference_review.csv", "SELECT * FROM vw_ios_spotlight_account_contact_reference_review ORDER BY human_text_category, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);
         exportQuery(db, exportDir / "ios_spotlight_decode_gap_summary.csv", "SELECT * FROM vw_ios_spotlight_decode_gap_summary ORDER BY gap_record_count DESC, store_guid", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_spotlight_entity_review.csv", "SELECT * FROM vw_ios_spotlight_entity_review ORDER BY review_priority, entity_type, spotlight_date_utc DESC, raw_record_id, raw_kv_id", log);
-        exportQuery(db, exportDir / "ios_spotlight_entity_summary.csv", "SELECT * FROM vw_ios_spotlight_entity_summary ORDER BY entity_row_count DESC, entity_type, store_guid, spotlight_value_source_field", log);
+        if (thinIosExportCachesReady) exportQuery(db, exportDir / "ios_spotlight_entity_summary.csv", "SELECT * FROM temp_export_ios_entity_summary ORDER BY entity_row_count DESC, entity_type, store_guid, spotlight_value_source_field", log);
+        else exportQuery(db, exportDir / "ios_spotlight_entity_summary.csv", "SELECT * FROM vw_ios_spotlight_entity_summary ORDER BY entity_row_count DESC, entity_type, store_guid, spotlight_value_source_field", log);
         exportQuery(db, exportDir / "ios_spotlight_native_parser_targets.csv", "SELECT * FROM vw_ios_spotlight_native_parser_targets ORDER BY parser_priority, target_count DESC, parser_target_type, store_guid", log);
         exportQuery(db, exportDir / "ios_spotlight_dbstr_map_inventory.csv", "SELECT * FROM vw_ios_spotlight_dbstr_map_inventory ORDER BY store_guid, source_db, map_id", log);
         exportQuery(db, exportDir / "ios_spotlight_dictionary_coverage.csv", "SELECT * FROM vw_ios_spotlight_dictionary_coverage ORDER BY raw_record_count DESC, store_guid, source_db", log);
@@ -1646,14 +2122,24 @@ LIMIT 5000
         appendExportRunStatus(exportDir / "upload_samples" / "upload_samples_manifest.csv", 95, "export_upload_samples_start", "bounded upload samples");
         exportUploadSamples(db, exportDir / "upload_samples", log);
         appendExportRunStatus(exportDir / "upload_samples" / "upload_samples_manifest.csv", 96, "export_upload_samples_complete", "bounded upload samples complete");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_case_review_summary_start", "write CASE_REVIEW_SUMMARY.txt");
         writeCaseReviewSummary(db, exportDir.parent_path() / "CASE_REVIEW_SUMMARY.txt", log);
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_case_review_summary_complete", "CASE_REVIEW_SUMMARY.txt written");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_review_index_start", "write review_index.html");
         writeReviewIndex(exportDir.parent_path() / "review_index.html", log);
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_review_index_complete", "review_index.html written");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_investigator_dashboard_start", "write investigator_dashboard.html");
         writeInvestigatorDashboard(db, exportDir.parent_path() / "investigator_dashboard.html", log);
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_investigator_dashboard_complete", "investigator_dashboard.html written");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_readmes_scripts_start", "write upload/readme/helper scripts");
         writeUploadReadme(exportDir.parent_path(), log);
         writeTargetedExportReadme(exportDir.parent_path(), log);
         writeTargetedExportScript(exportDir.parent_path(), log);
         writeUploadZipScript(exportDir.parent_path(), log);
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_readmes_scripts_complete", "upload/readme/helper scripts written");
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_export_index_start", "write EXPORT_INDEX.csv files");
         writeExportIndexFile(exportDir / "EXPORT_INDEX.csv", exportDir, log); if (exportDir.has_parent_path()) writeExportIndexFile(exportDir.parent_path() / "EXPORT_INDEX.csv", exportDir, log);
+        appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 97, "export_finalization_export_index_complete", "EXPORT_INDEX.csv files written");
         appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 97, "export_complete", "profile=" + profile);
         return;
     }
@@ -2216,16 +2702,26 @@ UNION ALL SELECT 'orphan_deleted_candidates', COUNT(*) FROM orphaned_deleted_can
     } catch (...) {
         log.warn("Non-fatal upload sample export failure: unknown exception");
     }
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_case_review_summary_start", "write CASE_REVIEW_SUMMARY.txt");
     writeCaseReviewSummary(db, exportDir.parent_path() / "CASE_REVIEW_SUMMARY.txt", log);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_case_review_summary_complete", "CASE_REVIEW_SUMMARY.txt written");
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_review_index_start", "write review_index.html");
     writeReviewIndex(exportDir.parent_path() / "review_index.html", log);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_review_index_complete", "review_index.html written");
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_investigator_dashboard_start", "write investigator_dashboard.html");
     writeInvestigatorDashboard(db, exportDir.parent_path() / "investigator_dashboard.html", log);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_investigator_dashboard_complete", "investigator_dashboard.html written");
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_readmes_scripts_start", "write upload/readme/helper scripts");
     writeUploadReadme(exportDir.parent_path(), log);
     writeTargetedExportReadme(exportDir.parent_path(), log);
     writeTargetedExportScript(exportDir.parent_path(), log);
     writeUploadZipScript(exportDir.parent_path(), log);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_readmes_scripts_complete", "upload/readme/helper scripts written");
 
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 96, "export_finalization_export_index_start", "write EXPORT_INDEX.csv files");
     writeExportIndexFile(exportDir / "EXPORT_INDEX.csv", exportDir, log);
     if (exportDir.has_parent_path()) writeExportIndexFile(exportDir.parent_path() / "EXPORT_INDEX.csv", exportDir, log);
+    appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 97, "export_finalization_export_index_complete", "EXPORT_INDEX.csv files written");
     appendExportRunStatus(exportDir / "EXPORT_INDEX.csv", 97, "export_complete", "profile=" + profile);
     log.info("SQLite review exports written to: " + pathString(exportDir));
 }
@@ -2283,6 +2779,33 @@ void SqliteExporter::exportUploadSamples(CaseDatabase& db, const fs::path& sampl
     std::ofstream manifest(ioPath(sampleDir / "upload_samples_manifest.csv"), std::ios::binary);
     if (!manifest) throw std::runtime_error("Unable to write upload_samples_manifest.csv");
     manifest << "sample_name,source_table,total_table_rows,exported_row_limit,notes\n";
+
+    auto countCsvDataRows = [](const fs::path& csvPath) -> long long {
+        std::ifstream in(ioPath(csvPath), std::ios::binary);
+        if (!in) return -1;
+        long long rows = -1; // subtract header if present
+        std::string line;
+        while (std::getline(in, line)) ++rows;
+        return rows < 0 ? 0 : rows;
+    };
+
+    auto reuseFullExportAsSample = [&](const std::string& fullExportName,
+                                       const std::string& sampleName,
+                                       const std::string& sourceView,
+                                       const std::string& exportedLimit,
+                                       const std::string& notes) -> bool {
+        const fs::path fullExport = sampleDir.parent_path() / fullExportName;
+        const fs::path samplePath = sampleDir / sampleName;
+        std::error_code ec;
+        if (!fs::is_regular_file(fullExport, ec)) return false;
+        fs::copy_file(ioPath(fullExport), ioPath(samplePath), fs::copy_options::overwrite_existing, ec);
+        if (ec) return false;
+        const long long rowCount = countCsvDataRows(samplePath);
+        manifest << csvEscape(sampleName) << ',' << csvEscape(sourceView) << ',' << rowCount << ',' << csvEscape(exportedLimit) << ',' << csvEscape(notes + " (reused already-written export; V1.6.72 avoids duplicate SQL materialization)") << "\n";
+        appendExportRunStatus(samplePath, 95, "export_upload_sample_reuse", sampleName + " from " + fullExportName + " rows=" + std::to_string(rowCount));
+        log.info("Reused existing export for upload sample: " + pathString(fullExport) + " -> " + pathString(samplePath));
+        return true;
+    };
 
     for (const auto& table : tables) {
         if (!tableExists(db, table)) continue;
@@ -2465,40 +2988,58 @@ LIMIT 5000
         manifest << "ios_string_probe_category_summary_sample.csv,vw_ios_string_probe_category_summary," << tableRowCount(db, "vw_ios_string_probe_category_summary") << "," << FocusSampleLimit << ",iOS string-probe category counts\n";
     }
     if (tableExists(db, "vw_ios_spotlight_text_context_priority_summary")) {
-        exportQuery(db, sampleDir / "ios_spotlight_text_context_priority_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);
-        manifest << "ios_spotlight_text_context_priority_summary_sample.csv,vw_ios_spotlight_text_context_priority_summary," << tableRowCount(db, "vw_ios_spotlight_text_context_priority_summary") << ",ALL,priority/category summary for same-record compact Spotlight text context\n";
+        if (!reuseFullExportAsSample("ios_spotlight_text_context_priority_summary.csv", "ios_spotlight_text_context_priority_summary_sample.csv", "vw_ios_spotlight_text_context_priority_summary", "ALL", "priority/category summary for same-record compact Spotlight text context")) {
+            exportQuery(db, sampleDir / "ios_spotlight_text_context_priority_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_priority_summary ORDER BY review_priority_sort, text_context_record_count DESC", log);
+            manifest << "ios_spotlight_text_context_priority_summary_sample.csv,vw_ios_spotlight_text_context_priority_summary," << tableRowCount(db, "vw_ios_spotlight_text_context_priority_summary") << "," << "ALL" << "," << csvEscape("priority/category summary for same-record compact Spotlight text context") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_chat_app_attribution_summary")) {
-        exportQuery(db, sampleDir / "ios_spotlight_chat_app_attribution_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_chat_app_attribution_summary ORDER BY text_context_category, context_record_count DESC", log);
-        manifest << "ios_spotlight_chat_app_attribution_summary_sample.csv,vw_ios_spotlight_chat_app_attribution_summary," << tableRowCount(db, "vw_ios_spotlight_chat_app_attribution_summary") << ",ALL,chat app attribution vs text/link mention summary\n";
+        if (!reuseFullExportAsSample("ios_spotlight_chat_app_attribution_summary.csv", "ios_spotlight_chat_app_attribution_summary_sample.csv", "vw_ios_spotlight_chat_app_attribution_summary", "ALL", "chat app attribution vs text/link mention summary")) {
+            exportQuery(db, sampleDir / "ios_spotlight_chat_app_attribution_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_chat_app_attribution_summary ORDER BY text_context_category, context_record_count DESC", log);
+            manifest << "ios_spotlight_chat_app_attribution_summary_sample.csv,vw_ios_spotlight_chat_app_attribution_summary," << tableRowCount(db, "vw_ios_spotlight_chat_app_attribution_summary") << "," << "ALL" << "," << csvEscape("chat app attribution vs text/link mention summary") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_communication_summary")) {
-        exportQuery(db, sampleDir / "ios_spotlight_communication_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
-        manifest << "ios_spotlight_communication_summary_sample.csv,vw_ios_spotlight_communication_summary," << tableRowCount(db, "vw_ios_spotlight_communication_summary") << ",ALL,record-centric iOS Spotlight communication summary\n";
+        if (!reuseFullExportAsSample("ios_spotlight_communication_summary.csv", "ios_spotlight_communication_summary_sample.csv", "vw_ios_spotlight_communication_summary", "ALL", "record-centric iOS Spotlight communication summary")) {
+            exportQuery(db, sampleDir / "ios_spotlight_communication_summary_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_summary ORDER BY review_priority_sort, spotlight_record_count DESC, communication_context_type", log);
+            manifest << "ios_spotlight_communication_summary_sample.csv,vw_ios_spotlight_communication_summary," << tableRowCount(db, "vw_ios_spotlight_communication_summary") << "," << "ALL" << "," << csvEscape("record-centric iOS Spotlight communication summary") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_communication_record_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_communication_record_review_sample.csv,vw_ios_spotlight_communication_record_review," << tableRowCount(db, "vw_ios_spotlight_communication_record_review") << "," << FocusSampleLimit << ",record-centric communications review with direct Spotlight text/context columns\n";
+        if (!reuseFullExportAsSample("ios_spotlight_communication_record_review_sample.csv", "ios_spotlight_communication_record_review_sample.csv", "vw_ios_spotlight_communication_record_review", std::to_string(FocusSampleLimit), "record-centric communications review with direct Spotlight text/context columns")) {
+            exportQuery(db, sampleDir / "ios_spotlight_communication_record_review_sample.csv", "SELECT * FROM vw_ios_spotlight_communication_record_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_communication_record_review_sample.csv,vw_ios_spotlight_communication_record_review," << tableRowCount(db, "vw_ios_spotlight_communication_record_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("record-centric communications review with direct Spotlight text/context columns") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_message_text_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_message_text_review_sample.csv,vw_ios_spotlight_message_text_review," << tableRowCount(db, "vw_ios_spotlight_message_text_review") << "," << FocusSampleLimit << ",message/mail/call/chat Spotlight review with extracted investigator-visible text\n";
+        if (!reuseFullExportAsSample("ios_spotlight_message_text_review_sample.csv", "ios_spotlight_message_text_review_sample.csv", "vw_ios_spotlight_message_text_review", std::to_string(FocusSampleLimit), "message/mail/call/chat Spotlight review with extracted investigator-visible text")) {
+            exportQuery(db, sampleDir / "ios_spotlight_message_text_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_text_review ORDER BY review_priority_sort, spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_message_text_review_sample.csv,vw_ios_spotlight_message_text_review," << tableRowCount(db, "vw_ios_spotlight_message_text_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("message/mail/call/chat Spotlight review with extracted investigator-visible text") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_message_media_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_message_media_review_sample.csv,vw_ios_spotlight_message_media_review," << tableRowCount(db, "vw_ios_spotlight_message_media_review") << "," << FocusSampleLimit << ",message-adjacent media/photo/attachment Spotlight review\n";
+        if (!reuseFullExportAsSample("ios_spotlight_message_media_review_sample.csv", "ios_spotlight_message_media_review_sample.csv", "vw_ios_spotlight_message_media_review", std::to_string(FocusSampleLimit), "message-adjacent media/photo/attachment Spotlight review")) {
+            exportQuery(db, sampleDir / "ios_spotlight_message_media_review_sample.csv", "SELECT * FROM vw_ios_spotlight_message_media_review ORDER BY spotlight_date_utc DESC, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_message_media_review_sample.csv,vw_ios_spotlight_message_media_review," << tableRowCount(db, "vw_ios_spotlight_message_media_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("message-adjacent media/photo/attachment Spotlight review") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_attachment_reference_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_attachment_reference_review_sample.csv", "SELECT * FROM vw_ios_spotlight_attachment_reference_review ORDER BY spotlight_date_utc DESC, communication_context_type, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_attachment_reference_review_sample.csv,vw_ios_spotlight_attachment_reference_review," << tableRowCount(db, "vw_ios_spotlight_attachment_reference_review") << "," << FocusSampleLimit << ",Spotlight communication attachment/media/content references\n";
+        if (!reuseFullExportAsSample("ios_spotlight_attachment_reference_review_sample.csv", "ios_spotlight_attachment_reference_review_sample.csv", "vw_ios_spotlight_attachment_reference_review", std::to_string(FocusSampleLimit), "Spotlight communication attachment/media/content references")) {
+            exportQuery(db, sampleDir / "ios_spotlight_attachment_reference_review_sample.csv", "SELECT * FROM vw_ios_spotlight_attachment_reference_review ORDER BY spotlight_date_utc DESC, communication_context_type, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_attachment_reference_review_sample.csv,vw_ios_spotlight_attachment_reference_review," << tableRowCount(db, "vw_ios_spotlight_attachment_reference_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("Spotlight communication attachment/media/content references") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_high_value_text_context_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_high_value_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_high_value_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_high_value_text_context_review_sample.csv,vw_ios_spotlight_high_value_text_context_review," << tableRowCount(db, "vw_ios_spotlight_high_value_text_context_review") << "," << FocusSampleLimit << ",bounded high/medium-priority same-record Spotlight text context\n";
+        if (!reuseFullExportAsSample("ios_spotlight_high_value_text_context_review_sample.csv", "ios_spotlight_high_value_text_context_review_sample.csv", "vw_ios_spotlight_high_value_text_context_review", std::to_string(FocusSampleLimit), "bounded high/medium-priority same-record Spotlight text context")) {
+            exportQuery(db, sampleDir / "ios_spotlight_high_value_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_high_value_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_high_value_text_context_review_sample.csv,vw_ios_spotlight_high_value_text_context_review," << tableRowCount(db, "vw_ios_spotlight_high_value_text_context_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("bounded high/medium-priority same-record Spotlight text context") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_spotlight_text_context_review")) {
-        exportQuery(db, sampleDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
-        manifest << "ios_spotlight_text_context_review_sample.csv,vw_ios_spotlight_text_context_review," << tableRowCount(db, "vw_ios_spotlight_text_context_review") << "," << FocusSampleLimit << ",same-record compact Spotlight text context retained in normal mode for investigator review, priority-sorted in V0_9_25\n";
+        if (!reuseFullExportAsSample("ios_spotlight_text_context_review_sample.csv", "ios_spotlight_text_context_review_sample.csv", "vw_ios_spotlight_text_context_review", std::to_string(FocusSampleLimit), "same-record compact Spotlight text context retained in normal mode for investigator review, priority-sorted in V0_9_25")) {
+            exportQuery(db, sampleDir / "ios_spotlight_text_context_review_sample.csv", "SELECT * FROM vw_ios_spotlight_text_context_review ORDER BY review_priority_sort, last_updated_utc DESC, raw_record_id DESC LIMIT 5000", log);
+            manifest << "ios_spotlight_text_context_review_sample.csv,vw_ios_spotlight_text_context_review," << tableRowCount(db, "vw_ios_spotlight_text_context_review") << "," << std::to_string(FocusSampleLimit) << "," << csvEscape("same-record compact Spotlight text context retained in normal mode for investigator review, priority-sorted in V0_9_25") << "\n";
+        }
     }
     if (tableExists(db, "vw_ios_string_probe_values")) {
         exportQuery(db, sampleDir / "ios_string_probe_values_sample.csv", "SELECT * FROM vw_ios_string_probe_values ORDER BY probe_category, store_guid, CAST(inode_num AS INTEGER), raw_kv_id LIMIT 5000", log);

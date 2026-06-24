@@ -1,0 +1,17 @@
+2026-06-24T02:54:40Z	35	native_parse_start	stores=6
+2026-06-24T02:54:40Z	36	native_parse_store_start	store=1/6 guid=620B81AD-DB29-4275-9516-602F865C9D78
+2026-06-24T02:54:40Z	36	native_parse_store_persistence_mode	mode=auto_path_sensitive; path_looks_ios=0
+2026-06-24T02:54:40Z	36	native_parse_store_blocks	store=1/6 blocks=1 guid=620B81AD-DB29-4275-9516-602F865C9D78
+2026-06-24T02:54:40Z	42	native_parse_blocks	store=1/6 block=1/1 parsed_items=0 raw_records=0 guid=620B81AD-DB29-4275-9516-602F865C9D78
+2026-06-24T02:54:40Z	74	native_parse_store_complete	store=1/6 parsed_store_items=4 total_raw_records=4
+2026-06-24T02:54:40Z	74	sqlite_size_guardrail_check	native_parse_store_complete store=1 raw_key_values=149 raw_date_candidates=37 db=1409024 bytes wal=0 bytes guardrail=5368709120 bytes
+2026-06-24T02:54:40Z	36	native_parse_store_start	store=2/6 guid=7B17F6B7-6868-42CA-A3BB-E31DA5655204
+2026-06-24T02:54:40Z	36	native_parse_store_persistence_mode	mode=auto_path_sensitive; path_looks_ios=0
+2026-06-24T02:54:40Z	36	native_parse_store_blocks	store=2/6 blocks=2598 guid=7B17F6B7-6868-42CA-A3BB-E31DA5655204
+2026-06-24T02:54:40Z	42	native_parse_blocks	store=2/6 block=1/2598 parsed_items=4 raw_records=4 guid=7B17F6B7-6868-42CA-A3BB-E31DA5655204
+2026-06-24T02:54:40Z	42	native_parse_blocks	store=2/6 block=2/2598 parsed_items=39 raw_records=39 guid=7B17F6B7-6868-42CA-A3BB-E31DA5655204
+2026-06-24T02:54:40Z	42	native_parse_blocks	store=2/6 block=3/2598 parsed_items=66 raw_records=66 guid=7B17F6B7-6868-42CA-A3BB-E31DA5655204
+2026-06-24T02:54:54Z	74	sqlite_size_guardrail_check	native_parse parsed_items=10000 raw_key_values=445454 raw_date_candidates=93686 db=646541312 bytes wal=0 bytes guardrail=5368709120 bytes
+2026-06-24T02:54:54Z	73	native_parse_heartbeat	parsed_items=10000 raw_key_values=445454 raw_date_candidates=93686
+2026-06-24T02:55:07Z	74	sqlite_size_guardrail_check	native_parse parsed_items=20000 raw_key_values=881055 raw_date_candidates=183222 db=1270317056 bytes wal=0 bytes guardrail=5368709120 bytes
+2026-06-24T02:55:07Z	73	native_parse_heartbeat	parsed_items=20000 raw_key_values=881055 raw_date_candidates=183222

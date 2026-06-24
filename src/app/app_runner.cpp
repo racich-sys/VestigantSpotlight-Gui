@@ -39,6 +39,7 @@
 #include <ctime>
 #include <cstdio>
 #include <atomic>
+#include <chrono>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -219,6 +220,8 @@ int stagePercent(const std::string& stage) {
     if (stage == "export_query_complete") return 94;
     if (stage == "export_upload_samples_start") return 95;
     if (stage == "export_upload_samples_complete") return 96;
+    if (stage.rfind("export_finalization_", 0) == 0) return 96;
+    if (stage.rfind("export_case_summary_", 0) == 0) return 96;
     if (stage == "export_complete") return 97;
     if (stage == "upload_bundle_start") return 98;
     if (stage == "upload_bundle_complete") return 99;
@@ -3163,6 +3166,24 @@ std::string decodeSevenZipRawLine(std::string line) {
     return out;
 }
 
+struct SevenZipEntryRecord {
+    std::string path;
+    std::string size;
+    std::string modified;
+    std::string folder;
+
+    void clear() {
+        path.clear();
+        size.clear();
+        modified.clear();
+        folder.clear();
+    }
+};
+
+bool isBlankSevenZipLine(const std::string& line) {
+    return line.find_first_not_of(" \t\r\n") == std::string::npos;
+}
+
 IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& caseDir, const fs::path& zipPath, Logger& log) {
     IosZipInventoryParseResult result;
     const fs::path rawListing = caseDir / "logs" / "ios_ffs_7z_inventory_raw_slt.txt";
@@ -3178,33 +3199,38 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
         return result;
     }
     fs::create_directories(ffsInventoryPath.parent_path());
-    std::ofstream ffsOut(ffsInventoryPath, std::ios::binary);
-    std::ofstream dbOut(dbInventoryPath, std::ios::binary);
+
+    std::vector<char> ffsOutBuffer(1024 * 1024);
+    std::vector<char> dbOutBuffer(256 * 1024);
+    std::ofstream ffsOut;
+    std::ofstream dbOut;
+    ffsOut.rdbuf()->pubsetbuf(ffsOutBuffer.data(), static_cast<std::streamsize>(ffsOutBuffer.size()));
+    dbOut.rdbuf()->pubsetbuf(dbOutBuffer.data(), static_cast<std::streamsize>(dbOutBuffer.size()));
+    ffsOut.open(ffsInventoryPath, std::ios::binary);
+    dbOut.open(dbInventoryPath, std::ios::binary);
     if (!ffsOut || !dbOut) throw std::runtime_error("Unable to write native C++ iOS ZIP inventory CSVs");
     ffsOut << "normalized_path,original_zip_entry,file_name,extension,size_bytes,zip_modified_utc,protection_class_hint,app_container_hint,domain_hint,is_directory,sha256_status,inventory_notes\n";
     dbOut << "normalized_path,original_zip_entry,database_name,database_category,app_hint,protection_class_hint,size_bytes,zip_modified_utc,parse_status,record_inventory_status,notes,extracted_path\n";
-    std::map<std::string, std::string> rec;
+
+    SevenZipEntryRecord rec;
     const std::string zipPathNorm = toLower(pathString(zipPath));
     auto flush = [&]() {
-        auto it = rec.find("Path");
-        if (it == rec.end() || trim(it->second).empty()) { rec.clear(); return; }
-        const std::string fullName = it->second;
+        if (trim(rec.path).empty()) { rec.clear(); return; }
+        const std::string& fullName = rec.path;
         const std::string fullLow = toLower(fullName);
         if ((fullLow.find(":/") != std::string::npos || fullLow.find(":\\") != std::string::npos) && endsWithCpp(fullLow, ".zip")) { rec.clear(); return; }
-        if (!zipPathNorm.empty() && toLower(fullName) == zipPathNorm) { rec.clear(); return; }
+        if (!zipPathNorm.empty() && fullLow == zipPathNorm) { rec.clear(); return; }
         const std::string norm = normalizeIosPathFromZipEntryCpp(fullName);
         const std::string name = basenameFromZipEntryCpp(fullName);
         const std::string ext = extensionFromNameCpp(name);
-        const std::string size = rec.count("Size") ? rec["Size"] : "";
-        const std::string modified = rec.count("Modified") ? rec["Modified"] : "";
-        const std::string folder = rec.count("Folder") ? toLower(trim(rec["Folder"])) : "";
+        const std::string folder = toLower(trim(rec.folder));
         const bool isDir = (folder == "+" || folder == "true" || folder == "1" || folder == "yes");
         const std::string prot = protectionClassHintCpp(norm);
         const std::string app = appContainerHintCpp(fullName);
         const std::string domain = domainHintCpp(norm);
-        const std::string note = "native_cpp_7z_slt_inventory_parser";
+        const std::string note = "native_cpp_7z_slt_inventory_parser_fast_record_state_v1_6_64";
         ffsOut << csvEscape(norm) << ',' << csvEscape(fullName) << ',' << csvEscape(name) << ',' << csvEscape(ext) << ','
-               << csvEscape(size) << ',' << csvEscape(modified) << ',' << csvEscape(prot) << ',' << csvEscape(app) << ','
+               << csvEscape(rec.size) << ',' << csvEscape(rec.modified) << ',' << csvEscape(prot) << ',' << csvEscape(app) << ','
                << csvEscape(domain) << ',' << (isDir ? "1" : "0") << ",not_hashed_zip_entry_inventory," << csvEscape(note) << "\n";
         ++result.ffsRows;
         auto cat = databaseCategoryAndAppHintCpp(norm, name);
@@ -3215,9 +3241,9 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
             const std::string parseStatus = extractedExists ? "extracted_for_record_inventory_v0_9_45" : "identified_not_extracted_v0_9_45";
             const std::string recordStatus = extractedExists ? "database_extracted_record_count_pending" : "database_family_present_record_level_parser_pending";
             dbOut << csvEscape(norm) << ',' << csvEscape(fullName) << ',' << csvEscape(name) << ',' << csvEscape(cat.first) << ','
-                  << csvEscape(cat.second) << ',' << csvEscape(prot) << ',' << csvEscape(size) << ',' << csvEscape(modified) << ','
+                  << csvEscape(cat.second) << ',' << csvEscape(prot) << ',' << csvEscape(rec.size) << ',' << csvEscape(rec.modified) << ','
                   << csvEscape(parseStatus) << ',' << csvEscape(recordStatus) << ','
-                  << csvEscape("native_cpp_7z_slt_inventory_parser_database_like_only") << ','
+                  << csvEscape("native_cpp_7z_slt_inventory_parser_database_like_only_fast_record_state_v1_6_44") << ','
                   << csvEscape(extractedExists ? pathString(extractedPath) : "") << "\n";
             ++result.appDbRows;
         }
@@ -3230,12 +3256,17 @@ IosZipInventoryParseResult parseIosSevenZipRawInventoryToCsv(const fs::path& cas
     std::string line;
     while (std::getline(in, line)) {
         line = decodeSevenZipRawLine(std::move(line));
-        if (trim(line).empty()) { flush(); continue; }
-        const std::string sep = " = ";
+        if (isBlankSevenZipLine(line)) { flush(); continue; }
+        constexpr const char* sep = " = ";
+        constexpr std::size_t sepLen = 3;
         const auto pos = line.find(sep);
-        if (pos != std::string::npos) {
-            rec[trim(line.substr(0, pos))] = line.substr(pos + sep.size());
-        }
+        if (pos == std::string::npos) continue;
+        const std::string key = trim(line.substr(0, pos));
+        const std::string value = line.substr(pos + sepLen);
+        if (key == "Path") rec.path = value;
+        else if (key == "Size") rec.size = value;
+        else if (key == "Modified") rec.modified = value;
+        else if (key == "Folder") rec.folder = value;
     }
     flush();
     result.status = "NATIVE_CPP_7Z_RAW_INVENTORY_PARSED";
@@ -3267,22 +3298,32 @@ fs::path stageZipEvidenceSource(const fs::path& zipPath, const fs::path& caseDir
         log.info(std::string(profile == SourceProfileKind::IOS ? "iOS ZIP source detected" : "Auto ZIP source: probing for iOS CoreSpotlight entries") +
                  ". Extracting CoreSpotlight/BundleInfo entries to controlled staging folder before discovery: " + pathString(stageRoot));
         log.info("iOS focused ZIP extraction inventory will be written: " + pathString(inventoryPath));
+        appendRunProgress(caseDir, 12, "stage_zip_focused_extract_start", "script=" + pathString(scriptPath) + " stage_root=" + pathString(stageRoot));
+        const auto focusedExtractStart = std::chrono::steady_clock::now();
 #if defined(_WIN32)
         const int rc = runPowerShellFileNoWindowRedirected(scriptPath, logPath);
 #else
         const int rc = runShellCommandNoWindow(cmd);
 #endif
+        const auto focusedExtractSeconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - focusedExtractStart).count();
+        appendRunProgress(caseDir, 12, "stage_zip_focused_extract_complete", "exit_code=" + std::to_string(rc) + " elapsed_seconds=" + std::to_string(focusedExtractSeconds) + " log=" + pathString(logPath));
         IosZipInventoryParseResult cppInventoryParse;
         try {
+            appendRunProgress(caseDir, 12, "ios_ffs_inventory_cpp_parser_start", "raw_7z_slt=" + pathString(caseDir / "logs" / "ios_ffs_7z_inventory_raw_slt.txt"));
+            const auto cppInventoryStart = std::chrono::steady_clock::now();
             cppInventoryParse = parseIosSevenZipRawInventoryToCsv(caseDir, zipPath, log);
+            const auto cppInventorySeconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - cppInventoryStart).count();
+            appendRunProgress(caseDir, 12, "ios_ffs_inventory_cpp_parser_timing_complete", "elapsed_seconds=" + std::to_string(cppInventorySeconds) + " files=" + std::to_string(cppInventoryParse.ffsRows) + " app_databases=" + std::to_string(cppInventoryParse.appDbRows));
             if (cppInventoryParse.status == "NATIVE_CPP_7Z_RAW_INVENTORY_PARSED") {
                 appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_ready", "files=" + std::to_string(cppInventoryParse.ffsRows) + " app_databases=" + std::to_string(cppInventoryParse.appDbRows));
             }
         } catch (const std::exception& ex) {
             appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_warning", ex.what());
+            appendRunProgress(caseDir, 12, "ios_ffs_inventory_cpp_parser_failed", ex.what());
             log.warn(std::string("Native C++ iOS ZIP inventory parser did not complete; using script inventory output if present: ") + ex.what());
         } catch (...) {
             appendRunStatus(caseDir, "ios_ffs_inventory_native_cpp_warning", "unknown error");
+            appendRunProgress(caseDir, 12, "ios_ffs_inventory_cpp_parser_failed", "unknown error");
             log.warn("Native C++ iOS ZIP inventory parser did not complete; using script inventory output if present: unknown error");
         }
         if (rc != 0) {
@@ -3415,6 +3456,21 @@ std::string containerRoleForPath(const fs::path& p) {
     return "original_container";
 }
 
+bool isHexSha256(const std::string& value) {
+    if (value.size() != 64U) return false;
+    for (const char c : value) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (!std::isxdigit(u)) return false;
+    }
+    return true;
+}
+
+std::string normalizeExternalSha256(std::string value) {
+    value = trim(value);
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
 void registerOriginalContainerSource(CaseDatabase& db,
                                      const EvidenceSource& source,
                                      const fs::path& originalContainer,
@@ -3422,15 +3478,28 @@ void registerOriginalContainerSource(CaseDatabase& db,
                                      const std::string& notes,
                                      Logger& log,
                                      bool skipHash,
-                                     const fs::path& caseDirForStatus) {
+                                     const fs::path& caseDirForStatus,
+                                     const std::string& externalSourceSha256 = {},
+                                     const std::string& externalSourceHashNote = {}) {
     std::uintmax_t sizeBytes = 0;
     std::string sha;
+    const std::string externalSha = normalizeExternalSha256(externalSourceSha256);
+    if (!externalSha.empty() && !isHexSha256(externalSha)) {
+        throw std::runtime_error("--external-source-sha256 must be exactly 64 hexadecimal characters");
+    }
+    const bool useExternalHashOnly = !externalSha.empty() && skipHash;
+    bool externalHashMatched = false;
+    bool externalHashMismatch = false;
     try {
         std::error_code ec;
         if (fs::exists(originalContainer, ec) && fs::is_regular_file(originalContainer, ec)) {
             sizeBytes = fs::file_size(originalContainer, ec);
             if (ec) sizeBytes = 0;
-            if (skipHash) {
+            if (useExternalHashOnly) {
+                sha = externalSha;
+                appendRunStatus(caseDirForStatus, "original_container_external_hash_recorded", "sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
+                log.info("Original container SHA256 recorded from external evidence. sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
+            } else if (skipHash) {
                 log.warn("Original container SHA256 deferred for this source-probe/development run: " + pathString(originalContainer));
             } else {
                 appendRunStatus(caseDirForStatus, "original_container_hash_start", "size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " path=" + pathString(originalContainer));
@@ -3454,6 +3523,14 @@ void registerOriginalContainerSource(CaseDatabase& db,
                 });
                 appendRunStatus(caseDirForStatus, "original_container_hash_complete", "size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
                 log.info("Original container SHA256 hashing completed. size_bytes=" + std::to_string(static_cast<unsigned long long>(sizeBytes)) + " sha256_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha));
+                if (!externalSha.empty()) {
+                    externalHashMatched = (sha == externalSha);
+                    externalHashMismatch = !externalHashMatched;
+                    appendRunStatus(caseDirForStatus,
+                                    externalHashMatched ? "original_container_external_hash_match" : "original_container_external_hash_mismatch",
+                                    "computed_prefix=" + (sha.size() >= 12 ? sha.substr(0, 12) : sha) + " external_prefix=" + externalSha.substr(0, 12));
+                    if (externalHashMismatch) log.warn("Computed source hash does not match externally supplied hash; review source integrity before relying on this run.");
+                }
             }
         }
     } catch (const std::exception& ex) {
@@ -3462,9 +3539,21 @@ void registerOriginalContainerSource(CaseDatabase& db,
 
     const std::string format = containerFormatForPath(originalContainer);
     const std::string role = containerRoleForPath(originalContainer);
-    const std::string baseNote = notes.empty()
-        ? "Original evidence source is already a fixed container/image. No new evidentiary archive was created; original source was hashed and registered."
+    std::string baseNote = notes.empty()
+        ? "Original evidence source is already a fixed container/image. No new evidentiary archive was created; original source was hashed or registered."
         : notes;
+    if (!externalSha.empty()) {
+        baseNote += " External source SHA256 supplied by operator.";
+        if (!externalSourceHashNote.empty()) baseNote += " External hash note: " + externalSourceHashNote;
+    }
+    const std::string integrityStatus = externalHashMismatch ? "HASH_MISMATCH_REVIEW" :
+        (useExternalHashOnly ? "EXTERNAL_HASH_RECORDED" :
+         (!externalSha.empty() && externalHashMatched ? "HASHED_EXTERNAL_MATCH" :
+          (skipHash ? "HASH_DEFERRED" : (sha.empty() ? "HASH_NOT_AVAILABLE" : "HASHED"))));
+    const std::string integrityCheckResult = externalHashMismatch ? "HASH_MISMATCH_REVIEW" :
+        (useExternalHashOnly ? "EXTERNAL_HASH_RECORDED" :
+         (!externalSha.empty() && externalHashMatched ? "HASHED_EXTERNAL_MATCH" :
+          (skipHash ? "DEFERRED_BY_OPERATOR" : (sha.empty() ? "NOT_RUN" : "HASHED"))));
 
     db.begin();
     try {
@@ -3483,7 +3572,7 @@ void registerOriginalContainerSource(CaseDatabase& db,
         setStmt.bind(i++, 1LL);
         setStmt.bind(i++, static_cast<long long>(sizeBytes));
         setStmt.bind(i++, "ORIGINAL_CONTAINER_REGISTERED_NO_REARCHIVE");
-        setStmt.bind(i++, skipHash ? "HASH_DEFERRED" : (sha.empty() ? "HASH_NOT_AVAILABLE" : "HASHED"));
+        setStmt.bind(i++, integrityStatus);
         setStmt.bind(i++, baseNote);
         setStmt.stepDone();
 
@@ -3506,7 +3595,7 @@ void registerOriginalContainerSource(CaseDatabase& db,
         checkStmt.bind(3, "original_container_sha256");
         checkStmt.bind(4, nowUtc());
         checkStmt.bind(5, nowUtc());
-        checkStmt.bind(6, skipHash ? "DEFERRED_BY_OPERATOR" : (sha.empty() ? "NOT_RUN" : "HASHED"));
+        checkStmt.bind(6, integrityCheckResult);
         checkStmt.bind(7, baseNote);
         checkStmt.stepDone();
 
@@ -4172,9 +4261,10 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
     auto& parseCounts = result.parseCounts;
     std::string runStatus = "NOT_RUN";
     std::string notes;
-    std::size_t maxRecordsUsed = opt.maxNativeRecords ? opt.maxNativeRecords : 25000U;
+    std::size_t maxRecordsUsed = opt.maxNativeRecordsExplicit ? opt.maxNativeRecords : 25000U;
     std::size_t maxBlocksUsed = opt.maxNativeBlocks;
-    const NativeDecodeMode stagedDecodeMode = opt.decodeCoreNativeValues ? NativeDecodeMode::CoreFields : NativeDecodeMode::FullValues;
+    const bool fullNativeValuesRequested = opt.experimentalFullNativeValues || opt.diagnosticFullNativeDb;
+    const NativeDecodeMode stagedDecodeMode = (fullNativeValuesRequested && !opt.decodeCoreNativeValues) ? NativeDecodeMode::FullValues : NativeDecodeMode::CoreFields;
     result.decodeModeName = (stagedDecodeMode == NativeDecodeMode::FullValues) ? "FullValues" : "CoreFields";
 
     try {
@@ -4199,7 +4289,7 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
                 parseCounts = parser.parseStores(selected, stagedSource, db, log);
                 appendRunStatus(caseDir, "aff4_apfs_staged_storev2_parse_complete", "decode_mode=" + result.decodeModeName + " raw_records=" + std::to_string(parseCounts.rawRecords) + " raw_key_values=" + std::to_string(parseCounts.rawKeyValues) + " raw_date_candidates=" + std::to_string(parseCounts.rawDateCandidates) + " fallback_header_only_items=" + std::to_string(parseCounts.fallbackHeaderOnlyItems));
                 runStatus = "PARSE_PROBE_COMPLETED";
-                notes = "Native Store-V2 parser was run in bounded " + result.decodeModeName + " mode against APFS-extracted staged Store-V2 candidates. FullValues is now the default for this bounded macOS AFF4 validation probe; pass --decode-core-native-values to force the older raw-probe-only CoreFields path.";
+                notes = "Native Store-V2 parser was run in " + result.decodeModeName + " mode against APFS-extracted staged Store-V2 candidates. When --max-native-records is explicitly 0, record enumeration is uncapped; otherwise AFF4 validation defaults to a 25,000-record cap. CoreFields is the default to avoid full-value key/value blowups; pass --experimental-full-native-values for the heavier FullValues support path.";
             }
         }
     } catch (const std::exception& ex) {
@@ -4273,7 +4363,7 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
         out << "# AFF4 APFS Staged Store-V2 Parser Probe\n\n";
         out << "Version: " << appVersion() << "\n\n";
         out << "## Scope\n\n";
-        out << "This probe discovers Store-V2 candidates copied out of the selected AFF4/APFS image and runs the native Store-V2 parser in bounded " << result.decodeModeName << " mode against the staged candidate folders. It does not scan parent drives, does not mount APFS, and does not convert the AFF4 image to RAW/DD. FullValues is the default for this macOS AFF4 validation probe because the record cap keeps the run bounded while exposing semantic kMDItem fields where the private Store-V2 value parser can decode them.\n\n";
+        out << "This probe discovers Store-V2 candidates copied out of the selected AFF4/APFS image and runs the native Store-V2 parser in " << result.decodeModeName << " mode against the staged candidate folders. It does not scan parent drives, does not mount APFS, and does not convert the AFF4 image to RAW/DD. CoreFields is the default for AFF4 validation because the uploaded V1.6.70 run showed FullValues could generate hundreds of thousands of raw_key_values rows before the 25,000-record cap; use --max-native-records 0 for uncapped CoreFields enumeration, and use --experimental-full-native-values only for targeted support runs.\n\n";
         out << "## Summary\n\n";
         out << "- Status: `" << runStatus << "`\n";
         out << "- Candidate databases: `" << candidates.size() << "`\n";
@@ -5406,6 +5496,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 stagedContainerWorkingRoot = stageZipEvidenceSource(opt.input, caseDir, profile, log, &iosFocusedUsed);
                 writeSourceCacheManifest(caseDir, opt.input, stagedContainerWorkingRoot, {}, "CREATED_IOS_ZIP_INTAKE_CACHE", log);
             }
+            appendRunProgress(caseDir, 13, "stage_zip_source_complete", "staged_root=" + pathString(stagedContainerWorkingRoot) + " ios_focused_used=" + std::string(iosFocusedUsed ? "1" : "0"));
             if (iosFocusedUsed && profile == SourceProfileKind::Auto) {
                 profile = SourceProfileKind::IOS;
                 log.info("Auto ZIP profile promoted to iOS/CoreSpotlight because focused ZIP entry inventory found store.db/.store.db entries or a prior iOS cache was reused.");
@@ -5458,7 +5549,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             if (deferLargeImageHash && !opt.skipContainerHash && !opt.forceContainerHash) {
                 log.warn("Full original-container SHA256 deferred by default for AFF4/raw source-probe development speed. Use --force-container-hash when a full evidentiary hash is needed.");
             }
-            registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash, caseDir);
+            registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash, caseDir, opt.externalSourceSha256, opt.externalSourceHashNote);
             const std::string stage = aff4InputSource ? "aff4_apfs_source_registered" : "unsupported_raw_image_source";
             const std::string message = aff4InputSource ? "AFF4 registered; guarded APFS metadata and Store-V2 staging pipeline active; full native source-discovery handoff still staged" : "raw image registered; partition/filesystem extraction not implemented";
             const std::string nextAction = aff4InputSource
@@ -5558,7 +5649,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 appendRunStatus(caseDir, "original_container_hash_deferred_ios_zip", "large iOS ZIP source registered without full SHA256 for parser/review speed; use --force-container-hash for evidentiary hash run");
                 log.warn("Full original-container SHA256 deferred by default for iOS FFS ZIP parser/review speed. Use --force-container-hash when a full evidentiary hash is required.");
             }
-            registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash, caseDir);
+            registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash, caseDir, opt.externalSourceSha256, opt.externalSourceHashNote);
             if (profile == SourceProfileKind::IOS) {
                 const auto epLowerForIos = toLower(opt.exportProfile);
                 const bool supportMaterializationRequested = opt.diagnosticFullNativeDb || epLowerForIos == "diagnostics" || epLowerForIos == "support" || epLowerForIos == "full";
@@ -5738,7 +5829,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Direct --evidence-root comparison is not used in V1.6.41.1. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.72. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);

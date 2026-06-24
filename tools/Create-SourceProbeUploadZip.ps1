@@ -307,7 +307,7 @@ if (![string]::IsNullOrWhiteSpace($AdditionalOutputRoot) -and (Test-Path -Litera
     $copied.Add("additional_output_file_inventory.txt") | Out-Null
 }
 
-if (Test-Path -LiteralPath $ReaderToolsRoot) {
+if (![string]::IsNullOrWhiteSpace($ReaderToolsRoot) -and (Test-Path -LiteralPath $ReaderToolsRoot)) {
     $manifest = Join-Path $ReaderToolsRoot "reader_tools_manifest.csv"
     if (Test-Path -LiteralPath $manifest) {
         Copy-Item -LiteralPath $manifest -Destination (Join-Path $UploadRoot "reader_tools_manifest.csv") -Force

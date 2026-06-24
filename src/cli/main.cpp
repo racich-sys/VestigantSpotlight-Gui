@@ -50,15 +50,15 @@ void usage() {
               << "Usage:\n"
               << "  VestigantSpotlightCli --mode discover --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--full-scan]\n"
               << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
-              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--force-container-hash] [--skip-container-hash] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
-              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--force-container-hash] [--skip-container-hash] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
+              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
+              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
               << "  VestigantSpotlightCli --full-validation --input <raw-spotlight-root-or-zip> --out <case-folder>\n"
               << "Workflow:\n"
               << "  identify Spotlight store.db/.store.db evidence -> preserve static case copy -> native C++ decode into SQLite -> enrich -> review/export.\n\n"
               << "Notes:\n"
               << "  --mode diagnostics skips 7z preservation by default for fast parser diagnostics and enables safe core native probes.\n"
               << "  --preserve can be added to diagnostics mode when archive-first testing is needed.\n"
-              << "  Active filesystem comparison uses in-case iOS FFS exact-path lookup when available. --evidence-root is accepted for compatibility but direct evidence-root comparison remains pending in V1.6.41.1.\n"
+              << "  Active filesystem comparison uses in-case iOS FFS exact-path lookup when available. --evidence-root is accepted for compatibility but direct evidence-root comparison remains pending in V1.6.72.\n"
               << "  Stable native header-only parsing is the default in run mode. Use --decode-core-native-values to test safe native string/path probe decoding.\n"
               << "  --full-validation is an operator-safe shortcut for --mode run --profile auto --experimental-full-native-values --export-profile investigator --verbose.\n"
               << "  --diagnostic-full-native-exports enables support/diagnostic CSV exports that are intentionally skipped in normal investigator runs.\n"
@@ -125,6 +125,8 @@ int main(int argc, char** argv) {
             else if (a == "--full-scan") opt.fullScan = true;
             else if (a == "--skip-container-hash") opt.skipContainerHash = true;
             else if (a == "--force-container-hash" || a == "--hash-container") opt.forceContainerHash = true;
+            else if (a == "--external-source-sha256" || a == "--source-sha256") opt.externalSourceSha256 = need(a);
+            else if (a == "--external-source-hash-note" || a == "--source-hash-note") opt.externalSourceHashNote = need(a);
             else if (a == "--reader-tools") opt.readerToolsDir = need(a);
             else if (a == "--strict-single-aff4") opt.strictSingleAff4 = true;
             else if (a == "--enable-aff4-dynamic-probe") opt.enableAff4DynamicProbe = true;

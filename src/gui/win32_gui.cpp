@@ -55,11 +55,14 @@ HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
 HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{}, gFullNoGuardrails{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gResetFilters{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
 void setDetailsPaneMessage(const std::wstring& message);
+std::wstring listViewText(HWND list, int row, int col);
+int selectedOrFocusedReviewRow();
+void loadReviewPage();
 void worker();
 HWND gTagList{}, gTagName{}, gTagNote{}, gTaggedList{}, gTagSummary{};
 HWND gIosStatus{}, gIosReadiness{}, gIosPlan{};
@@ -73,6 +76,7 @@ std::wstring gOpenedCaseDb;
 int gCurrentPage = 0;
 long long gCurrentTotal = 0;
 bool gCurrentHasNext = false;
+long long gCurrentTotalRows = -1;
 bool gReviewLoadInProgress = false;
 int gSortColumn = -1;
 bool gSortDescending = false;
@@ -138,12 +142,12 @@ void cancelAndJoinReviewThreadNoThrow() {
 }
 
 constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008, ID_FULL_NO_GUARDRAILS = 1009;
-constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124;
+constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124, ID_REVIEW_RESET_FILTERS = 1125;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
 constexpr int ID_CTX_SORT_ASC = 2101, ID_CTX_SORT_DESC = 2102, ID_CTX_FILTER_SEARCH = 2103, ID_CTX_CLEAR_FILTER = 2104;
 constexpr int ID_CTX_TOGGLE_CHECK = 2110, ID_CTX_APPLY_TAG_ROW = 2111, ID_CTX_APPLY_TAG_CHECKED = 2112, ID_CTX_REMOVE_TAG_ROW = 2113, ID_CTX_REMOVE_TAG_CHECKED = 2114, ID_CTX_CLEAR_CHECKED = 2115;
-constexpr int ID_CTX_CHECK_SELECTED = 2116, ID_CTX_UNCHECK_SELECTED = 2117, ID_CTX_TOGGLE_SELECTED = 2118, ID_CTX_APPLY_TAG_SELECTED = 2119, ID_CTX_REMOVE_TAG_SELECTED = 2120;
+constexpr int ID_CTX_CHECK_SELECTED = 2116, ID_CTX_UNCHECK_SELECTED = 2117, ID_CTX_TOGGLE_SELECTED = 2118, ID_CTX_APPLY_TAG_SELECTED = 2119, ID_CTX_REMOVE_TAG_SELECTED = 2120, ID_CTX_COPY_ROW_TEXT = 2122;
 constexpr int ID_CTX_MANAGE_TAGS = 2121, ID_IOS_OPEN_READINESS = 1401, ID_IOS_OPEN_PLAN = 1402, ID_IOS_OPEN_STORE_SUMMARY = 1403, ID_IOS_OPEN_STRING_VALUES = 1404, ID_IOS_OPEN_STRING_SUMMARY = 1405, ID_IOS_OPEN_INDEX_TIMELINE = 1406, ID_IOS_OPEN_ARTIFACTS = 1407, ID_IOS_OPEN_KEYWORD_VALUES = 1408, ID_IOS_OPEN_FFS_INVENTORY = 1409, ID_IOS_OPEN_APP_DATABASES = 1410, ID_IOS_OPEN_REFERENCED_PATHS = 1411, ID_IOS_OPEN_MISSING_FFS = 1412, ID_IOS_OPEN_DB_RESIDENCY = 1413, ID_IOS_OPEN_RESIDENCY_SUMMARY = 1414, ID_IOS_OPEN_PARSED_APP_RECORDS = 1415, ID_IOS_OPEN_PARSED_APP_SUMMARY = 1416;
 constexpr int ID_CASE_NAME_EDIT = 1501, ID_CASE_NUMBER_EDIT = 1502, ID_INVESTIGATOR_EDIT = 1503, ID_COMPANY_EDIT = 1504, ID_CASE_LOCATION_EDIT = 1505, ID_CASE_DB_EDIT = 1506;
 constexpr UINT_PTR ID_AUTOSAVE_TIMER = 5001;
@@ -169,6 +173,7 @@ struct ReviewPageResult {
     int page = 0;
     int pageSize = 0;
     bool hasNext = false;
+    long long totalRows = -1;
     unsigned long long elapsedMs = 0;
     std::wstring summary;
     std::wstring error;
@@ -1730,6 +1735,7 @@ void showColumnContextMenu(HWND owner, int column, POINT screenPoint) {
         nextId = addContextTagSubmenu(menu, L"Apply Tag to Checked Row(s)", tags, TAG_OP_APPLY_CHECKED, hasCheckedRows, nextId);
         nextId = addContextTagSubmenu(menu, L"Remove Tag from Checked Row(s)", tags, TAG_OP_REMOVE_CHECKED, hasCheckedRows, nextId);
         AppendMenuW(menu, MF_STRING, ID_CTX_MANAGE_TAGS, L"Manage Tags...");
+        AppendMenuW(menu, MF_STRING, ID_CTX_COPY_ROW_TEXT, L"Copy selected row as text");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
     if (dataColumn >= 0 && dataColumn < static_cast<int>(v.columns.size())) {
@@ -1740,7 +1746,8 @@ void showColumnContextMenu(HWND owner, int column, POINT screenPoint) {
         AppendMenuW(menu, MF_STRING, ID_CTX_SORT_DESC, L"Sort descending");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         const bool hasSearchText = !getText(gSearch).empty();
-        AppendMenuW(menu, MF_STRING | (hasSearchText ? 0 : MF_GRAYED), ID_CTX_FILTER_SEARCH, L"Filter this column using Search text");
+        const bool hasContextCell = (gContextRow >= 0 && !listViewText(gList, gContextRow, column).empty());
+        AppendMenuW(menu, MF_STRING | ((hasSearchText || hasContextCell) ? 0 : MF_GRAYED), ID_CTX_FILTER_SEARCH, hasSearchText ? L"Filter this column using Search text" : L"Filter this column using this cell value");
         AppendMenuW(menu, MF_STRING | ((gFilterColumn >= 0 || !gFilterValue.empty()) ? 0 : MF_GRAYED), ID_CTX_CLEAR_FILTER, L"Clear column filter");
     }
     TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, 0, owner, nullptr);
@@ -1971,6 +1978,7 @@ void populateReviewListFromResult(const ReviewPageResult& result) {
     gCurrentRowArtifactIds = result.artifactIds;
     gCurrentPage = result.page;
     gCurrentHasNext = result.hasNext;
+    gCurrentTotalRows = result.totalRows;
 
     gCurrentReviewRowsW.clear();
     gCurrentVisibleTagCellsW.clear();
@@ -2033,6 +2041,7 @@ void completeReviewPageLoad(ReviewPageResult* result) {
             clearListColumns();
             gCurrentRowArtifactIds.clear();
             gCurrentHasNext = false;
+            gCurrentTotalRows = -1;
             setReviewSummary(L"ERROR loading review page: " + result->error);
             updateRowDetailsPanel();
         } else {
@@ -2049,6 +2058,7 @@ void completeReviewPageLoad(ReviewPageResult* result) {
         clearListColumns();
         gCurrentRowArtifactIds.clear();
         gCurrentHasNext = false;
+        gCurrentTotalRows = -1;
         setReviewSummary(L"ERROR applying review page result: " + widen(ex.what()));
         updateRowDetailsPanel();
     }
@@ -2096,6 +2106,7 @@ void loadReviewPage() {
     clearListColumns();
     gCurrentRowArtifactIds.clear();
     gCurrentHasNext = false;
+    gCurrentTotalRows = -1;
     std::wostringstream loading;
     loading << L"Loading " << v.displayName << L" page " << (requestedPage + 1) << L" from SQLite in background. You can cancel or choose another view/search.";
     setReviewSummary(loading.str());
@@ -2104,7 +2115,7 @@ void loadReviewPage() {
     UpdateWindow(gReviewBusy);
     UpdateWindow(gList);
 
-    gReviewThread = std::thread([requestId, owner, dbPath, v, viewIndex, requestedPage, ps, search, capturedFilterValue, sql, bindPatterns, checkedCountAtRequest]() {
+    gReviewThread = std::thread([requestId, owner, dbPath, v, viewIndex, requestedPage, ps, search, capturedFilterValue, where, sql, bindPatterns, checkedCountAtRequest]() {
         auto* result = new ReviewPageResult();
         result->requestId = requestId;
         result->viewIndex = viewIndex;
@@ -2140,6 +2151,19 @@ void loadReviewPage() {
                 ++row;
             }
             sqlite3_finalize(st);
+            if (requestId != gReviewRequestSeq.load() || gShuttingDown.load()) { sqlite3_progress_handler(db.get(), 0, nullptr, nullptr); delete result; return; }
+            try {
+                const std::string countSql = "SELECT COUNT(*) FROM " + std::string(v.tableName ? v.tableName : "") + where;
+                sqlite3_stmt* countSt = nullptr;
+                if (sqlite3_prepare_v2(db.get(), countSql.c_str(), -1, &countSt, nullptr) == SQLITE_OK) {
+                    int countBind = 1;
+                    for (const std::string& pattern : bindPatterns) sqlite3_bind_text(countSt, countBind++, pattern.c_str(), -1, SQLITE_TRANSIENT);
+                    if (sqlite3_step(countSt) == SQLITE_ROW) result->totalRows = sqlite3_column_int64(countSt, 0);
+                }
+                if (countSt) sqlite3_finalize(countSt);
+            } catch (...) {
+                result->totalRows = -1;
+            }
             sqlite3_progress_handler(db.get(), 0, nullptr, nullptr);
             if (requestId != gReviewRequestSeq.load() || gShuttingDown.load()) { delete result; return; }
             result->visibleTags = tagsForArtifacts(db.get(), result->artifactIds);
@@ -2148,6 +2172,7 @@ void loadReviewPage() {
             const long long lastRow = row == 0 ? 0 : (static_cast<long long>(requestedPage) * ps + row);
             std::wostringstream os;
             os << L"View: " << v.displayName << L"    Showing " << firstRow << L"-" << lastRow;
+            if (result->totalRows >= 0) os << L" of " << result->totalRows << L" records";
             os << (result->hasNext ? L"    More rows available" : L"    Last page");
             os << L"    Page size=" << ps;
             os << L"    Checked artifacts=" << static_cast<unsigned long long>(checkedCountAtRequest);
@@ -2351,6 +2376,108 @@ std::wstring lowerW(std::wstring s) {
     return s;
 }
 
+
+bool cellMatchesActiveSearch(const std::wstring& value) {
+    const std::wstring search = getText(gSearch);
+    if (search.empty() || value.empty()) return false;
+    return lowerW(value).find(lowerW(search)) != std::wstring::npos;
+}
+
+bool reviewRowMatchesActiveSearch(int row) {
+    if (row < 0 || row >= static_cast<int>(gCurrentReviewRowsW.size())) return false;
+    const int viewIdx = selectedViewIndex();
+    if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) return false;
+    const auto& v = views()[static_cast<std::size_t>(viewIdx)];
+    const std::wstring search = getText(gSearch);
+    if (search.empty()) return false;
+    const std::wstring s = lowerW(search);
+    for (std::size_t c = 0; c < v.columns.size() && c < gCurrentReviewRowsW[static_cast<std::size_t>(row)].size(); ++c) {
+        if (lowerW(gCurrentReviewRowsW[static_cast<std::size_t>(row)][c]).find(s) != std::wstring::npos) return true;
+    }
+    return false;
+}
+
+std::vector<std::wstring> wrapDetailValueForRows(const std::wstring& value, std::size_t maxChars = 180) {
+    std::vector<std::wstring> parts;
+    std::wstring normalized;
+    normalized.reserve(value.size());
+    for (wchar_t ch : value) {
+        if (ch == L'\r') continue;
+        normalized.push_back(ch == L'\t' ? L' ' : ch);
+    }
+    if (normalized.empty()) normalized = L"(empty)";
+    std::wstring line;
+    for (wchar_t ch : normalized) {
+        if (ch == L'\n') {
+            if (!line.empty()) parts.push_back(line);
+            line.clear();
+            continue;
+        }
+        line.push_back(ch);
+        if (line.size() >= maxChars) {
+            parts.push_back(line);
+            line.clear();
+        }
+    }
+    if (!line.empty()) parts.push_back(line);
+    if (parts.empty()) parts.push_back(L"(empty)");
+    if (parts.size() > 128) {
+        parts.resize(128);
+        parts.push_back(L"<truncated after 128 display lines; export/copy row for full value>");
+    }
+    return parts;
+}
+
+void copyTextToClipboard(HWND owner, const std::wstring& text) {
+    if (!OpenClipboard(owner)) throw std::runtime_error("OpenClipboard failed");
+    EmptyClipboard();
+    const SIZE_T bytes = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!mem) { CloseClipboard(); throw std::runtime_error("GlobalAlloc failed"); }
+    void* dst = GlobalLock(mem);
+    if (!dst) { GlobalFree(mem); CloseClipboard(); throw std::runtime_error("GlobalLock failed"); }
+    memcpy(dst, text.c_str(), bytes);
+    GlobalUnlock(mem);
+    if (!SetClipboardData(CF_UNICODETEXT, mem)) { GlobalFree(mem); CloseClipboard(); throw std::runtime_error("SetClipboardData failed"); }
+    CloseClipboard();
+}
+
+void copySelectedReviewRowAsText(HWND owner) {
+    int row = selectedOrFocusedReviewRow();
+    if (row < 0 || row >= static_cast<int>(gCurrentReviewRowsW.size())) {
+        setReviewSummary(L"Select an investigation result row before copying.");
+        return;
+    }
+    int viewIdx = selectedViewIndex();
+    if (viewIdx < 0 || viewIdx >= static_cast<int>(views().size())) return;
+    const auto& v = views()[static_cast<std::size_t>(viewIdx)];
+    std::wostringstream os;
+    os << L"View\t" << (v.displayName ? v.displayName : L"") << L"\r\n";
+    os << L"Page row\t" << (row + 1) << L"\r\n";
+    if (row < static_cast<int>(gCurrentRowArtifactIds.size())) os << L"artifact_id\t" << widen(gCurrentRowArtifactIds[static_cast<std::size_t>(row)]) << L"\r\n";
+    os << L"checked\t" << listViewText(gList, row, 0) << L"\r\n";
+    os << L"tags\t" << listViewText(gList, row, 1) << L"\r\n";
+    for (std::size_t c = 0; c < v.columns.size(); ++c) {
+        os << widen(v.columns[c]) << L"\t" << listViewText(gList, row, static_cast<int>(c + 2)) << L"\r\n";
+    }
+    try {
+        copyTextToClipboard(owner, os.str());
+        setReviewSummary(L"Copied selected investigation row to clipboard as Field<TAB>Value text.");
+    } catch (const std::exception& ex) {
+        setReviewSummary(L"ERROR copying selected row: " + widen(ex.what()));
+    }
+}
+
+void resetReviewSearchFiltersAndSort() {
+    if (gSearch) setText(gSearch, L"");
+    gFilterColumn = -1;
+    gFilterValue.clear();
+    gSortColumn = -1;
+    gSortDescending = false;
+    gCurrentPage = 0;
+    loadReviewPage();
+}
+
 bool containsAnyW(const std::wstring& haystackLower, std::initializer_list<const wchar_t*> needles) {
     for (const wchar_t* n : needles) {
         if (n && haystackLower.find(n) != std::wstring::npos) return true;
@@ -2497,8 +2624,26 @@ void addDetailsListRow(const std::wstring& field, const std::wstring& value, boo
     item.pszText = const_cast<LPWSTR>(field.c_str());
     item.lParam = section ? (1000 + static_cast<LPARAM>(group)) : 0;
     ListView_InsertItem(gRowDetails, &item);
-    std::wstring normalizedValue = section ? L"" : normalizeDetailValueForTable(value);
-    ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(normalizedValue.c_str()));
+    if (section) {
+        std::wstring blank;
+        ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(blank.c_str()));
+        return;
+    }
+    const std::vector<std::wstring> displayLines = wrapDetailValueForRows(value);
+    std::wstring first = displayLines.empty() ? normalizeDetailValueForTable(value) : displayLines.front();
+    ListView_SetItemText(gRowDetails, row, 1, const_cast<LPWSTR>(first.c_str()));
+    for (std::size_t i = 1; i < displayLines.size(); ++i) {
+        LVITEMW cont{};
+        cont.mask = LVIF_TEXT | LVIF_PARAM;
+        cont.iItem = ListView_GetItemCount(gRowDetails);
+        cont.iSubItem = 0;
+        std::wstring marker = L"↳";
+        cont.pszText = const_cast<LPWSTR>(marker.c_str());
+        cont.lParam = 0;
+        const int contRow = ListView_InsertItem(gRowDetails, &cont);
+        std::wstring line = displayLines[i];
+        ListView_SetItemText(gRowDetails, contRow, 1, const_cast<LPWSTR>(line.c_str()));
+    }
 }
 
 void setDetailsPaneMessage(const std::wstring& message) {
@@ -2928,13 +3073,42 @@ void worker() {
         }
         int prof = static_cast<int>(SendMessageW(gProfile, CB_GETCURSEL, 0, 0));
         int mode = static_cast<int>(SendMessageW(gMode, CB_GETCURSEL, 0, 0));
+        int sourceType = static_cast<int>(SendMessageW(gSourceType, CB_GETCURSEL, 0, 0));
+        const std::wstring inputLower = lowerW(getText(gInput));
+        const bool aff4SourceSelected = sourceType == 2 || (inputLower.size() >= 5 && inputLower.substr(inputLower.size() - 5) == L".aff4");
         opt.profile = prof == 1 ? "macos" : prof == 2 ? "ios" : "auto";
         opt.mode = mode == 1 ? "diagnostics" : mode == 2 ? "discover" : "run";
+        if (aff4SourceSelected) {
+            opt.mode = "source-probe";
+            if (opt.profile == "auto") opt.profile = "macos";
+            opt.strictSingleAff4 = true;
+            if (!opt.sevenZipPath.empty()) {
+                std::error_code readerToolsEc;
+                if (std::filesystem::is_directory(opt.sevenZipPath, readerToolsEc)) {
+                    opt.readerToolsDir = opt.sevenZipPath;
+                } else if (opt.sevenZipPath.has_parent_path()) {
+                    opt.readerToolsDir = opt.sevenZipPath.parent_path();
+                }
+            }
+            if (fullNoGuardrails) {
+                opt.enableAff4DynamicProbe = true;
+                opt.aff4ApfsDiagnosticOutputs = true;
+                opt.fullScan = true;
+                postLog(L"AFF4/APFS source selected with Full extraction / no guardrails: GUI routes to source-probe, enables strict single-AFF4 policy, enables guarded AFF4 dynamic APFS probe, and avoids the normal-run unsupported-container failure path.");
+            } else {
+                postLog(L"AFF4/APFS source selected: GUI routes to source-probe with strict single-AFF4 policy so the staged AFF4/APFS readiness workflow completes without normal-run unsupported-container failure.");
+            }
+        }
         if (prof == 2 && !opt.evidenceRoot.empty()) {
-            opt.reuseIosCache = opt.evidenceRoot;
-            opt.evidenceRoot.clear();
-            opt.skipContainerHash = true;
-            postLog(L"iOS/CoreSpotlight profile: Evidence root / iOS cache case field will be used as --reuse-ios-cache for staged source reuse. Full source ZIP hashing is skipped for this cached review run.");
+            if (fullNoGuardrails) {
+                postLog(L"Full extraction / no guardrails selected: Evidence root / iOS cache case field is ignored for cache reuse so the raw evidence source is fully enumerated/extracted from the selected input.");
+                opt.evidenceRoot.clear();
+            } else {
+                opt.reuseIosCache = opt.evidenceRoot;
+                opt.evidenceRoot.clear();
+                opt.skipContainerHash = true;
+                postLog(L"iOS/CoreSpotlight profile: Evidence root / iOS cache case field will be used as --reuse-ios-cache for staged source reuse. Full source ZIP hashing is skipped for this cached review run.");
+            }
         }
         if (prof == 2) {
             opt.fullScan = true;
@@ -2949,8 +3123,10 @@ void worker() {
             opt.diagnosticFullNativeDb = true;
             opt.materializeIosFfsInventory = true;
             opt.materializeIosAppDbRecords = true;
+            opt.reuseIosCache.clear();
+            opt.fullScan = true;
             if (!opt.suppressCsvExports) opt.exportProfile = "full";
-            postLog(L"Full no-guardrails validation enabled: native record/block limits and DB/WAL guardrail are disabled; full iOS FFS/app DB materialization and full native key/value persistence are enabled. Expect very large DB/WAL files and long runtime.");
+            postLog(L"Full extraction / no guardrails validation enabled: cache reuse is disabled; native record/block limits and DB/WAL guardrail are disabled; full iOS FFS/app DB materialization and full native key/value persistence are enabled. Expect full source ZIP listing/extraction, very large DB/WAL files, and long runtime.");
         }
         if (opt.experimentalFullNativeValues) postLog(L"Full native metadata parsing is enabled for the selected workflow.");
         else postLog(L"Stable native header/core parsing is enabled. Full native metadata parsing is available through the checkbox above.");
@@ -3052,7 +3228,7 @@ void createProcessControls(HWND hwnd) {
     SendMessageW(gVerbose, BM_SETCHECK, BST_CHECKED, 0);
     gSuppressCsvExports = addProcess(CreateWindowW(L"BUTTON", L"Exclude CSV exports", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 136, y0 + 428, 180, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SUPPRESS_CSV_EXPORTS)), gInst, nullptr));
     SendMessageW(gSuppressCsvExports, BM_SETCHECK, BST_CHECKED, 0);
-    gFullNoGuardrails = addProcess(CreateWindowW(L"BUTTON", L"Full no-guardrails validation", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 324, y0 + 428, 252, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_FULL_NO_GUARDRAILS)), gInst, nullptr));
+    gFullNoGuardrails = addProcess(CreateWindowW(L"BUTTON", L"Full extraction / no guardrails", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, 324, y0 + 428, 252, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_FULL_NO_GUARDRAILS)), gInst, nullptr));
     labelP(hwnd, L"Export profile", 590, y0 + 430, 92, 20); gExportProfile = addProcess(CreateWindowW(L"COMBOBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST, 684, y0 + 426, 144, 92, hwnd, nullptr, gInst, nullptr));
     for (const wchar_t* s : {L"Minimal", L"Investigator", L"Diagnostics", L"Full CSV"}) SendMessageW(gExportProfile, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s)); SendMessageW(gExportProfile, CB_SETCURSEL, 1, 0);
 
@@ -3068,6 +3244,10 @@ void createProcessControls(HWND hwnd) {
 }
 
 LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    if (msg == WM_KEYDOWN && wp == 'C' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+        copySelectedReviewRowAsText(GetParent(hwnd));
+        return 0;
+    }
     if (msg == WM_KEYDOWN && wp == VK_SPACE) {
         std::vector<int> rows = selectedReviewRows();
         if (!rows.empty()) {
@@ -3166,7 +3346,8 @@ void createReviewControls(HWND hwnd) {
     gRefresh = buttonR(hwnd, L"Update", ID_REVIEW_REFRESH, 564, y0 + 21, 80, 24);
     gCancelLoad = buttonR(hwnd, L"Cancel Load", ID_REVIEW_CANCEL_LOAD, 650, y0 + 21, 96, 24);
     EnableWindow(gCancelLoad, FALSE);
-    labelR(hwnd, L"Rows", 756, y0 + 26, 42, 20); gPageSize = editR(hwnd, 798, y0 + 22, 56, 22, L"250");
+    gResetFilters = buttonR(hwnd, L"Reset", ID_REVIEW_RESET_FILTERS, 752, y0 + 21, 72, 24);
+    labelR(hwnd, L"Rows", 830, y0 + 26, 42, 20); gPageSize = editR(hwnd, 872, y0 + 22, 56, 22, L"250");
     gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 248, y0 + 52, 96, 24);
     gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 350, y0 + 52, 88, 24);
     gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 444, y0 + 52, 104, 24);
@@ -3335,7 +3516,8 @@ void layoutControls(HWND hwnd) {
     moveIf(gSearch, 304, y0 + 22, 250, 22);
     moveIf(gRefresh, 564, y0 + 21, 80, 24);
     moveIf(gCancelLoad, 650, y0 + 21, 96, 24);
-    moveIf(gPageSize, 798, y0 + 22, 56, 22);
+    moveIf(gResetFilters, 752, y0 + 21, 72, 24);
+    moveIf(gPageSize, 872, y0 + 22, 56, 22);
     moveIf(gPrev, reviewX, y0 + 52, 96, 24);
     moveIf(gNext, reviewX + 102, y0 + 52, 88, 24);
     moveIf(gExportPage, reviewX + 196, y0 + 52, 104, 24);
@@ -3464,6 +3646,27 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        if (hdr && hdr->hwndFrom == gList && hdr->code == NM_CUSTOMDRAW) {
+            auto* cd = reinterpret_cast<NMLVCUSTOMDRAW*>(lp);
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                return CDRF_NOTIFYSUBITEMDRAW;
+            }
+            if (cd->nmcd.dwDrawStage == (CDDS_ITEMPREPAINT | CDDS_SUBITEM)) {
+                const int row = static_cast<int>(cd->nmcd.dwItemSpec);
+                const int col = static_cast<int>(cd->iSubItem);
+                if (cellMatchesActiveSearch(listViewText(gList, row, col))) {
+                    cd->clrTextBk = RGB(255, 244, 156);
+                    cd->clrText = RGB(0, 0, 0);
+                    return CDRF_NEWFONT;
+                }
+                if (reviewRowMatchesActiveSearch(row)) {
+                    cd->clrTextBk = RGB(255, 252, 220);
+                    return CDRF_NEWFONT;
+                }
+                return CDRF_DODEFAULT;
+            }
+        }
         if (hdr && hdr->hwndFrom == gRowDetails && hdr->code == NM_CUSTOMDRAW) {
             auto* cd = reinterpret_cast<NMLVCUSTOMDRAW*>(lp);
             if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
@@ -3473,6 +3676,12 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     DetailGroup g = static_cast<DetailGroup>(rowType - 1000);
                     cd->clrTextBk = detailGroupColor(g);
                     cd->clrText = RGB(20, 20, 20);
+                    return CDRF_NEWFONT;
+                }
+                const int row = static_cast<int>(cd->nmcd.dwItemSpec);
+                if (cellMatchesActiveSearch(listViewText(gRowDetails, row, 1))) {
+                    cd->clrTextBk = RGB(255, 244, 156);
+                    cd->clrText = RGB(0, 0, 0);
                     return CDRF_NEWFONT;
                 }
                 if ((cd->nmcd.dwItemSpec % 2) == 0) cd->clrTextBk = RGB(252, 252, 252);
@@ -3640,11 +3849,23 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_VIEWSET_DOWN: { moveSelectedViewInCustom(1); return 0; }
         case ID_REVIEW_VIEW: { if (HIWORD(wp) == LBN_SELCHANGE) { gCurrentPage = 0; gSortColumn = -1; gFilterColumn = -1; gFilterValue.clear(); loadReviewPage(); } return 0; }
         case ID_REVIEW_REFRESH: { gCurrentPage = 0; loadReviewPage(); return 0; }
+        case ID_REVIEW_RESET_FILTERS: { resetReviewSearchFiltersAndSort(); return 0; }
         case ID_REVIEW_CANCEL_LOAD: { cancelAndJoinReviewThreadNoThrow(); gReviewLoadInProgress = false; setReviewLoadingState(false); setReviewSummary(L"Cancelled current review-page load. Start another view/search when ready."); return 0; }
         case ID_CTX_SORT_ASC: { if (gContextColumn >= 0) { gSortColumn = gContextColumn; gSortDescending = false; gCurrentPage = 0; loadReviewPage(); } return 0; }
         case ID_CTX_SORT_DESC: { if (gContextColumn >= 0) { gSortColumn = gContextColumn; gSortDescending = true; gCurrentPage = 0; loadReviewPage(); } return 0; }
-        case ID_CTX_FILTER_SEARCH: { if (gContextColumn >= 0) { gFilterColumn = gContextColumn; gFilterValue = narrow(getText(gSearch)); gCurrentPage = 0; loadReviewPage(); } return 0; }
+        case ID_CTX_FILTER_SEARCH: {
+            if (gContextColumn >= 0) {
+                gFilterColumn = gContextColumn;
+                std::wstring searchText = getText(gSearch);
+                if (searchText.empty() && gContextRow >= 0) searchText = listViewText(gList, gContextRow, gContextColumn + 2);
+                gFilterValue = narrow(searchText);
+                gCurrentPage = 0;
+                loadReviewPage();
+            }
+            return 0;
+        }
         case ID_CTX_CLEAR_FILTER: { gFilterColumn = -1; gFilterValue.clear(); gCurrentPage = 0; loadReviewPage(); return 0; }
+        case ID_CTX_COPY_ROW_TEXT: { copySelectedReviewRowAsText(hwnd); return 0; }
         case ID_CTX_TOGGLE_CHECK: { if (gContextRow >= 0) toggleReviewRowChecked(gContextRow); setReviewSummary(L"Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }
         case ID_CTX_CHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), true); setReviewSummary(L"Checked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }
         case ID_CTX_UNCHECK_SELECTED: { setReviewRowsChecked(selectedReviewRows(), false); setReviewSummary(L"Unchecked selected row(s). Checked artifacts=" + std::to_wstring(static_cast<unsigned long long>(checkedArtifactCountSnapshotNoThrow()))); return 0; }

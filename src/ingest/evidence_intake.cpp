@@ -57,6 +57,7 @@ std::string normalizeIosPathFromZipEntryCpp(const std::string& fullName) {
     if (trim(fullName).empty()) return "";
     std::string p = fullName;
     std::replace(p.begin(), p.end(), '\\', '/');
+    while (p.find("//") != std::string::npos) p.replace(p.find("//"), 2, "/");
     const std::string low = toLower(p);
     auto pos = low.find("/private/var/");
     if (pos != std::string::npos) return toLower(p.substr(pos));

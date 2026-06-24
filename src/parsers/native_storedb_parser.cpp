@@ -240,14 +240,25 @@ std::string cleanDecodedString(std::string s) {
 }
 
 std::string bytesToHex(const std::vector<std::uint8_t>& b) {
-    std::ostringstream os;
-    os << std::hex << std::uppercase << std::setfill('0');
-    for (auto c : b) os << std::setw(2) << static_cast<int>(c);
-    return os.str();
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    out.resize(b.size() * 2U);
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        const unsigned char c = b[i];
+        out[i * 2U] = kHex[(c >> 4U) & 0x0FU];
+        out[i * 2U + 1U] = kHex[c & 0x0FU];
+    }
+    return out;
 }
 
 std::string utf8FromBytes(const std::vector<std::uint8_t>& b) {
     return escapeControlForSqlText(std::string(reinterpret_cast<const char*>(b.data()), b.size()));
+}
+
+std::string utf8FromByteRange(const std::vector<std::uint8_t>& b, std::size_t start, std::size_t end) {
+    if (end <= start || start >= b.size()) return {};
+    end = std::min(end, b.size());
+    return escapeControlForSqlText(std::string(reinterpret_cast<const char*>(b.data() + start), end - start));
 }
 
 std::vector<std::string> splitNullUtf8(const std::vector<std::uint8_t>& b) {
@@ -256,7 +267,7 @@ std::vector<std::string> splitNullUtf8(const std::vector<std::uint8_t>& b) {
     for (std::size_t i = 0; i <= b.size(); ++i) {
         if (i == b.size() || b[i] == 0) {
             if (i > start) {
-                auto s = cleanDecodedString(utf8FromBytes(std::vector<std::uint8_t>(b.begin() + static_cast<std::ptrdiff_t>(start), b.begin() + static_cast<std::ptrdiff_t>(i))));
+                auto s = cleanDecodedString(utf8FromByteRange(b, start, i));
                 while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
                 if (!s.empty()) out.push_back(std::move(s));
             }
@@ -1224,6 +1235,14 @@ std::string twoDigitProbeSuffix(int n) {
     return oss.str();
 }
 
+std::string normalizeExtractedFileReferencePath(std::string p) {
+    p = cleanDecodedString(trimAscii(p));
+    if (lowerAscii(p).rfind("file://", 0) == 0) p = p.substr(7);
+    std::replace(p.begin(), p.end(), '\\', '/');
+    while (p.find("//") != std::string::npos) p.replace(p.find("//"), 2, "/");
+    return p;
+}
+
 std::string extractFirstUrlCandidate(const std::string& value) {
     const auto lower = lowerAscii(value);
     std::size_t pos = lower.find("https://");
@@ -1268,8 +1287,7 @@ std::string extractFirstFilePathCandidate(const std::string& value) {
         if (c <= 0x20 || value[end] == '"' || value[end] == '\'' || value[end] == '<' || value[end] == '>') break;
         ++end;
     }
-    auto out = cleanDecodedString(trimAscii(value.substr(best, end - best)));
-    if (lowerAscii(out).rfind("file://", 0) == 0) out = out.substr(7);
+    auto out = normalizeExtractedFileReferencePath(value.substr(best, end - best));
     while (!out.empty() && (out.back() == ',' || out.back() == ';' || out.back() == ')' || out.back() == ']')) out.pop_back();
     return out;
 }
@@ -2588,8 +2606,7 @@ std::string metadataFullPathOf(const ParsedItem& item) {
     });
     p = trimAscii(p);
     if (p.empty()) return {};
-    const auto lower = lowerAscii(p);
-    if (lower.rfind("file://", 0) == 0) p = p.substr(7);
+    p = normalizeExtractedFileReferencePath(p);
     return p;
 }
 
@@ -2643,19 +2660,26 @@ std::string reconstructPath(std::uint64_t inode, const std::unordered_map<std::u
     if (it0 == nodes.end()) return {};
     if (inode == 2) return "/";
     std::vector<std::string> parts;
+    parts.reserve(16);
     std::uint64_t current = inode;
-    std::set<std::uint64_t> seen;
+    std::unordered_set<std::uint64_t> seen;
+    seen.reserve(32);
     while (true) {
         auto it = nodes.find(current);
         if (it == nodes.end()) break;
         if (!seen.insert(current).second) break;
         const auto& name = it->second.second;
-        if (!name.empty() && name != "------NONAME------" && name != "------PLIST------") parts.insert(parts.begin(), name);
+        if (!name.empty() && name != "------NONAME------" && name != "------PLIST------") parts.push_back(name);
         if (current == 2 || it->second.first == 0 || it->second.first == 2) break;
         current = it->second.first;
     }
     if (parts.empty()) return {};
-    return "/" + join(parts, "/");
+    std::string out = "/";
+    for (auto it = parts.rbegin(); it != parts.rend(); ++it) {
+        if (it != parts.rbegin()) out.push_back('/');
+        out += *it;
+    }
+    return out;
 }
 
 void insertFailure(CaseDatabase& db, const EvidenceSource& source, const StoreInfo& store, const std::string& phase, const std::string& message) {
@@ -2723,12 +2747,15 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
         auto insertItem = [&](const StoreInfo& store, const ParsedItem& item, const std::string& fullPath) {
             const auto inode = std::to_string(item.inodeId);
             const auto parent = std::to_string(item.parentId);
+            const auto itemId = std::to_string(item.itemId);
+            const auto storeDir = pathString(store.storePath.parent_path());
+            const auto storeDbPath = pathString(store.storePath);
             const auto fileName = fileNameOf(item);
             const auto metadataPath = metadataFullPathOf(item);
             const auto effectiveFullPath = !fullPath.empty() ? fullPath : metadataPath;
             const auto recordState = effectiveFullPath.empty() ? std::string("PARTIAL_OR_NO_PATH") : std::string("ACTIVE_OR_RESOLVED");
-            recStmt.bind(1, source.sourceId); recStmt.bind(2, store.storeGuid); recStmt.bind(3, pathString(store.storePath.parent_path())); recStmt.bind(4, pathString(store.storePath));
-            recStmt.bind(5, inode); recStmt.bind(6, std::to_string(item.itemId)); recStmt.bind(7, parent); recStmt.bind(8, ""); recStmt.bind(9, std::to_string(item.rawDateUpdated)); recStmt.bind(10, item.lastUpdatedUtc);
+            recStmt.bind(1, source.sourceId); recStmt.bind(2, store.storeGuid); recStmt.bind(3, storeDir); recStmt.bind(4, storeDbPath);
+            recStmt.bind(5, inode); recStmt.bind(6, itemId); recStmt.bind(7, parent); recStmt.bind(8, ""); recStmt.bind(9, std::to_string(item.rawDateUpdated)); recStmt.bind(10, item.lastUpdatedUtc);
             recStmt.bind(11, fileName); recStmt.bind(12, contentTypeOf(item)); recStmt.bind(13, contentTypeTreeOf(item)); recStmt.bind(14, whereFromsOf(item)); recStmt.bind(15, cleanDecodedString(displayNameOf(item)));
             recStmt.bind(16, effectiveFullPath); recStmt.bind(17, recordState); recStmt.bind(18, logicalSizeOf(item)); recStmt.bind(19, physicalSizeOf(item)); recStmt.stepDone(); recStmt.reset();
             ++counts.rawRecords;
@@ -2746,7 +2773,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                 const bool persistKeyValue = !iosDefaultFilteredKvMode || shouldPersistDefaultIosKeyValue(field, value, dateField, persistedKeyValuesForRecord);
                 if (persistKeyValue) {
                     const std::string storedValue = iosDefaultFilteredKvMode ? trimStoredNativeValue(field, value) : value;
-                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, field); kvStmt.bind(11, storedValue); kvStmt.stepDone(); kvStmt.reset();
+                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, storeDir); kvStmt.bind(4, storeDbPath); kvStmt.bind(5, inode); kvStmt.bind(6, itemId); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, field); kvStmt.bind(11, storedValue); kvStmt.stepDone(); kvStmt.reset();
                     ++counts.rawKeyValues;
                     ++persistedKeyValuesForRecord;
                     if (iosDefaultFilteredKvMode && looksLikeForensicReferenceValue(value)) persistedReferenceForRecord = true;
@@ -2757,25 +2784,25 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                         const bool parsedIso = isLikelyIsoDate(dateValue);
                         const bool persistDate = !iosDefaultFilteredKvMode || shouldPersistDefaultIosDateCandidate(field, dateValue, parsedIso, persistedDateCandidatesForRecord);
                         if (!persistDate) continue;
-                        dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, pathString(store.storePath.parent_path())); dateStmt.bind(4, pathString(store.storePath)); dateStmt.bind(5, inode); dateStmt.bind(6, std::to_string(item.itemId)); dateStmt.bind(7, field); dateStmt.bind(8, dateValue); dateStmt.bind(9, parsedIso ? dateValue : ""); dateStmt.bind(10, parsedIso ? "native_iso" : "native_candidate"); dateStmt.stepDone(); dateStmt.reset();
+                        dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, storeDir); dateStmt.bind(4, storeDbPath); dateStmt.bind(5, inode); dateStmt.bind(6, itemId); dateStmt.bind(7, field); dateStmt.bind(8, dateValue); dateStmt.bind(9, parsedIso ? dateValue : ""); dateStmt.bind(10, parsedIso ? "native_iso" : "native_candidate"); dateStmt.stepDone(); dateStmt.reset();
                         ++counts.rawDateCandidates;
                         ++persistedDateCandidatesForRecord;
                     }
                 }
             }
             if (iosDefaultFilteredKvMode && persistedReferenceForRecord && !spotlightTextContext.empty()) {
-                kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_investigator_text_context"); kvStmt.bind(11, spotlightTextContext); kvStmt.stepDone(); kvStmt.reset();
+                kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, storeDir); kvStmt.bind(4, storeDbPath); kvStmt.bind(5, inode); kvStmt.bind(6, itemId); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_investigator_text_context"); kvStmt.bind(11, spotlightTextContext); kvStmt.stepDone(); kvStmt.reset();
                 ++counts.rawKeyValues;
             }
             if (iosDefaultFilteredKvMode) {
                 const std::string bplistContext = buildIosBplistNsKeyedArchiverContext(item.metadata);
                 if (!bplistContext.empty()) {
-                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, pathString(store.storePath.parent_path())); kvStmt.bind(4, pathString(store.storePath)); kvStmt.bind(5, inode); kvStmt.bind(6, std::to_string(item.itemId)); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_bplist_nskeyedarchiver_context"); kvStmt.bind(11, bplistContext); kvStmt.stepDone(); kvStmt.reset();
+                    kvStmt.bind(1, source.sourceId); kvStmt.bind(2, store.storeGuid); kvStmt.bind(3, storeDir); kvStmt.bind(4, storeDbPath); kvStmt.bind(5, inode); kvStmt.bind(6, itemId); kvStmt.bind(7, parent); kvStmt.bind(8, effectiveFullPath); kvStmt.bind(9, recordState); kvStmt.bind(10, "__spotlight_bplist_nskeyedarchiver_context"); kvStmt.bind(11, bplistContext); kvStmt.stepDone(); kvStmt.reset();
                     ++counts.rawKeyValues;
                 }
             }
             if (!item.lastUpdatedUtc.empty()) {
-                dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, pathString(store.storePath.parent_path())); dateStmt.bind(4, pathString(store.storePath)); dateStmt.bind(5, inode); dateStmt.bind(6, std::to_string(item.itemId)); dateStmt.bind(7, "Last_Updated"); dateStmt.bind(8, item.lastUpdatedUtc); dateStmt.bind(9, item.lastUpdatedUtc); dateStmt.bind(10, "native_epoch_microseconds"); dateStmt.stepDone(); dateStmt.reset();
+                dateStmt.bind(1, source.sourceId); dateStmt.bind(2, store.storeGuid); dateStmt.bind(3, storeDir); dateStmt.bind(4, storeDbPath); dateStmt.bind(5, inode); dateStmt.bind(6, itemId); dateStmt.bind(7, "Last_Updated"); dateStmt.bind(8, item.lastUpdatedUtc); dateStmt.bind(9, item.lastUpdatedUtc); dateStmt.bind(10, "native_epoch_microseconds"); dateStmt.stepDone(); dateStmt.reset();
                 ++counts.rawDateCandidates;
             }
             ++counts.parsedItems;
@@ -3000,8 +3027,12 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                             pos += itemAdvance;
                             if (maxRecords_ > 0 && counts.parsedItems >= maxRecords_) {
                                 stopDueToNativeRecordLimit = true;
-                                log.info("Native parser record diagnostic limit reached. parsed_items=" + std::to_string(counts.parsedItems) +
-                                         " limit=" + std::to_string(maxRecords_));
+                                const std::string limitMsg = "parsed_items=" + std::to_string(counts.parsedItems) +
+                                                             " max_native_records=" + std::to_string(maxRecords_) +
+                                                             " raw_key_values=" + std::to_string(counts.rawKeyValues) +
+                                                             " raw_date_candidates=" + std::to_string(counts.rawDateCandidates);
+                                log.info("Native parser record diagnostic limit reached. " + limitMsg);
+                                appendNativeProgress(progressPath_, 74, "native_parse_record_limit_reached", limitMsg);
                                 break;
                             }
                         }
