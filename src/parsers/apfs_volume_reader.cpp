@@ -141,7 +141,7 @@ ApfsNxSuperblockSummary parseApfsNxSuperblock(const std::vector<unsigned char>& 
         nx.found = false;
         nx.validationStatus = "NXSB_FOUND_BLOCK_COUNT_ZERO";
         nx.notes = "NXSB magic was present, but nx_block_count is zero; rejected before allocation/use.";
-    } else if (nx.blockCount > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(rawBlockSize))) {
+    } else if (nx.blockCount > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(rawBlockSize))) {
         nx.found = false;
         nx.validationStatus = "NXSB_FOUND_CONTAINER_SIZE_OVERFLOW";
         nx.notes = "NXSB magic was present, but nx_block_count * nx_block_size would overflow uint64; rejected before allocation/use.";

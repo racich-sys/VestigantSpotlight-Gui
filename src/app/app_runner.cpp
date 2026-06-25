@@ -27,6 +27,7 @@
 #include <sstream>
 #include <iomanip>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -873,7 +874,7 @@ void createUploadBundle(const fs::path& caseDir) {
         const std::vector<fs::path> rootFiles = {
             "CASE_REVIEW_SUMMARY.txt", "investigator_dashboard.html", "INVESTIGATOR_UI_GUIDE.md", "IOS_CORESPOTLIGHT_PLAN.md", "UPLOAD_README.txt", "TARGETED_EXPORT_README.txt", "Export-SpotlightTargetedData.ps1", "Create-UploadZip.ps1",
             "case_info.json", "case_summary.json", "case_summary.csv",
-            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv",
+            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json", "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv", "aff4_apfs_directory_record_name_index_sample.csv", "aff4_apfs_directory_record_name_index_summary.json", "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md",
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
@@ -4465,6 +4466,403 @@ struct Aff4ApfsStagedStoreV2EnrichmentProbeCounts {
     std::string notes;
 };
 
+
+struct Aff4ApfsUnresolvedObjectResolutionCounts {
+    std::string status = "NOT_RUN";
+    long long unresolvedBefore = 0;
+    long long directCandidateRows = 0;
+    long long parentCandidateRows = 0;
+    long long artifactsNameUpdated = 0;
+    long long artifactsPathUpdated = 0;
+    long long nameScanPathsReconstructed = 0;
+    std::string notes;
+};
+
+struct ApfsNameScanCandidate {
+    std::string childFileId;
+    std::string parentObjectId;
+    std::string decodedName;
+    std::string volumeName;
+    std::string targetRole;
+    std::string status;
+    std::string sequence;
+};
+
+struct UnresolvedArtifactForApfsNameProbe {
+    long long artifactId = 0;
+    std::string storeGuid;
+    std::string inode;
+    std::string parentInode;
+    std::string currentName;
+    std::string currentPath;
+};
+
+bool isUsefulApfsDecodedName(const std::string& name) {
+    if (name.empty()) return false;
+    if (name == "." || name == ".." || name == "------NONAME------" || name == "(null)" || name == "NULL") return false;
+    if (name.find("UNRESOLVED_SPOTLIGHT_OBJECT_INODE_") != std::string::npos) return false;
+    return true;
+}
+
+Aff4ApfsUnresolvedObjectResolutionCounts runAff4ApfsUnresolvedObjectResolutionProbe(const fs::path& caseDir,
+                                                                                     const EvidenceSource& source,
+                                                                                     CaseDatabase& db,
+                                                                                     Logger& log) {
+    Aff4ApfsUnresolvedObjectResolutionCounts c;
+    const fs::path nameScanCsv = caseDir / "aff4_apfs_spotlight_name_scan_sample.csv";
+    const fs::path logicalWalkCsv = caseDir / "aff4_apfs_logical_directory_walk.csv";
+    const fs::path outCsv = caseDir / "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv";
+    const fs::path jsonPath = caseDir / "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json";
+    const fs::path mdPath = caseDir / "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md";
+
+    try {
+        auto unresolvedCountStmt = db.prepare("SELECT COUNT(*) FROM artifacts WHERE source_id=? AND path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL'");
+        unresolvedCountStmt.bind(1, source.sourceId);
+        if (unresolvedCountStmt.stepRow()) c.unresolvedBefore = unresolvedCountStmt.colInt64(0);
+
+        if (c.unresolvedBefore <= 0) {
+            c.status = "SKIPPED_NO_UNRESOLVED_OBJECT_LABELS";
+            c.notes = "No unresolved native Store-V2 object labels were present after enrichment.";
+        } else if (!fs::exists(nameScanCsv) && !fs::exists(caseDir / "aff4_apfs_directory_record_name_index.csv")) {
+            c.status = "SKIPPED_NO_APFS_NAME_SCAN";
+            c.notes = "No APFS directory-record name index or aff4_apfs_spotlight_name_scan_sample.csv was present, so APFS directory-record name matching could not be attempted.";
+        } else {
+            appendRunStatus(caseDir, "aff4_apfs_unresolved_object_resolution_start", "unresolved=" + std::to_string(c.unresolvedBefore));
+            std::unordered_map<std::string, std::vector<ApfsNameScanCandidate>> byChildId;
+            std::unordered_map<std::string, std::vector<ApfsNameScanCandidate>> byParentId;
+
+            const fs::path directoryIndexCsv = fs::exists(caseDir / "aff4_apfs_directory_record_name_index.csv")
+                ? (caseDir / "aff4_apfs_directory_record_name_index.csv")
+                : nameScanCsv;
+            std::ifstream indexIn(directoryIndexCsv, std::ios::binary);
+            if (!indexIn) throw std::runtime_error("Unable to open APFS directory-record name index: " + pathString(directoryIndexCsv));
+            std::string headerLine;
+            if (std::getline(indexIn, headerLine)) {
+                if (!headerLine.empty() && headerLine.back() == '\r') headerLine.pop_back();
+                auto headers = csvParseLine(headerLine);
+                if (!headers.empty() && headers[0].size() >= 3 &&
+                    static_cast<unsigned char>(headers[0][0]) == 0xEF &&
+                    static_cast<unsigned char>(headers[0][1]) == 0xBB &&
+                    static_cast<unsigned char>(headers[0][2]) == 0xBF) {
+                    headers[0].erase(0, 3);
+                }
+                auto colIndex = [&](const std::string& name) -> int {
+                    for (std::size_t i = 0; i < headers.size(); ++i) if (headers[i] == name) return static_cast<int>(i);
+                    return -1;
+                };
+                const int childCol = colIndex("child_file_id_candidate");
+                const int parentCol = colIndex("parent_object_id_candidate");
+                const int nameCol = colIndex("decoded_name");
+                const int volumeCol = colIndex("volume_name");
+                const int roleCol = colIndex("target_role");
+                const int statusCol = colIndex("status");
+                const int sequenceCol = colIndex("sequence");
+                if (childCol < 0 || parentCol < 0 || nameCol < 0) {
+                    throw std::runtime_error("APFS directory-record name index is missing child_file_id_candidate, parent_object_id_candidate, or decoded_name columns: " + pathString(directoryIndexCsv));
+                }
+                auto fieldAt = [](const std::vector<std::string>& fields, int idx) -> std::string {
+                    return idx >= 0 && static_cast<std::size_t>(idx) < fields.size() ? fields[static_cast<std::size_t>(idx)] : std::string();
+                };
+                std::string line;
+                while (std::getline(indexIn, line)) {
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    if (line.empty()) continue;
+                    auto fields = csvParseLine(line);
+                    ApfsNameScanCandidate cand;
+                    cand.childFileId = fieldAt(fields, childCol);
+                    cand.parentObjectId = fieldAt(fields, parentCol);
+                    cand.decodedName = fieldAt(fields, nameCol);
+                    cand.volumeName = fieldAt(fields, volumeCol);
+                    cand.targetRole = fieldAt(fields, roleCol);
+                    cand.status = fieldAt(fields, statusCol);
+                    cand.sequence = fieldAt(fields, sequenceCol);
+                    if (!isUsefulApfsDecodedName(cand.decodedName)) continue;
+                    if (!cand.childFileId.empty()) byChildId[cand.childFileId].push_back(cand);
+                    if (!cand.parentObjectId.empty()) byParentId[cand.parentObjectId].push_back(cand);
+                }
+            }
+
+            std::unordered_map<std::string, std::string> logicalPathByChildId;
+            if (fs::exists(logicalWalkCsv)) {
+                try {
+                    const Rows walkRows = readCsv(logicalWalkCsv);
+                    for (const auto& r : walkRows) {
+                        const std::string childId = get(r, "child_file_id");
+                        const std::string path = get(r, "apfs_absolute_path");
+                        if (!childId.empty() && !path.empty() && !logicalPathByChildId.count(childId)) logicalPathByChildId[childId] = path;
+                    }
+                } catch (const std::exception& ex) {
+                    log.warn(std::string("Unable to read aff4_apfs_logical_directory_walk.csv for unresolved object probe: ") + ex.what());
+                }
+            }
+
+            std::unordered_map<std::string, std::string> nameScanPathCache;
+            std::function<std::string(const std::string&, std::set<std::string>&)> reconstructNameScanPath =
+                [&](const std::string& childId, std::set<std::string>& seen) -> std::string {
+                    if (childId.empty()) return {};
+                    auto cached = nameScanPathCache.find(childId);
+                    if (cached != nameScanPathCache.end()) return cached->second;
+                    if (seen.count(childId) || seen.size() > 256) return {};
+                    seen.insert(childId);
+
+                    auto it = byChildId.find(childId);
+                    if (it == byChildId.end() || it->second.empty()) return {};
+
+                    std::vector<const ApfsNameScanCandidate*> ordered;
+                    ordered.reserve(it->second.size());
+                    for (const auto& cand : it->second) {
+                        if (cand.volumeName == "Data") ordered.push_back(&cand);
+                    }
+                    for (const auto& cand : it->second) {
+                        if (cand.volumeName != "Data") ordered.push_back(&cand);
+                    }
+
+                    for (const ApfsNameScanCandidate* cand : ordered) {
+                        if (!cand || !isUsefulApfsDecodedName(cand->decodedName)) continue;
+                        const std::string& parentId = cand->parentObjectId;
+                        std::string candidatePath;
+                        if (parentId.empty() || parentId == "0" || parentId == "1" || parentId == "2" || parentId == cand->childFileId) {
+                            candidatePath = "/" + cand->decodedName;
+                        } else {
+                            std::string parentPath = reconstructNameScanPath(parentId, seen);
+                            if (!parentPath.empty()) {
+                                if (parentPath.size() > 1 && parentPath.back() == '/') parentPath.pop_back();
+                                candidatePath = parentPath + "/" + cand->decodedName;
+                            }
+                        }
+                        if (!candidatePath.empty()) {
+                            nameScanPathCache[childId] = candidatePath;
+                            seen.erase(childId);
+                            return candidatePath;
+                        }
+                    }
+
+                    seen.erase(childId);
+                    return {};
+                };
+
+            std::ofstream out(outCsv, std::ios::binary);
+            out << "artifact_id,store_guid,inode_num,parent_inode_num,current_file_name,current_best_path,direct_match_count,parent_match_count,selected_apfs_name,selected_apfs_path,selected_apfs_volume,selected_apfs_parent_object_id,selected_apfs_child_file_id,resolution_status,applied_to_artifact,confidence,notes\n";
+
+            auto q = db.prepare(R"SQL(
+SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,best_path
+FROM artifacts
+WHERE source_id=? AND path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL'
+ORDER BY CAST(inode_num AS INTEGER), artifact_id
+)SQL");
+            q.bind(1, source.sourceId);
+            std::vector<UnresolvedArtifactForApfsNameProbe> unresolvedRows;
+            while (q.stepRow()) {
+                UnresolvedArtifactForApfsNameProbe row;
+                row.artifactId = q.colInt64(0);
+                row.storeGuid = q.colText(1);
+                row.inode = q.colText(2);
+                row.parentInode = q.colText(3);
+                row.currentName = q.colText(4);
+                row.currentPath = q.colText(5);
+                unresolvedRows.push_back(std::move(row));
+            }
+
+            auto updateName = db.prepare(R"SQL(
+UPDATE artifacts
+SET file_name=?,
+    display_name=?,
+    path_source='APFS_NAME_SCAN_CHILD_FILE_ID',
+    path_status='APFS_NAME_RESOLVED_NO_FULL_PATH',
+    confidence='MEDIUM_APFS_CHILD_FILE_ID_NAME_MATCH'
+WHERE source_id=? AND artifact_id=? AND path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL'
+)SQL");
+            auto updatePath = db.prepare(R"SQL(
+UPDATE artifacts
+SET file_name=?,
+    display_name=?,
+    best_path=?,
+    spotlight_display_path=?,
+    normalized_mac_path=?,
+    path_source='APFS_LOGICAL_DIRECTORY_CHILD_FILE_ID',
+    path_status='APFS_LOGICAL_DIRECTORY_PATH_RESOLVED',
+    confidence='HIGH_APFS_CHILD_FILE_ID_PATH_MATCH'
+WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL','APFS_NAME_RESOLVED_NO_FULL_PATH')
+)SQL");
+
+            db.begin();
+            for (const auto& unresolved : unresolvedRows) {
+                const long long artifactId = unresolved.artifactId;
+                const std::string& storeGuid = unresolved.storeGuid;
+                const std::string& inode = unresolved.inode;
+                const std::string& parentInode = unresolved.parentInode;
+                const std::string& currentName = unresolved.currentName;
+                const std::string& currentPath = unresolved.currentPath;
+                const auto directIt = byChildId.find(inode);
+                const auto parentIt = byParentId.find(parentInode);
+                const std::size_t directCount = directIt == byChildId.end() ? 0 : directIt->second.size();
+                const std::size_t parentCount = parentIt == byParentId.end() ? 0 : parentIt->second.size();
+                if (directCount > 0) ++c.directCandidateRows;
+                if (parentCount > 0) ++c.parentCandidateRows;
+
+                std::string selectedName;
+                std::string selectedVolume;
+                std::string selectedParent;
+                std::string selectedChild;
+                std::string selectedPath;
+                std::string resolutionStatus = "NO_APFS_CHILD_FILE_ID_MATCH";
+                std::string applied = "0";
+                std::string confidence = "LOW_NO_MATCH";
+                std::string notes = "No APFS name-scan row matched the Store-V2 object identifier as child_file_id_candidate.";
+
+                if (directCount > 0) {
+                    const auto& candidates = directIt->second;
+                    const ApfsNameScanCandidate* chosen = nullptr;
+                    for (const auto& cand : candidates) {
+                        if (!parentInode.empty() && cand.parentObjectId == parentInode) { chosen = &cand; break; }
+                    }
+                    if (!chosen && candidates.size() == 1) chosen = &candidates.front();
+                    if (!chosen) {
+                        for (const auto& cand : candidates) {
+                            if (cand.volumeName == "Data") { chosen = &cand; break; }
+                        }
+                    }
+                    if (!chosen && !candidates.empty()) chosen = &candidates.front();
+
+                    selectedName = chosen ? chosen->decodedName : std::string();
+                    selectedVolume = chosen ? chosen->volumeName : std::string();
+                    selectedParent = chosen ? chosen->parentObjectId : std::string();
+                    selectedChild = chosen ? chosen->childFileId : std::string();
+                    auto pathIt = logicalPathByChildId.find(selectedChild);
+                    bool pathFromLogicalWalk = false;
+                    bool pathFromNameScanChain = false;
+                    if (pathIt != logicalPathByChildId.end()) {
+                        selectedPath = pathIt->second;
+                        pathFromLogicalWalk = true;
+                    }
+                    if (selectedPath.empty() && !selectedChild.empty()) {
+                        std::set<std::string> seen;
+                        selectedPath = reconstructNameScanPath(selectedChild, seen);
+                        pathFromNameScanChain = !selectedPath.empty();
+                    }
+
+                    const bool parentMatches = !parentInode.empty() && selectedParent == parentInode;
+                    if (!selectedPath.empty()) {
+                        if (pathFromNameScanChain && !pathFromLogicalWalk) ++c.nameScanPathsReconstructed;
+                        resolutionStatus = parentMatches
+                            ? (pathFromLogicalWalk ? "DIRECT_APFS_CHILD_AND_PARENT_PATH_MATCH" : "DIRECT_APFS_CHILD_AND_PARENT_RECONSTRUCTED_NAME_SCAN_PATH_MATCH")
+                            : (pathFromLogicalWalk ? "DIRECT_APFS_CHILD_PATH_MATCH_PARENT_UNCONFIRMED" : "DIRECT_APFS_CHILD_RECONSTRUCTED_NAME_SCAN_PATH_PARENT_UNCONFIRMED");
+                        confidence = parentMatches
+                            ? (pathFromLogicalWalk ? "HIGH_APFS_CHILD_PARENT_PATH_MATCH" : "MEDIUM_APFS_CHILD_PARENT_RECONSTRUCTED_NAME_SCAN_PATH_MATCH")
+                            : (pathFromLogicalWalk ? "MEDIUM_APFS_CHILD_PATH_MATCH_PARENT_UNCONFIRMED" : "LOW_APFS_RECONSTRUCTED_NAME_SCAN_PATH_PARENT_UNCONFIRMED");
+                        updatePath.bind(1, selectedName);
+                        updatePath.bind(2, selectedName);
+                        updatePath.bind(3, selectedPath);
+                        updatePath.bind(4, selectedPath);
+                        updatePath.bind(5, selectedPath);
+                        updatePath.bind(6, source.sourceId);
+                        updatePath.bind(7, artifactId);
+                        updatePath.stepDone();
+                        updatePath.reset();
+                        ++c.artifactsPathUpdated;
+                        applied = "1";
+                        notes = pathFromLogicalWalk
+                            ? "Applied APFS child-file-ID path candidate from logical directory walk."
+                            : "Applied APFS child-file-ID path reconstructed from APFS name-scan parent chain; review as candidate current path.";
+                    } else if (!selectedName.empty() && (parentMatches || candidates.size() == 1)) {
+                        resolutionStatus = parentMatches ? "DIRECT_APFS_CHILD_AND_PARENT_NAME_MATCH" : "DIRECT_APFS_CHILD_NAME_MATCH_PARENT_UNCONFIRMED";
+                        confidence = parentMatches ? "MEDIUM_APFS_CHILD_PARENT_NAME_MATCH" : "LOW_APFS_UNIQUE_CHILD_NAME_MATCH_PARENT_UNCONFIRMED";
+                        updateName.bind(1, selectedName);
+                        updateName.bind(2, selectedName);
+                        updateName.bind(3, source.sourceId);
+                        updateName.bind(4, artifactId);
+                        updateName.stepDone();
+                        updateName.reset();
+                        ++c.artifactsNameUpdated;
+                        applied = "1";
+                        notes = "Applied APFS decoded name from child_file_id_candidate match; no full APFS path was available from logical directory walk.";
+                    } else {
+                        resolutionStatus = "DIRECT_APFS_CHILD_MATCH_AMBIGUOUS";
+                        confidence = "LOW_REVIEW_DIRECT_MATCH_AMBIGUOUS";
+                        notes = "Direct APFS child-file-ID candidates were present but were not applied because the match was ambiguous.";
+                    }
+                } else if (parentCount > 0) {
+                    resolutionStatus = "PARENT_OBJECT_HAS_APFS_CHILDREN_ONLY";
+                    confidence = "LOW_PARENT_CONTEXT_ONLY";
+                    notes = "The Store-V2 parent object identifier appears in APFS name-scan rows, but the child object identifier was not directly resolved.";
+                }
+
+                out << csvEscape(std::to_string(artifactId)) << ','
+                    << csvEscape(storeGuid) << ','
+                    << csvEscape(inode) << ','
+                    << csvEscape(parentInode) << ','
+                    << csvEscape(currentName) << ','
+                    << csvEscape(currentPath) << ','
+                    << directCount << ','
+                    << parentCount << ','
+                    << csvEscape(selectedName) << ','
+                    << csvEscape(selectedPath) << ','
+                    << csvEscape(selectedVolume) << ','
+                    << csvEscape(selectedParent) << ','
+                    << csvEscape(selectedChild) << ','
+                    << csvEscape(resolutionStatus) << ','
+                    << applied << ','
+                    << csvEscape(confidence) << ','
+                    << csvEscape(notes) << "\n";
+            }
+            db.commit();
+            c.status = "RESOLUTION_PROBE_COMPLETED";
+            c.notes = "APFS directory-record name index rows were matched against unresolved Store-V2 object identifiers. Direct child-file-ID matches may now use logical-directory paths or reconstructed APFS name-index parent chains; parent-only context is exported for review and is not applied.";
+            appendRunStatus(caseDir, "aff4_apfs_unresolved_object_resolution_complete", "unresolved=" + std::to_string(c.unresolvedBefore) + " direct_candidates=" + std::to_string(c.directCandidateRows) + " names_updated=" + std::to_string(c.artifactsNameUpdated) + " paths_updated=" + std::to_string(c.artifactsPathUpdated) + " name_scan_paths_reconstructed=" + std::to_string(c.nameScanPathsReconstructed));
+            log.info("AFF4 APFS unresolved Spotlight object resolution probe written: " + pathString(outCsv));
+        }
+    } catch (const std::exception& ex) {
+        db.rollbackNoThrow();
+        if (c.status == "NOT_RUN") c.status = "RESOLUTION_PROBE_EXCEPTION";
+        c.notes = ex.what();
+        log.warn(std::string("AFF4 APFS unresolved Spotlight object resolution probe failed: ") + ex.what());
+    }
+
+    try {
+        std::ofstream out(jsonPath, std::ios::binary);
+        out << "{\n";
+        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        out << "  \"app_version\": \"" << appVersion() << "\",\n";
+        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        out << "  \"status\": \"" << jsonEscape(c.status) << "\",\n";
+        out << "  \"unresolved_before\": " << c.unresolvedBefore << ",\n";
+        out << "  \"direct_candidate_rows\": " << c.directCandidateRows << ",\n";
+        out << "  \"parent_candidate_rows\": " << c.parentCandidateRows << ",\n";
+        out << "  \"artifacts_name_updated\": " << c.artifactsNameUpdated << ",\n";
+        out << "  \"artifacts_path_updated\": " << c.artifactsPathUpdated << ",\n";
+        out << "  \"name_scan_paths_reconstructed\": " << c.nameScanPathsReconstructed << ",\n";
+        out << "  \"notes\": \"" << jsonEscape(c.notes) << "\"\n";
+        out << "}\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json: ") + ex.what());
+    }
+
+    try {
+        std::ofstream out(mdPath, std::ios::binary);
+        out << "# AFF4 APFS Unresolved Spotlight Object Resolution Probe\n\n";
+        out << "Version: " << appVersion() << "\n\n";
+        out << "## Scope\n\n";
+        out << "This diagnostic attempts to reduce `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels by comparing Store-V2 object identifiers to APFS directory-record `child_file_id_candidate` values. V1.6.77 prefers the full local `aff4_apfs_directory_record_name_index.csv` when available and falls back to `aff4_apfs_spotlight_name_scan_sample.csv`. When the logical directory walk does not contain a full path, it also attempts a guarded APFS name-index parent-chain reconstruction.\n\n";
+        out << "## Summary\n\n";
+        out << "- Status: `" << c.status << "`\n";
+        out << "- Unresolved artifacts before probe: `" << c.unresolvedBefore << "`\n";
+        out << "- Direct APFS child-file-ID candidate rows: `" << c.directCandidateRows << "`\n";
+        out << "- Parent-context candidate rows: `" << c.parentCandidateRows << "`\n";
+        out << "- Artifact names updated: `" << c.artifactsNameUpdated << "`\n";
+        out << "- Artifact paths updated: `" << c.artifactsPathUpdated << "`\n";
+        out << "- APFS name-scan parent-chain paths reconstructed: `" << c.nameScanPathsReconstructed << "`\n\n";
+        out << "## Output\n\n";
+        out << "- `aff4_apfs_unresolved_spotlight_object_resolution_probe.csv`\n";
+        out << "- `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json`\n\n";
+        out << "## Interpretation caution\n\n";
+        out << "Direct child-file-ID matches are applied as APFS-derived name/path candidates. Reconstructed name-scan paths are candidate current paths and should be reviewed against APFS provenance. Parent-only matches are exported for review and are not treated as proof of a current path.\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md: ") + ex.what());
+    }
+
+    return c;
+}
+
 Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentProbe(const fs::path& caseDir,
                                                                                    const EvidenceSource& source,
                                                                                    CaseDatabase& db,
@@ -4490,6 +4888,8 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
             SqliteEnrichment enrichment;
             const auto enrichCounts = enrichment.run(db, stagedSource, log);
             (void)enrichCounts;
+            const auto unresolvedResolutionCounts = runAff4ApfsUnresolvedObjectResolutionProbe(caseDir, source, db, log);
+            (void)unresolvedResolutionCounts;
             c.artifacts = scalarCountForSource(db, "artifacts", source.sourceId);
             c.timelineEvents = scalarCountForSource(db, "timeline_events", source.sourceId);
             c.usageEvidence = scalarCountForSource(db, "usage_evidence", source.sourceId);
@@ -4553,6 +4953,11 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
             "SELECT summary_id,metric_name,metric_value,created_utc FROM parser_coverage_summary WHERE source_id=? AND metric_name LIKE 'parent_inode_%' ORDER BY summary_id LIMIT 5000",
             source.sourceId, log);
 
+        exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv",
+            {"artifact_id","store_guid","inode_num","parent_inode_num","file_name","display_name","best_path","path_source","path_status","confidence"},
+            "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,confidence FROM artifacts WHERE source_id=? AND (path_status LIKE 'APFS_%' OR path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL') ORDER BY CASE WHEN path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL' THEN 1 ELSE 0 END, artifact_id LIMIT 5000",
+            source.sourceId, log);
+
     } catch (const std::exception& ex) {
         log.warn(std::string("AFF4 APFS staged Store-V2 diagnostic sample export failed: ") + ex.what());
         appendRunStatus(caseDir, "aff4_apfs_staged_storev2_sample_export_failed", ex.what());
@@ -4609,7 +5014,9 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
         out << "- `aff4_apfs_staged_storev2_raw_failures_sample.csv`\n";
         out << "- `aff4_apfs_staged_storev2_field_inventory_sample.csv`\n";
         out << "- `aff4_apfs_staged_storev2_parser_coverage_summary_sample.csv`\n";
-        out << "- `aff4_apfs_staged_storev2_path_reconstruction_sample.csv`\n\n";
+        out << "- `aff4_apfs_staged_storev2_path_reconstruction_sample.csv`\n";
+        out << "- `aff4_apfs_unresolved_spotlight_object_resolution_probe.csv`\n";
+        out << "- `aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv`\n\n";
         out << "## Next step\n\n";
         out << "Use these outputs to validate whether APFS-extracted Store-V2 rows are investigator-useful, then add AFF4/APFS provenance columns into object-centric review views.\n";
     } catch (const std::exception& ex) {
@@ -4732,7 +5139,7 @@ bool readExactFileBytes(const fs::path& path, std::uint64_t offset, std::size_t 
         error = "Unable to open file for exact single-file AFF4 ZIP probe: " + pathString(path);
         return false;
     }
-    if (offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+    if (offset > static_cast<std::uint64_t>((std::numeric_limits<std::streamoff>::max)())) {
         error = "Offset too large for platform streamoff.";
         return false;
     }
@@ -5469,7 +5876,11 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         const bool aff4InputSource = isAff4SourcePath(opt.input);
         const bool rawImageInputSource = isRawImageSourcePath(opt.input);
         auto profile = parseProfileKind(opt.profile);
-        const bool sourceProbeFullScan = opt.fullScan && !zipInputSource;
+        // AFF4/APFS direct-map validation already performs exact AFF4/APFS structural scans after intake.
+        // Keep the generic source-signature scan bounded for explicit AFF4 runs so the 70+ GB container
+        // is not read once for generic string hints and then read again for the evidentiary SHA256 hash.
+        const bool aff4BoundedGenericSignatureScan = aff4InputSource && opt.strictSingleAff4;
+        const bool sourceProbeFullScan = opt.fullScan && !zipInputSource && !aff4BoundedGenericSignatureScan;
         if (cancelRequested()) return returnCancelled("before_source_probe_signature_scan");
         appendRunStatus(caseDir, "source_probe_signature_scan",
                         zipInputSource
@@ -5477,6 +5888,9 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                             : (sourceProbeFullScan ? "full source signature probe" : "bounded source signature probe"));
         if (zipInputSource && opt.fullScan) {
             log.info("Full-scan parsing remains enabled, but pre-stage source signature probing is bounded for ZIP containers to avoid scanning very large iOS FFS ZIPs before focused CoreSpotlight extraction.");
+        }
+        if (aff4BoundedGenericSignatureScan && opt.fullScan) {
+            log.info("AFF4/APFS full-no-guardrails parsing remains enabled, but the generic pre-stage source signature probe is bounded; exact AFF4 ZIP/APFS direct-map scans and the evidentiary SHA256 hash run later.");
         }
         SourceProbeFindings sourceProbe = probeEvidenceSourceSignatures(opt.input, sourceProbeFullScan, log);
         if (cancelRequested()) return returnCancelled("after_source_probe_signature_scan");
@@ -5829,7 +6243,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Direct --evidence-root comparison is not used in V1.6.72. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.77. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);

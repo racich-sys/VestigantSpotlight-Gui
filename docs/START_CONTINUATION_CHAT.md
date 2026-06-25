@@ -1,77 +1,69 @@
-# Continue the Vestigant Spotlight / Spotlight2 Project from V1.6.72
+# Start Continuation Chat - Vestigant Spotlight V1.6.77
 
-Mandatory first step for the next assistant: read `ai_context.md` first from the latest uploaded source package before making any code, script, documentation, or packaging changes.
+Mandatory first action in a new chat: read `ai_context.md` first from the latest uploaded source package before making any code, script, documentation, or packaging changes. Treat the latest uploaded package as source of truth unless the user uploads a newer one.
 
-Latest package prepared: `VestigantSpotlightInv_V1_6_72.zip`.
+Current version/package: `VestigantSpotlightInv_V1_6_77.zip`.
 
-Latest version: `1.6.72`.
+Current primary validation target: rerun the same macOS AFF4/APFS evidence with V1.6.77 to verify: (1) Windows/MSVC build no longer fails in `win32_gui.cpp(3997)` or `gui_export_worker.cpp`; (2) AFF4 staged Store-V2 CoreFields no-cap run still completes; (3) unresolved Spotlight object resolution outputs are produced; (4) `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json` reports direct candidates and any applied APFS-derived names/paths.
 
-## Current focus
-
-Validate the V1.6.72 AFF4 stalled-parse hotfix. V1.6.70 showed that the AFF4 direct-map/APFS staging path had advanced, but the run appeared stalled during bounded FullValues Store-V2 parsing/finalization.
-
-Grounded V1.6.70 evidence:
-
-- `run_progress.tsv` reached `aff4_direct_map_reader_probe_complete` with `map_entries_scanned=1; chunks_decoded=14; apfs_hits=52`.
-- `run_progress.tsv` then reached `aff4_apfs_staged_storev2_parse_start` with `selected_stores=6 decode_mode=FullValues`.
-- `aff4_apfs_staged_storev2_parse_progress.tsv` showed store 2/6 with `blocks=2598` and by 20,000 parsed items had `raw_key_values=881055`, `raw_date_candidates=183222`, and DB size `1270317056` bytes.
-- `VestigantSpotlight.log` reported `Native parser record diagnostic limit reached. parsed_items=25000 limit=25000`.
-- The uploaded snapshot did not show parse-complete, enrichment-complete, upload-bundle-complete, or complete validation stage.
-
-V1.6.72 changes:
-
-- AFF4 staged Store-V2 validation defaults to bounded CoreFields mode unless full native values are explicitly requested.
-- One-click and wrapper scripts pass `-DecodeCoreNativeValues` by default and expose `-FullNativeValues`, `-MaxNativeRecords`, and `-MaxNativeBlocks`.
-- Native parser progress now writes `native_parse_record_limit_reached` when the cap is hit.
-- Wrapper heartbeat tails `aff4_apfs_staged_storev2_parse_progress.tsv` so parser progress is visible during the native parse stage.
-- AFF4 path resolution is deferred until after build/self-test so the one-click workflow builds first.
-- Current default AFF4 search root is `T:\` because the user reported the drive letter changed from `R:` to `T:`.
-
-## Copy/paste PowerShell command
-
-After downloading the ZIP and `Run-V1_6_72-AfterDownload.ps1` to `D:\Downloads`, run:
+Copy/paste PowerShell command after downloading ZIP and PS1 files to `D:\Downloads`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
 ```
 
-Expected uploads after AFF4 run:
+Expected uploads after run:
 
 ```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip
-D:\Downloads\V1_6_72_build.log
-D:\Downloads\V1_6_72_AFF4_WRAPPER_RUN_SUMMARY.txt
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
+D:\Downloads\V1_6_77_build.log
+D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
 ```
 
-Targeted FullValues support run only:
+Key V1.6.77 changes:
+
+- Fixed the V1.6.74 Windows/MSVC `WM_EXPORT_DB_CSV_RESULT` build failure by aligning the message handler with `postExportResult()`'s actual `std::wstring*` payload.
+- Hardened source `std::numeric_limits<...>::max()` / `min()` calls against Windows `min`/`max` macro expansion.
+- Preserved the V1.6.74 unresolved Spotlight object resolution probe and GUI CSV export / Tags-Notes layout work so it can finally be validated after the build fix.
+
+Important standing rules: provide a one-click PowerShell command in every release response; keep active Markdown consolidated to exactly five files; do not claim Windows/MSVC or runtime success without uploaded evidence; do not treat unresolved APFS/Spotlight linkage gaps as deletion proof.
+
+## V1.6.77 immediate status
+
+Latest package prepared: `VestigantSpotlightInv_V1_6_77.zip`.
+
+Mandatory first action: read `ai_context.md` first. Current focus is validating the new full local APFS directory-record name index and whether it reduces unresolved/unnamed Spotlight object rows on the same AFF4 source.
+
+Copy/paste command for the next run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1 -FullNativeValues
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
 ```
 
-## Standing rules
-
-- Every release response must put a single copy/paste PowerShell command immediately after download links.
-- Every package must include one root-level one-click PowerShell script that builds, runs required self-test, and runs the needed validation workflow.
-- Do not claim Windows/MSVC, runtime, iOS, or AFF4 success without uploaded evidence.
-- Keep active Markdown consolidated to exactly: `.github/pull_request_template.md`, `ai_context.md`, `docs/PROJECT_REFERENCE_V<version>.md`, `docs/START_CONTINUATION_CHAT.md`, `third_party/lzfse/README.md`.
-
-## Latest continuation update - V1.6.72
-
-Read `ai_context.md` first. Current package is `VestigantSpotlightInv_V1_6_72.zip`.
-
-The latest uploaded V1.6.71 no-record-cap AFF4 run completed with `RunnerExitCode: 0` and wrapper `MaxNativeRecords: 0`, but the result still reported `max_records_used=25000` and `raw_record_count=25000`. V1.6.72 fixes the no-record-cap propagation path so explicit `0` remains uncapped at both wrapper and app levels.
-
-Copy/paste command for the next AFF4 no-record-cap CoreFields validation run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_72-AfterDownload.ps1
-```
-
-Upload after run:
+Expected uploads:
 
 ```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip
-D:\Downloads\V1_6_72_build.log
-D:\Downloads\V1_6_72_AFF4_WRAPPER_RUN_SUMMARY.txt
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
+D:\Downloads\V1_6_77_build.log
+D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
 ```
+
+
+## Latest handoff update - V1.6.77
+
+Latest package: `VestigantSpotlightInv_V1_6_77.zip`. Read `ai_context.md` first. V1.6.75 Windows build and AFF4 runtime were verified from uploaded artifacts. V1.6.77 adds APFS name-scan parent-chain path reconstruction for unresolved Spotlight object labels and bounds the generic source signature scan for explicit single-AFF4 runs to reduce duplicate full-AFF4 reads while preserving SHA256 hashing.
+
+Copy/paste command for the next AFF4 validation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
+```
+
+Upload after the run:
+
+```text
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
+D:\Downloads\V1_6_77_build.log
+D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
+```
+

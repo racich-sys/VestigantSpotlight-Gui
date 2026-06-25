@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <chrono>
@@ -193,6 +195,50 @@ std::size_t writeSqlCsv(sqlite3* db, const std::wstring& outPath, const std::str
     }
     sqlite3_finalize(st);
     return rows;
+}
+
+
+std::string quoteSqlIdentifier(const std::string& name) {
+    std::string out = "\"";
+    for (char c : name) out += (c == '"') ? "\"\"" : std::string(1, c);
+    out += "\"";
+    return out;
+}
+
+std::vector<std::string> exportableSqliteTables(sqlite3* db) {
+    std::vector<std::string> tables;
+    const char* sql = "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db));
+    while (true) {
+        const int rc = sqlite3_step(st);
+        if (rc == SQLITE_DONE) break;
+        if (rc != SQLITE_ROW) { std::string msg = sqlite3_errmsg(db); sqlite3_finalize(st); throw std::runtime_error(msg); }
+        tables.push_back(stmtText(st, 0));
+    }
+    sqlite3_finalize(st);
+    return tables;
+}
+
+std::uint64_t countRowsInTable(sqlite3* db, const std::string& tableName) {
+    const std::string sql = "SELECT COUNT(*) FROM " + quoteSqlIdentifier(tableName);
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db));
+    std::uint64_t rows = 0;
+    if (sqlite3_step(st) == SQLITE_ROW) rows = static_cast<std::uint64_t>(sqlite3_column_int64(st, 0));
+    sqlite3_finalize(st);
+    return rows;
+}
+
+std::wstring chunkedTableCsvName(const std::string& tableName, std::uint64_t part) {
+    std::wostringstream os;
+    os << widenAscii(tableName) << L"_part" << std::setw(4) << std::setfill(L'0') << static_cast<unsigned long long>(part) << L".csv";
+    return os.str();
+}
+
+std::size_t writeTableChunkCsv(sqlite3* db, const std::wstring& outPath, const std::string& tableName, std::uint64_t limit, std::uint64_t offset, const std::function<bool()>& shouldCancel = {}) {
+    const std::string sql = "SELECT * FROM " + quoteSqlIdentifier(tableName) + " LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
+    return writeSqlCsv(db, outPath, sql, shouldCancel);
 }
 
 void writeSupportManifest(const std::wstring& outPath, const std::vector<std::pair<std::wstring, std::size_t>>& files) {
@@ -454,6 +500,51 @@ GuiExportResult GuiExportWorker::exportTaggedArtifacts(const std::wstring& dbPat
     } catch (const std::exception& ex) {
         result.ok = false;
         result.message = L"ERROR exporting tagged artifacts: " + widenAscii(ex.what());
+    }
+    return result;
+}
+
+
+GuiExportResult GuiExportWorker::exportCaseDatabaseTablesChunked(const std::wstring& dbPath,
+                                                                 const std::wstring& outFolder,
+                                                                 std::size_t chunkRows,
+                                                                 std::function<bool()> shouldCancel) {
+    GuiExportResult result;
+    try {
+        if (chunkRows == 0) chunkRows = 500000;
+        ReadOnlyExportDb db(dbPath);
+        ensureFolderExistsNoThrow(outFolder);
+        const auto tables = exportableSqliteTables(db.get());
+        std::vector<std::pair<std::wstring, std::size_t>> manifestRows;
+        std::uint64_t totalRows = 0;
+        std::uint64_t totalFiles = 0;
+        for (const auto& table : tables) {
+            if (exportCancelled(shouldCancel)) throw std::runtime_error("Export cancelled before table scan completed");
+            const std::uint64_t tableRows = countRowsInTable(db.get(), table);
+            totalRows += tableRows;
+            if (tableRows == 0) {
+                const std::wstring outPath = joinPath(outFolder, widenAscii(table) + L"_empty.csv");
+                manifestRows.push_back({outPath, writeTableChunkCsv(db.get(), outPath, table, 1, 0, shouldCancel)});
+                ++totalFiles;
+                continue;
+            }
+            std::uint64_t part = 1;
+            for (std::uint64_t offset = 0; offset < tableRows; offset += static_cast<std::uint64_t>(chunkRows), ++part) {
+                if (exportCancelled(shouldCancel)) throw std::runtime_error("Export cancelled during table chunk export");
+                const std::wstring outPath = joinPath(outFolder, chunkedTableCsvName(table, part));
+                manifestRows.push_back({outPath, writeTableChunkCsv(db.get(), outPath, table, static_cast<std::uint64_t>(chunkRows), offset, shouldCancel)});
+                ++totalFiles;
+            }
+        }
+        const std::wstring manifestPath = joinPath(outFolder, L"CASE_SQLITE_TABLE_EXPORT_MANIFEST.csv");
+        writeSupportManifest(manifestPath, manifestRows);
+        result.ok = true;
+        result.rows = static_cast<std::size_t>(totalRows > static_cast<std::uint64_t>((std::numeric_limits<std::size_t>::max)()) ? (std::numeric_limits<std::size_t>::max)() : static_cast<std::size_t>(totalRows));
+        result.manifestPath = manifestPath;
+        result.message = L"Exported " + std::to_wstring(static_cast<unsigned long long>(totalRows)) + L" SQLite rows from " + std::to_wstring(static_cast<unsigned long long>(tables.size())) + L" tables into " + std::to_wstring(static_cast<unsigned long long>(totalFiles)) + L" CSV file(s). Manifest: " + manifestPath;
+    } catch (const std::exception& ex) {
+        result.ok = false;
+        result.message = L"Case SQLite CSV export failed: " + widenAscii(ex.what());
     }
     return result;
 }

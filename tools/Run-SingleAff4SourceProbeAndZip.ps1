@@ -1,8 +1,8 @@
 param(
     [string]$Aff4Input = "",
-    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_72",
+    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_77",
     [string]$ReaderToolsRoot = "",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_72.zip",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip",
     [switch]$SkipUploadZip,
     [switch]$ForceContainerHash,
     [switch]$FullScan,

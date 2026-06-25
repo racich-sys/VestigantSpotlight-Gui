@@ -1,0 +1,18 @@
+Vestigant Spotlight V1.6.77 copy/paste commands
+
+Primary AFF4 build/test/run command:
+
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
+
+Expected uploads after run:
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
+D:\Downloads\V1_6_77_build.log
+D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
+
+Build only:
+
+powershell -ExecutionPolicy Bypass -File D:\Downloads\BuildAndRun-V1_6_77-FromDownloadedZip.ps1 -Workflow BuildOnly
+
+iOS thin validation:
+
+powershell -ExecutionPolicy Bypass -File D:\Downloads\BuildAndRun-V1_6_77-FromDownloadedZip.ps1 -Workflow IOSCoreSpotlightThin -CleanOut -UseFastLocalCaseRoot -FastLocalRoot "D:\Downloads\SpotlightCase"

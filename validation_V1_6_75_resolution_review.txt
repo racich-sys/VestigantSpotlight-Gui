@@ -1,0 +1,30 @@
+V1.6.75 AFF4 result review
+
+Inputs reviewed:
+- Upload_Thin_MacOS_AFF4_V1_6_77.zip
+- Upload_Thin_MacOS_AFF4_V1_6_77.zip.sha256.txt
+- V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
+- V1_6_77_build.log
+
+Verified from uploaded wrapper/build files:
+- Windows/MSVC build completed, binary version check reported Vestigant Spotlight v1.6.75, and the schema/iOS/APFS module smoke test passed.
+- AFF4 wrapper reported RunnerExitCode=0, FullNoGuardrails=True, FullNativeValues=False, MaxNativeRecords=0, and the expected AFF4 input path.
+- Upload ZIP SHA256 recorded by the user-side script: DDC670B62BA24DBA58C06A1B341D787CB9FB659375A99E85EBDBCC56CAC6910B.
+
+Direct ZIP inspection results:
+- case_summary.json: raw_record_count=102170; raw_key_value_count=116445; artifact_count=101326; timeline_event_count=102170; orphaned_or_deleted_candidate_count=0.
+- aff4_apfs_staged_storev2_parser_probe_summary.json: parse_probe_status=PARSE_PROBE_COMPLETED; selected_databases=6; max_records_used=0; native_decode_mode=CoreFields; failures=0.
+- aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json: unresolved_before=71402; direct_candidate_rows=1340; parent_candidate_rows=26764; artifacts_name_updated=1340; artifacts_path_updated=0.
+- aff4_apfs_staged_storev2_artifacts_sample.csv: in the 5,000-row sample, V1.6.75 had 3,526 unresolved labels, 1,032 RAW_PATH_PRESENT rows, 414 APFS_NAME_RESOLVED_NO_FULL_PATH rows, and 28 RAW_NATIVE_PATH_PROBE_PRESENT rows.
+- aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv: 1,340 sample rows were APFS_NAME_RESOLVED_NO_FULL_PATH and 3,660 remained UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL.
+
+Dry path-reconstruction analysis against uploaded V1.6.75 CSVs:
+- aff4_apfs_spotlight_name_scan_sample.csv contained 200,000 data rows.
+- 198,856 distinct child_file_id_candidate values were present after filtering unusable names.
+- 168,726 child IDs had reconstructable parent-chain paths in the APFS name scan sample.
+- Of the 1,340 direct unresolved child-ID matches, 1,281 had reconstructable APFS name-scan parent-chain paths.
+
+V1.6.77 fix direction:
+- Add APFS name-scan parent-chain path reconstruction to the unresolved object resolver.
+- Apply reconstructed paths only for direct child-file-ID matches, with provenance labels and forensic caution.
+- Keep parent-only context as review-only, not as a current path.

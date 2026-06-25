@@ -55,7 +55,7 @@ HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
 HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{}, gFullNoGuardrails{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gResetFilters{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gResetFilters{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gExportDbCsv{}, gCsvChunkRows{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
@@ -96,6 +96,7 @@ std::atomic_bool gExportPageActive{false};
 std::atomic_bool gExportFilteredActive{false};
 std::atomic_bool gExportVisibleActive{false};
 std::atomic_bool gExportCheckedActive{false};
+std::atomic_bool gExportDbCsvActive{false};
 std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
 std::mutex gExportThreadsMutex;
@@ -142,7 +143,7 @@ void cancelAndJoinReviewThreadNoThrow() {
 }
 
 constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008, ID_FULL_NO_GUARDRAILS = 1009;
-constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124, ID_REVIEW_RESET_FILTERS = 1125;
+constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124, ID_REVIEW_RESET_FILTERS = 1125, ID_EXPORT_DB_CSV = 1126;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
 constexpr int ID_CTX_SORT_ASC = 2101, ID_CTX_SORT_DESC = 2102, ID_CTX_FILTER_SEARCH = 2103, ID_CTX_CLEAR_FILTER = 2104;
@@ -163,6 +164,7 @@ constexpr int WM_EXPORT_FILTERED_RESULT = WM_APP + 7;
 constexpr int WM_EXPORT_CHECKED_RESULT = WM_APP + 8;
 constexpr int WM_EXPORT_TAGGED_RESULT = WM_APP + 9;
 constexpr int WM_EXPORT_VISIBLE_RESULT = WM_APP + 10;
+constexpr int WM_EXPORT_DB_CSV_RESULT = WM_APP + 11;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
@@ -2320,6 +2322,43 @@ void exportCheckedArtifacts(HWND owner) {
     }));
 }
 
+
+void exportCaseDatabaseCsv(HWND owner) {
+    if (gOpenedCaseDb.empty()) { setReviewSummary(L"Open a case database before exporting the SQLite case database."); return; }
+    bool expected = false;
+    if (!gExportDbCsvActive.compare_exchange_strong(expected, true)) {
+        setReviewSummary(L"Export DB CSV is already running. Wait for the current export to finish.");
+        return;
+    }
+    std::size_t chunkRows = 500000;
+    if (gCsvChunkRows) {
+        try {
+            const auto chunkText = getText(gCsvChunkRows);
+            if (!chunkText.empty()) {
+                const auto parsed = std::stoull(narrow(chunkText));
+                if (parsed > 0) chunkRows = static_cast<std::size_t>(parsed);
+            }
+        } catch (...) {
+            chunkRows = 500000;
+            setText(gCsvChunkRows, L"500000");
+        }
+    }
+    int answer = MessageBoxW(owner,
+        L"This exports all base tables from the current SQLite case database to chunked CSV files. Large cases can take time and produce large output folders. Continue?",
+        L"Vestigant Spotlight - Export SQLite DB to CSV",
+        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    if (answer != IDYES) { gExportDbCsvActive.store(false); return; }
+    std::wstring outFolder = browseFolder(owner);
+    if (outFolder.empty()) { gExportDbCsvActive.store(false); return; }
+    const std::wstring dbPath = gOpenedCaseDb;
+    setReviewSummary(L"Export SQLite DB CSV in progress... GUI remains active. Chunk rows=" + std::to_wstring(static_cast<unsigned long long>(chunkRows)));
+    if (gExportDbCsv) EnableWindow(gExportDbCsv, FALSE);
+    registerExportThread(std::thread([owner, dbPath, outFolder, chunkRows]() {
+        const GuiExportResult result = GuiExportWorker::exportCaseDatabaseTablesChunked(dbPath, outFolder, chunkRows, []() { return gShuttingDown.load(); });
+        postExportResult(owner, WM_EXPORT_DB_CSV_RESULT, result.ok, result.message);
+    }));
+}
+
 void exportTaggedArtifacts(HWND owner) {
     if (gOpenedCaseDb.empty()) { setTagSummary(L"Open a case database before exporting tagged artifacts."); return; }
     const long long tagId = selectedTagId();
@@ -3354,6 +3393,9 @@ void createReviewControls(HWND hwnd) {
     gExportFiltered = buttonR(hwnd, L"Export Filtered", ID_EXPORT_FILTERED, 554, y0 + 52, 118, 24);
     gExportVisible = buttonR(hwnd, L"Export Views", ID_EXPORT_VISIBLE_VIEWS, 678, y0 + 52, 106, 24);
     gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 790, y0 + 52, 118, 24);
+    gExportDbCsv = buttonR(hwnd, L"Export DB CSV", ID_EXPORT_DB_CSV, 914, y0 + 52, 118, 24);
+    addReview(CreateWindowW(L"STATIC", L"CSV rows/file", WS_CHILD | WS_VISIBLE, 854, y0 + 82, 86, 20, hwnd, nullptr, gInst, nullptr));
+    gCsvChunkRows = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"500000", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 942, y0 + 80, 90, 22, hwnd, nullptr, gInst, nullptr));
     gClearChecked = buttonR(hwnd, L"Clear Checked", ID_CLEAR_CHECKED, 248, y0 + 80, 108, 24);
     gManageTags = buttonR(hwnd, L"Tags", ID_CTX_MANAGE_TAGS, 362, y0 + 80, 60, 24);
     gOpenCaseFolder = buttonR(hwnd, L"Case Folder", ID_OPEN_CASE_FOLDER, 428, y0 + 80, 106, 24);
@@ -3382,22 +3424,22 @@ void createReviewControls(HWND hwnd) {
 
 void createTagControls(HWND hwnd) {
     const int y0 = 58;
-    addTag(CreateWindowW(L"STATIC", L"Tags / Notes: create tags, apply them to selected investigation rows, save artifact notes, and review tagged entries.", WS_CHILD | WS_VISIBLE, 16, y0, 960, 22, hwnd, nullptr, gInst, nullptr));
+    addTag(CreateWindowW(L"STATIC", L"Tags / Notes: create tags, apply to selected investigation rows, save notes, and review/export tagged entries.", WS_CHILD | WS_VISIBLE, 16, y0, 980, 22, hwnd, nullptr, gInst, nullptr));
     labelT(hwnd, L"Tags", 16, y0 + 34, 220, 22);
-    gTagList = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 60, 230, 230, hwnd, nullptr, gInst, nullptr));
-    labelT(hwnd, L"New Tag", 16, y0 + 302, 80, 22); gTagName = editT(hwnd, 100, y0 + 298, 146, 26);
-    buttonT(hwnd, L"Add", ID_ADD_TAG, 16, y0 + 332, 70, 28);
-    buttonT(hwnd, L"Delete", ID_DELETE_TAG, 94, y0 + 332, 70, 28);
-    buttonT(hwnd, L"Refresh", ID_REFRESH_TAGS, 172, y0 + 332, 74, 28);
-    buttonT(hwnd, L"Apply Tag to Checked/Selected", ID_APPLY_TAG, 262, y0 + 60, 220, 30);
-    buttonT(hwnd, L"Remove Tag from Checked/Selected", ID_REMOVE_TAG, 492, y0 + 60, 240, 30);
-    buttonT(hwnd, L"View Tagged Entries", ID_SHOW_TAGGED, 742, y0 + 60, 150, 30);
-    buttonT(hwnd, L"Export Tag + Support", ID_EXPORT_TAGGED, 742, y0 + 96, 180, 30);
-    labelT(hwnd, L"Note for checked/selected artifact(s)", 262, y0 + 104, 200, 22);
-    gTagNote = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL, 262, y0 + 130, 470, 92, hwnd, nullptr, gInst, nullptr));
-    buttonT(hwnd, L"Save Note", ID_SAVE_NOTE, 742, y0 + 130, 150, 30);
-    gTagSummary = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"Open a case database before using tags.", WS_CHILD | WS_VISIBLE | SS_LEFT, 262, y0 + 236, 630, 54, hwnd, nullptr, gInst, nullptr));
-    gTaggedList = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 304, 720, 274, hwnd, nullptr, gInst, nullptr));
+    gTagList = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 60, 230, 270, hwnd, nullptr, gInst, nullptr));
+    labelT(hwnd, L"New Tag", 16, y0 + 342, 80, 22); gTagName = editT(hwnd, 100, y0 + 338, 146, 26);
+    buttonT(hwnd, L"Add", ID_ADD_TAG, 16, y0 + 372, 70, 28);
+    buttonT(hwnd, L"Delete", ID_DELETE_TAG, 94, y0 + 372, 70, 28);
+    buttonT(hwnd, L"Refresh", ID_REFRESH_TAGS, 172, y0 + 372, 74, 28);
+    buttonT(hwnd, L"Apply Tag", ID_APPLY_TAG, 262, y0 + 60, 120, 30);
+    buttonT(hwnd, L"Remove Tag", ID_REMOVE_TAG, 390, y0 + 60, 120, 30);
+    buttonT(hwnd, L"View Tagged Entries", ID_SHOW_TAGGED, 518, y0 + 60, 170, 30);
+    buttonT(hwnd, L"Export Tag + Support", ID_EXPORT_TAGGED, 696, y0 + 60, 190, 30);
+    labelT(hwnd, L"Note for checked/selected artifact(s)", 262, y0 + 104, 260, 22);
+    gTagNote = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL, 262, y0 + 130, 620, 86, hwnd, nullptr, gInst, nullptr));
+    buttonT(hwnd, L"Save Note", ID_SAVE_NOTE, 894, y0 + 130, 120, 30);
+    gTagSummary = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, L"STATIC", L"Open a case database before managing tags.", WS_CHILD | WS_VISIBLE | SS_LEFT, 262, y0 + 226, 760, 46, hwnd, nullptr, gInst, nullptr));
+    gTaggedList = addTag(CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS, 262, y0 + 286, 760, 300, hwnd, nullptr, gInst, nullptr));
     ListView_SetExtendedListViewStyle(gTaggedList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 }
 
@@ -3524,6 +3566,8 @@ void layoutControls(HWND hwnd) {
     moveIf(gExportFiltered, reviewX + 306, y0 + 52, 118, 24);
     moveIf(gExportVisible, reviewX + 430, y0 + 52, 106, 24);
     moveIf(gExportChecked, reviewX + 542, y0 + 52, 118, 24);
+    moveIf(gExportDbCsv, right - 118, y0 + 52, 118, 24);
+    moveIf(gCsvChunkRows, right - 90, y0 + 80, 90, 22);
     moveIf(gClearChecked, reviewX, y0 + 80, 108, 24);
     moveIf(gManageTags, reviewX + 114, y0 + 80, 60, 24);
     moveIf(gOpenCaseFolder, reviewX + 180, y0 + 80, 106, 24);
@@ -3551,10 +3595,10 @@ void layoutControls(HWND hwnd) {
     moveIf(gOpenReviewIndex, right - 118, y0 + 80, 118, 24);
 
 
-    moveIf(gTagList, 16, y0 + 60, 230, std::max(190, bottom - (y0 + 60) - 370));
-    moveIf(gTagNote, 262, y0 + 130, std::max(360, right - 262 - 250), 92);
-    moveIf(gTagSummary, 262, y0 + 236, std::max(360, right - 262 - 90), 54);
-    moveIf(gTaggedList, 262, y0 + 304, right - 262, std::max(230, bottom - (y0 + 304) - 20));
+    moveIf(gTagList, 16, y0 + 60, 230, std::max(230, bottom - (y0 + 60) - 320));
+    moveIf(gTagNote, 262, y0 + 130, std::max(420, right - 262 - 140), 86);
+    moveIf(gTagSummary, 262, y0 + 226, std::max(420, right - 262), 46);
+    moveIf(gTaggedList, 262, y0 + 286, right - 262, std::max(260, bottom - (y0 + 286) - 20));
 
     moveIf(gIosStatus, 16, y0 + 38, right - 16, 112);
     moveIf(gIosReadiness, 16, y0 + 268, std::max(360, (right - 40) / 2), std::max(180, bottom - (y0 + 268) - 20));
@@ -3884,6 +3928,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_EXPORT_FILTERED: { exportFilteredView(hwnd); return 0; }
         case ID_EXPORT_VISIBLE_VIEWS: { exportVisibleViews(hwnd); return 0; }
         case ID_EXPORT_CHECKED: { exportCheckedArtifacts(hwnd); return 0; }
+        case ID_EXPORT_DB_CSV: { exportCaseDatabaseCsv(hwnd); return 0; }
         case ID_CLEAR_CHECKED: { clearCheckedArtifactIdsNoThrow(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); setReviewSummary(L"Cleared all checked artifacts from the current case database."); return 0; }
         case ID_REFRESH_TAGS: { refreshTagList(); return 0; }
         case ID_ADD_TAG: { addTagAction(); return 0; }
@@ -3943,6 +3988,14 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (s) { setReviewSummary(*s); delete s; }
         gExportCheckedActive.store(false);
         if (gExportChecked) EnableWindow(gExportChecked, TRUE);
+        return 0;
+    }
+    case WM_EXPORT_DB_CSV_RESULT: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) { setReviewSummary(*s); delete s; }
+        else { setReviewSummary(wp ? L"Export DB CSV completed." : L"Export DB CSV failed."); }
+        gExportDbCsvActive.store(false);
+        if (gExportDbCsv) EnableWindow(gExportDbCsv, TRUE);
         return 0;
     }
     case WM_EXPORT_TAGGED_RESULT: {

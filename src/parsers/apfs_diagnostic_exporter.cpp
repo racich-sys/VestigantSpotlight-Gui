@@ -1385,7 +1385,7 @@ void writeAff4ApfsStoreV2CandidateDualProcessCompareOutputs(
         std::size_t skippedCandidateRows = 0;
         std::uint64_t maxCandidateSizeBytes = 0;
         std::uint64_t totalCandidateBytes = 0;
-        long long bestScore = std::numeric_limits<long long>::min();
+        long long bestScore = (std::numeric_limits<long long>::min)();
         const ApfsSpotlightFileCopyOutRow* bestRow = nullptr;
         const ApfsSpotlightFileCopyOutRow* stagedRow = nullptr;
         std::string stagedRelativePath;

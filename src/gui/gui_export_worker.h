@@ -51,6 +51,11 @@ public:
                                                  long long tagId,
                                                  const std::wstring& outPath,
                                                  std::function<bool()> shouldCancel = {});
+
+    static GuiExportResult exportCaseDatabaseTablesChunked(const std::wstring& dbPath,
+                                                           const std::wstring& outFolder,
+                                                           std::size_t chunkRows = 500000,
+                                                           std::function<bool()> shouldCancel = {});
 };
 
 } // namespace vestigant::spotlight

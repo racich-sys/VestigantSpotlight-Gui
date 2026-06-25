@@ -682,6 +682,88 @@ struct ApfsDirectoryRecordEntry {
 };
 
 
+void writeAff4ApfsDirectoryRecordNameIndexOutputs(const fs::path& caseDir,
+                                                  const EvidenceSource& source,
+                                                  const fs::path& originalInput,
+                                                  const std::vector<ApfsDirectoryRecordEntry>& rows,
+                                                  Logger& log) {
+    const fs::path fullCsv = caseDir / "aff4_apfs_directory_record_name_index.csv";
+    const fs::path sampleCsv = caseDir / "aff4_apfs_directory_record_name_index_sample.csv";
+    const fs::path summaryJson = caseDir / "aff4_apfs_directory_record_name_index_summary.json";
+    const fs::path mdPath = caseDir / "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md";
+    constexpr std::size_t kSampleLimit = 5000U;
+    try {
+        std::set<std::uint64_t> uniqueChildren;
+        std::set<std::uint64_t> uniqueParents;
+        const std::string header = "source_id,input_path,input_type,sequence,volume_sequence,target_role,fs_oid,volume_name,parent_object_id_candidate,child_file_id_candidate,decoded_name,status,interpretation,notes\n";
+        std::ofstream full(fullCsv, std::ios::binary);
+        std::ofstream sample(sampleCsv, std::ios::binary);
+        full << header;
+        sample << header;
+        std::size_t seq = 0;
+        std::size_t sampleRows = 0;
+        for (const auto& r : rows) {
+            if (r.parentObjectId != 0) uniqueParents.insert(r.parentObjectId);
+            if (r.childFileId != 0) uniqueChildren.insert(r.childFileId);
+            const std::string line =
+                csvEscape(source.sourceId) + "," +
+                csvEscape(pathString(originalInput)) + "," +
+                csvEscape(inputSourceType(originalInput)) + "," +
+                std::to_string(seq) + "," +
+                std::to_string(r.volumeSequence) + "," +
+                csvEscape(r.targetRole) + "," +
+                std::to_string(r.fsOid) + "," +
+                csvEscape(r.volumeName) + "," +
+                std::to_string(r.parentObjectId) + "," +
+                std::to_string(r.childFileId) + "," +
+                csvEscape(r.name) + "," +
+                csvEscape("DIRECT_AFF4_APFS_DIRECTORY_RECORD_INDEX_ROW") + "," +
+                csvEscape("Directory record decoded during exhausted direct AFF4/APFS root-tree traversal.") + "," +
+                csvEscape("local_full_index_for_unresolved_spotlight_object_resolution") + "\n";
+            full << line;
+            if (sampleRows < kSampleLimit) {
+                sample << line;
+                ++sampleRows;
+            }
+            ++seq;
+        }
+        {
+            std::ofstream out(summaryJson, std::ios::binary);
+            out << "{\n";
+            out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+            out << "  \"app_version\": \"" << appVersion() << "\",\n";
+            out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+            out << "  \"directory_record_rows\": " << rows.size() << ",\n";
+            out << "  \"unique_child_file_ids\": " << uniqueChildren.size() << ",\n";
+            out << "  \"unique_parent_object_ids\": " << uniqueParents.size() << ",\n";
+            out << "  \"sample_rows\": " << sampleRows << ",\n";
+            out << "  \"full_index_csv\": \"aff4_apfs_directory_record_name_index.csv\",\n";
+            out << "  \"sample_csv\": \"aff4_apfs_directory_record_name_index_sample.csv\",\n";
+            out << "  \"notes\": \"Full local APFS directory-record name index written for unresolved Spotlight object resolution. The full CSV is intentionally not part of the standard chat upload; the sample and summary are upload-safe.\"\n";
+            out << "}\n";
+        }
+        {
+            std::ofstream out(mdPath, std::ios::binary);
+            out << "# AFF4 APFS Directory Record Name Index\n\n";
+            out << "Version: " << appVersion() << "\n\n";
+            out << "This local index contains APFS directory-record parent/child/name rows decoded during the direct AFF4/APFS root-tree traversal. V1.6.77 uses it to resolve `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels without relying on the bounded `aff4_apfs_spotlight_name_scan_sample.csv` diagnostic sample.\n\n";
+            out << "## Summary\n\n";
+            out << "- Directory-record rows: `" << rows.size() << "`\n";
+            out << "- Unique child file IDs: `" << uniqueChildren.size() << "`\n";
+            out << "- Unique parent object IDs: `" << uniqueParents.size() << "`\n";
+            out << "- Upload sample rows: `" << sampleRows << "`\n\n";
+            out << "## Files\n\n";
+            out << "- `aff4_apfs_directory_record_name_index.csv` is the full local resolver input and can be large.\n";
+            out << "- `aff4_apfs_directory_record_name_index_sample.csv` is the upload-safe sample.\n";
+            out << "- `aff4_apfs_directory_record_name_index_summary.json` records row counts and provenance.\n";
+        }
+        log.info("AFF4 APFS directory-record name index written: " + pathString(fullCsv));
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4 APFS directory-record name index outputs: ") + ex.what());
+    }
+}
+
+
 
 
 
@@ -1403,7 +1485,7 @@ bool readExactFileBytes(const fs::path& path, std::uint64_t offset, std::size_t 
         error = "Unable to open file for exact single-file AFF4 ZIP probe: " + pathString(path);
         return false;
     }
-    if (offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+    if (offset > static_cast<std::uint64_t>((std::numeric_limits<std::streamoff>::max)())) {
         error = "Offset too large for platform streamoff.";
         return false;
     }
@@ -1748,7 +1830,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                 err = "AFF4 ZIP entry is not stored/uncompressed: " + name;
                 return false;
             }
-            if (it->second.compressedSize > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+            if (it->second.compressedSize > static_cast<std::uint64_t>((std::numeric_limits<std::size_t>::max)())) {
                 err = "AFF4 ZIP entry too large for memory read: " + name;
                 return false;
             }
@@ -1895,7 +1977,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
             auto readVirtualBytes = [&](std::uint64_t virtualStart, std::uint64_t requested, std::vector<unsigned char>& out, std::string& readErr) -> bool {
                 out.clear();
                 readErr.clear();
-                if (requested > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+                if (requested > static_cast<std::uint64_t>((std::numeric_limits<std::size_t>::max)())) {
                     readErr = "Requested virtual read exceeds size_t.";
                     return false;
                 }
@@ -2077,7 +2159,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                 auto safeDirectNodeOffset = [&](std::uint64_t oid, std::uint64_t& offsetOut) -> bool {
                     if (directBestNx.blockSize == 0) return false;
                     if (directBestNx.blockCount != 0 && oid >= directBestNx.blockCount) return false;
-                    if (oid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) return false;
+                    if (oid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) return false;
                     offsetOut = oid * static_cast<std::uint64_t>(directBestNx.blockSize);
                     return true;
                 };
@@ -2331,7 +2413,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                                                     std::uint32_t valueFlags,
                                                     std::uint32_t valueSize) {
                     if (directCheckpointObjectRows.size() >= 512U || paddr == 0) return;
-                    if (paddr > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
+                    if (paddr > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
                     const std::uint64_t objVo = paddr * static_cast<std::uint64_t>(directBestNx.blockSize);
                     std::vector<unsigned char> obj;
                     std::string objErr;
@@ -2414,13 +2496,13 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                     if (directBestNx.omapOid == 0) return;
                     appendMappedObjectProbe(0, directBestNx.omapOid, 0, directBestNx.omapOid, "DIRECT_NX_OBJECT_MAP_OID", "Direct read of nx_omap_oid as an APFS physical object ID.", directBestNx.nextXid, 0, 0);
 
-                    if (directBestNx.omapOid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
+                    if (directBestNx.omapOid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
                     std::vector<unsigned char> omap;
                     std::string omapErr;
                     if (!readVirtualBytes(directBestNx.omapOid * static_cast<std::uint64_t>(directBestNx.blockSize), directBestNx.blockSize, omap, omapErr)) return;
                     if (omap.size() < 88U || apfsObjectTypeLabel(readLe32(omap, 24)) != "OBJECT_MAP") return;
                     const std::uint64_t omTreeOid = readLe64(omap, 48);
-                    if (omTreeOid == 0 || omTreeOid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
+                    if (omTreeOid == 0 || omTreeOid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) return;
                     std::vector<unsigned char> tree;
                     std::string treeErr;
                     if (!readVirtualBytes(omTreeOid * static_cast<std::uint64_t>(directBestNx.blockSize), directBestNx.blockSize, tree, treeErr)) return;
@@ -2723,7 +2805,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                             er.extentFlags = static_cast<std::uint32_t>((er.lenAndFlags >> 56U) & 0xffU);
                             er.physicalBlock = readLe64(node, valAbs + 8U);
                             if (valLen >= 24U && valAbs + 24U <= node.size()) er.cryptoId = readLe64(node, valAbs + 16U);
-                            if (directBestNx.blockSize != 0 && er.physicalBlock <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) {
+                            if (directBestNx.blockSize != 0 && er.physicalBlock <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) {
                                 er.physicalOffset = er.physicalBlock * static_cast<std::uint64_t>(directBestNx.blockSize);
                             }
                             er.nodeOid = nodeOid;
@@ -3198,7 +3280,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                 const std::uint32_t descToRead = std::min<std::uint32_t>(descBlockCount, 256U);
                 for (std::uint32_t i = 0; i < descToRead; ++i) {
                     const std::uint64_t physicalBlock = directBestNx.xpDescBase + static_cast<std::uint64_t>(i);
-                    if (physicalBlock > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(directBestNx.blockSize))) break;
+                    if (physicalBlock > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(directBestNx.blockSize))) break;
                     const std::uint64_t vo = physicalBlock * static_cast<std::uint64_t>(directBestNx.blockSize);
                     std::vector<unsigned char> buf;
                     std::string readErr;
@@ -3482,6 +3564,8 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
         log.warn(std::string("Unable to write AFF4_DIRECT_SQLITE_CANDIDATE_CARVE.md: ") + ex.what());
     }
     if (directBestNx.attempted || directBestNx.found) {
+        writeAff4ApfsDirectoryRecordNameIndexOutputs(caseDir, source, originalInput, directDirectoryRecordEntries, log);
+
         const bool writeHeavyApfsDiagnostics = shouldWriteAff4ApfsStructuralDiagnostics(opt.verbose, opt.diagnosticFullNativeDb, opt.aff4ApfsDiagnosticOutputs);
         if (writeHeavyApfsDiagnostics) {
             log.info("AFF4/APFS diagnostic output mode enabled: writing structural probe CSV outputs.");
@@ -4472,7 +4556,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     kv.interpretation = "Decoded OMAP leaf key/value entry. value_paddr is a container-relative physical block address.";
                                     kv.sampleHex = row.keySampleHex + " | " + row.valueSampleHex;
                                     kv.notes = row.notes;
-                                    if (nxSummary.blockSize != 0 && kv.valuePaddr <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                    if (nxSummary.blockSize != 0 && kv.valuePaddr <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                         kv.resolvedVirtualOffset = kv.valuePaddr * static_cast<std::uint64_t>(nxSummary.blockSize);
                                         if (finalObjectSize == 0 || kv.resolvedVirtualOffset < finalObjectSize) {
                                             std::vector<unsigned char> resolved;
@@ -4563,7 +4647,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         om.notes = notes;
                         apfsOmapPhysProbeRows.push_back(om);
 
-                        if (om.omTreeOid == 0 || nxSummary.blockSize == 0 || om.omTreeOid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                        if (om.omTreeOid == 0 || nxSummary.blockSize == 0 || om.omTreeOid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                             addOmapLookupReadinessRow("OMAP_TREE_ROOT", om.omTreeOid, om.objectXid, om.objectOid, om.omTreeOid, 0, 0, "OMAP_TREE_NOT_READ", "om_tree_oid was zero or overflowed the bounded offset calculation.", "om_tree_oid=" + std::to_string(om.omTreeOid));
                             return;
                         }
@@ -4639,7 +4723,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             apfsObjectIdProbeRows.push_back(orow);
                             return;
                         }
-                        if (nxSummary.blockSize == 0 || oid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                        if (nxSummary.blockSize == 0 || oid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                             orow.status = "OFFSET_OVERFLOW";
                             orow.interpretation = "Object ID could not be safely converted to a bounded direct object-id virtual offset.";
                             orow.notes = "oid=" + std::to_string(oid) + "; block_size=" + std::to_string(nxSummary.blockSize);
@@ -4691,7 +4775,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
 
                         auto safeNodeOffset = [&](std::uint64_t oid, std::uint64_t& offsetOut) -> bool {
                             if (nxSummary.blockSize == 0) return false;
-                            if (oid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) return false;
+                            if (oid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) return false;
                             offsetOut = oid * static_cast<std::uint64_t>(nxSummary.blockSize);
                             if (finalObjectSize != 0 && offsetOut >= finalObjectSize) return false;
                             return true;
@@ -5285,7 +5369,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             if ((kv.valueFlags & 0x00000001U) != 0U) {
                                 row.notes = "OMAP value has OMAP_VAL_DELETED set; parsed only for forensic visibility.";
                             }
-                            if (nxSummary.blockSize == 0 || kv.valuePaddr > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                            if (nxSummary.blockSize == 0 || kv.valuePaddr > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                 row.status = "RESOLVED_APSB_OFFSET_OVERFLOW";
                                 row.interpretation = "The selected OMAP value physical address could not be converted to a safe virtual offset.";
                                 row.notes += row.notes.empty() ? "" : "; ";
@@ -5326,7 +5410,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 appendVolumeOmapAndRootLookup(row, omRow, std::vector<unsigned char>{});
                                 continue;
                             }
-                            if (nxSummary.blockSize == 0 || row.apfsOmapOid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                            if (nxSummary.blockSize == 0 || row.apfsOmapOid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                 omRow.omapStatus = "VOLUME_OMAP_OFFSET_OVERFLOW";
                                 omRow.interpretation = "apfs_omap_oid could not be converted to a bounded physical-block offset.";
                                 omRow.notes = "apfs_omap_oid=" + std::to_string(row.apfsOmapOid) + "; block_size=" + std::to_string(nxSummary.blockSize);
@@ -5368,7 +5452,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     omRow.omapStatus = "VOLUME_OMAP_UNEXPECTED_OBJECT_TYPE";
                                     omRow.interpretation = "apfs_omap_oid was read, but the object header type was not OBJECT_MAP.";
                                 }
-                                if (omRow.omTreeOid != 0 && nxSummary.blockSize != 0 && omRow.omTreeOid <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                if (omRow.omTreeOid != 0 && nxSummary.blockSize != 0 && omRow.omTreeOid <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                     omRow.treeVirtualOffset = omRow.omTreeOid * static_cast<std::uint64_t>(nxSummary.blockSize);
                                     if (finalObjectSize == 0 || omRow.treeVirtualOffset < finalObjectSize) {
                                         std::vector<unsigned char> treeBuf;
@@ -5832,7 +5916,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 ApfsCheckpointDescriptorRow dr;
                                 dr.sequence = seq;
                                 dr.physicalBlock = physicalBlock;
-                                if (physicalBlock > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                if (physicalBlock > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                     dr.status = "OFFSET_OVERFLOW";
                                     dr.interpretation = "Checkpoint descriptor block offset overflowed uint64 safety bounds.";
                                     dr.notes = "physical_block=" + std::to_string(physicalBlock) + "; block_size=" + std::to_string(nxSummary.blockSize);
@@ -5892,7 +5976,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                             if (cpmCount > entriesToParse) mr.notes = "checkpoint_map_count_truncated_to_128";
                                             apfsCheckpointMapRows.push_back(mr);
 
-                                            if (mr.cpmPaddr != 0 && mr.cpmPaddr <= nxSummary.blockCount && mr.cpmPaddr <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                            if (mr.cpmPaddr != 0 && mr.cpmPaddr <= nxSummary.blockCount && mr.cpmPaddr <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                                 ApfsCheckpointMappedObjectProbeRow pr;
                                                 pr.sequence = seq;
                                                 pr.entryIndex = entryIndex;
@@ -5943,7 +6027,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             ApfsVolumeSuperblockRow vr;
                             vr.sequence = static_cast<std::uint32_t>(i);
                             vr.fsOid = fsOid;
-                            if (nxSummary.blockSize == 0 || fsOid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                            if (nxSummary.blockSize == 0 || fsOid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                 vr.status = "OFFSET_OVERFLOW";
                                 vr.interpretation = "Candidate APFS filesystem object ID could not be converted to a bounded virtual block offset.";
                                 vr.notes = "fs_oid=" + std::to_string(fsOid) + "; block_size=" + std::to_string(nxSummary.blockSize);
@@ -6066,7 +6150,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
 
                     auto safeSpotlightNodeOffset = [&](std::uint64_t oid, std::uint64_t& offsetOut) -> bool {
                         if (nxSummary.blockSize == 0) return false;
-                        if (oid > (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) return false;
+                        if (oid > ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) return false;
                         offsetOut = oid * static_cast<std::uint64_t>(nxSummary.blockSize);
                         if (finalObjectSize != 0 && offsetOut >= finalObjectSize) return false;
                         return true;
@@ -6259,7 +6343,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 er.extentFlags = static_cast<std::uint32_t>((er.lenAndFlags >> 56U) & 0xffU);
                                 er.physicalBlock = readLe64(scanNode, valAbs + 8U);
                                 if (valLen >= 24U && valAbs + 24U <= scanNode.size()) er.cryptoId = readLe64(scanNode, valAbs + 16U);
-                                if (nxSummary.blockSize != 0 && er.physicalBlock <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                if (nxSummary.blockSize != 0 && er.physicalBlock <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                     er.physicalOffset = er.physicalBlock * static_cast<std::uint64_t>(nxSummary.blockSize);
                                 }
                                 er.nodeOid = rr.nodeOid;
@@ -7060,7 +7144,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                     er.extentFlags = static_cast<std::uint32_t>((er.lenAndFlags >> 56U) & 0xffU);
                                     er.physicalBlock = readLe64(node, valAbs + 8U);
                                     if (valLen >= 24U && valAbs + 24U <= node.size()) er.cryptoId = readLe64(node, valAbs + 16U);
-                                    if (nxSummary.blockSize != 0 && er.physicalBlock <= (std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
+                                    if (nxSummary.blockSize != 0 && er.physicalBlock <= ((std::numeric_limits<std::uint64_t>::max)() / static_cast<std::uint64_t>(nxSummary.blockSize))) {
                                         er.physicalOffset = er.physicalBlock * static_cast<std::uint64_t>(nxSummary.blockSize);
                                     }
                                     er.nodeOid = nodeOid;
@@ -7340,7 +7424,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             std::uint64_t expectedLocal = 0;
                             for (const auto& er : extentsForTarget) {
                                 if (er.extentLogicalOffset != expectedLocal || er.extentLengthBytes == 0) break;
-                                if (er.extentLengthBytes > std::numeric_limits<std::uint64_t>::max() - expectedLocal) break;
+                                if (er.extentLengthBytes > (std::numeric_limits<std::uint64_t>::max)() - expectedLocal) break;
                                 expectedLocal += er.extentLengthBytes;
                             }
                             return expectedLocal;
@@ -7400,7 +7484,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 if (er.extentLogicalOffset != coverage) break;
                                 if (er.extentLengthBytes == 0) break;
                                 neededExtents.push_back(er);
-                                if (er.extentLengthBytes > std::numeric_limits<std::uint64_t>::max() - coverage) break;
+                                if (er.extentLengthBytes > (std::numeric_limits<std::uint64_t>::max)() - coverage) break;
                                 coverage += er.extentLengthBytes;
                             }
                             if (!neededExtents.empty()) {
@@ -7426,7 +7510,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                 hasZeroPhysicalExtent = true;
                                 syntheticZeroBytesPlanned += er.extentLengthBytes;
                             }
-                            if (er.extentLengthBytes > std::numeric_limits<std::uint64_t>::max() - expected) saneLengths = false;
+                            if (er.extentLengthBytes > (std::numeric_limits<std::uint64_t>::max)() - expected) saneLengths = false;
                             expected += er.extentLengthBytes;
                         }
                         if (hasOverlapOrInvalidOrder) { appendCopyOutRow(cr, extentsForTarget, "SKIPPED_OVERLAPPING_OR_OUT_OF_ORDER_EXTENTS", "OVERLAP_ORDER_GATE_FAILED", "Logical FILE_EXTENT rows overlap or move backwards; extraction is deferred to avoid producing shifted data."); continue; }

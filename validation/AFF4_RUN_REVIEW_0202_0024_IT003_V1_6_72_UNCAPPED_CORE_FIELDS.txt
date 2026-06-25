@@ -1,0 +1,43 @@
+AFF4 run review: 0202_0024-IT003, V1.6.72 uncapped CoreFields run
+
+Uploaded artifacts reviewed:
+- Upload_Thin_MacOS_AFF4_V1_6_72.zip
+- Upload_Thin_MacOS_AFF4_V1_6_72.zip.sha256.txt
+- V1_6_72_AFF4_WRAPPER_RUN_SUMMARY.txt
+- V1_6_72_build.log
+
+Wrapper result:
+- RunnerExitCode: 0.
+- AFF4 path: T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4.
+- FullNoGuardrails: True.
+- FullNativeValues: False.
+- MaxNativeRecords: 0.
+- EnableStreamInventory: False.
+
+ZIP/result observations from direct inspection:
+- case_summary.json reported source_count=1, store_count=8, valid_store_count=6, database_candidate_count=16, valid_database_candidate_count=12, and parser_selected_database_count=6.
+- Native decode mode was AFF4_APFS_STAGED_STOREV2_CoreFields.
+- raw_record_count=102170, raw_key_value_count=116445, raw_date_candidate_count=102170, artifact_count=101326, timeline_event_count=102170, usage_evidence_count=0, orphaned_or_deleted_candidate_count=0.
+- aff4_apfs_staged_storev2_parser_probe_summary.json reported parse_probe_status=PARSE_PROBE_COMPLETED, max_records_used=0, stores_seen=6, valid_stores=6, metadata_blocks=3821, decompressed_blocks=3821, parsed_items=102170, failures=0, fallback_header_only_items=0.
+- aff4_apfs_staged_storev2_enrichment_probe_summary.json reported ENRICHMENT_PROBE_COMPLETED, parent_inode_links=83592, field_inventory_rows=29, parser_coverage_rows=35, and orphan_candidates=0.
+- aff4_apfs_logical_directory_walk_summary.json reported indexed_inode_records=725298, indexed_file_extent_records=770801, materialized_target_inode_rows=13262, materialized_target_file_extent_rows=20281, and copy_out_rows=8429.
+- aff4_apfs_spotlight_target_scan_summary.json reported nodes_visited=80846, records_scanned=3223275, directory_records_decoded=743039, target_name_hits=1116, and copy_attempt_rows=13472.
+- aff4_apfs_spotlight_file_copy_out_summary.json reported copy_out_rows=8429, copied_files=8389, skipped_rows=40, and total_copied_bytes=1072069036.
+
+Unresolved Spotlight object/path linkage observations:
+- aff4_apfs_staged_storev2_artifacts_sample.csv had 5000 sample rows; 3940 had path_status=UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL and unresolved labels such as UNRESOLVED_SPOTLIGHT_OBJECT_INODE_<id>.
+- path reconstruction metrics reported parent_inode_links=83592, parent_inode_links_matched=72948, parent_inode_links_with_path_context_candidate=16377, parent_inode_links_with_existing_path_context=16377, and parent_inode_links_with_new_reconstructed_path=0.
+- In the 5000-row artifact sample, direct matching of artifact inode_num to APFS logical-directory child_file_id produced 0 matches. Direct matching of artifact parent_inode_num to APFS logical-directory parent_object_id produced 4 matches, all parent_object_id=2 pointing to the Spotlight root directory context.
+
+Interpretation:
+- V1.6.72 validated the no-record-cap wrapper/app fix: parser summary preserved max_records_used=0 and parsed beyond the prior 25,000 cap.
+- AFF4/APFS Store-V2 extraction and CoreFields parsing are now producing a useful bounded/unbounded-by-count dataset from this AFF4.
+- The unresolved Spotlight-object labels should not be treated as deleted/orphaned or as proof that APFS linkage is impossible. They indicate the current Store-V2 object identifier to current APFS path bridge is incomplete.
+- The APFS volume has directory/inode data, but sample testing did not support a simple one-step direct equality join from Store-V2 artifact inode_num to APFS child_file_id. The next implementation should add a cautious linkage pass using available Store-V2 raw path/native path fields, parent links, APFS logical directory walk rows, and possibly FullValues records before claiming current path resolution.
+
+Recommended next-version work:
+1. Preserve V1.6.72 AFF4 success as a verified milestone in ai_context.md.
+2. Add a diagnostic unresolved-object resolution export comparing Store-V2 artifact object IDs, parent object IDs, raw path fields, native path probes, APFS logical directory walk child/parent IDs, and copy-out target rows.
+3. Improve GUI review flow by restoring all-case-SQLite-to-CSV export buttons for MacOS and iOS investigation tabs with default 500,000 rows per CSV chunk.
+4. Clean up Tags / Notes tab layout.
+5. Later performance work: combine or reduce duplicate full-AFF4 reads used for signature scan and evidence hash.
