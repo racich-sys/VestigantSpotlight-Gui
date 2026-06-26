@@ -2810,6 +2810,11 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
 
         std::size_t storeOrdinal = 0;
         const std::size_t totalStores = stores.empty() ? 1 : stores.size();
+        // Store-V2 directory/file pairs can split parent directory records (.store.db)
+        // from file artifact records (store.db).  Keep path nodes for the entire
+        // Store-V2 group, isolated by store_guid, so parent names observed in one
+        // member remain available when parsing the paired member.
+        std::unordered_map<std::string, std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::string>>> pathNodesByStoreGuid;
         for (const auto& store : stores) {
             ++storeOrdinal;
             const std::string storeAttemptStartedUtc = nowUtc();
@@ -2903,7 +2908,7 @@ NativeStoreDbParseCounts NativeStoreDbParser::parseStores(const std::vector<Stor
                     log.warn("Experimental full native metadata value parsing is enabled. This may be unstable on some store.db files.");
                 }
 
-                std::unordered_map<std::uint64_t, std::pair<std::uint64_t, std::string>> pathNodes;
+                auto& pathNodes = pathNodesByStoreGuid[store.storeGuid];
                 std::size_t storeItems = 0;
                 std::size_t storeMetadataBlocks = 0;
                 std::size_t blockOrdinal = 0;

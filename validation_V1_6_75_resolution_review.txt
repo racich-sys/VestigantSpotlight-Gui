@@ -1,10 +1,10 @@
 V1.6.75 AFF4 result review
 
 Inputs reviewed:
-- Upload_Thin_MacOS_AFF4_V1_6_77.zip
-- Upload_Thin_MacOS_AFF4_V1_6_77.zip.sha256.txt
-- V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
-- V1_6_77_build.log
+- Upload_Thin_MacOS_AFF4_V1_6_84.zip
+- Upload_Thin_MacOS_AFF4_V1_6_84.zip.sha256.txt
+- V1_6_84_AFF4_WRAPPER_RUN_SUMMARY.txt
+- V1_6_84_build.log
 
 Verified from uploaded wrapper/build files:
 - Windows/MSVC build completed, binary version check reported Vestigant Spotlight v1.6.75, and the schema/iOS/APFS module smoke test passed.
@@ -24,7 +24,7 @@ Dry path-reconstruction analysis against uploaded V1.6.75 CSVs:
 - 168,726 child IDs had reconstructable parent-chain paths in the APFS name scan sample.
 - Of the 1,340 direct unresolved child-ID matches, 1,281 had reconstructable APFS name-scan parent-chain paths.
 
-V1.6.77 fix direction:
+V1.6.84 fix direction:
 - Add APFS name-scan parent-chain path reconstruction to the unresolved object resolver.
 - Apply reconstructed paths only for direct child-file-ID matches, with provenance labels and forensic caution.
 - Keep parent-only context as review-only, not as a current path.

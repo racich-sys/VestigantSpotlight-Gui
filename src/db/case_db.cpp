@@ -359,6 +359,33 @@ CREATE TABLE IF NOT EXISTS artifacts (
   mounted_volume_name TEXT,
   external_volume_reason TEXT
 );
+CREATE TABLE IF NOT EXISTS spotlight_cache_text (
+  cache_text_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  store_guid TEXT,
+  cache_relative_path TEXT,
+  cache_numeric_id INTEGER,
+  cache_bucket_hex TEXT,
+  bucket_matches_numeric_id INTEGER DEFAULT 0,
+  cache_file_inode_num TEXT,
+  cache_file_parent_inode_num TEXT,
+  cache_file_apfs_path TEXT,
+  cache_file_sha256 TEXT,
+  cache_file_size_bytes INTEGER,
+  linked_artifact_id INTEGER,
+  linked_raw_record_id INTEGER,
+  inode_link_status TEXT,
+  linked_artifact_name TEXT,
+  linked_artifact_path TEXT,
+  apfs_index_name TEXT,
+  apfs_index_path TEXT,
+  cache_text_type TEXT,
+  decoded_text TEXT,
+  decoded_text_length INTEGER,
+  decoded_text_sha256 TEXT,
+  ingestion_status TEXT,
+  notes TEXT
+);
 CREATE TABLE IF NOT EXISTS usage_evidence (
   usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
   artifact_id INTEGER,
@@ -870,6 +897,9 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_inode ON artifacts(source_id, store_gui
 CREATE INDEX IF NOT EXISTS idx_artifacts_parent ON artifacts(source_id, store_guid, parent_inode_num);
 CREATE INDEX IF NOT EXISTS idx_artifacts_file_name ON artifacts(file_name);
 CREATE INDEX IF NOT EXISTS idx_artifacts_last_updated ON artifacts(last_updated_utc);
+CREATE INDEX IF NOT EXISTS idx_spotlight_cache_text_source ON spotlight_cache_text(source_id, store_guid, cache_numeric_id);
+CREATE INDEX IF NOT EXISTS idx_spotlight_cache_text_artifact ON spotlight_cache_text(linked_artifact_id);
+CREATE INDEX IF NOT EXISTS idx_spotlight_cache_text_status ON spotlight_cache_text(inode_link_status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_usage_dates ON artifacts(last_used_date_utc, first_used_candidate_utc);
 CREATE INDEX IF NOT EXISTS idx_timeline_time ON timeline_events(event_timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_timeline_artifact_time ON timeline_events(artifact_id, event_timestamp_utc);
@@ -1311,6 +1341,17 @@ CREATE TABLE IF NOT EXISTS review_view_preferences (
   updated_utc TEXT DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY(platform, view_name)
 );
+
+DROP VIEW IF EXISTS vw_spotlight_cache_text_review;
+CREATE VIEW vw_spotlight_cache_text_review AS
+SELECT cache_text_id, source_id, store_guid, cache_numeric_id, cache_relative_path,
+       inode_link_status, linked_artifact_id, linked_artifact_name, linked_artifact_path,
+       apfs_index_name, apfs_index_path, cache_file_inode_num, cache_file_apfs_path,
+       cache_text_type, decoded_text_length, substr(decoded_text,1,1000) AS decoded_text_preview,
+       decoded_text,
+       ingestion_status, notes
+FROM spotlight_cache_text;
+
 CREATE TABLE IF NOT EXISTS gui_checked_artifacts (
   artifact_id INTEGER PRIMARY KEY,
   checked_utc TEXT,
@@ -4223,8 +4264,7 @@ WHERE COALESCE(NULLIF(contact_or_participant,''), NULLIF(item_identifier,''), NU
            AND COALESCE(provenance,'') NOT LIKE '%COMMUNICATION_INTENT_STREAM%'
            AND COALESCE(provenance,'') NOT LIKE '%INTENT_TARGET%'
            AND COALESCE(provenance,'') NOT LIKE '%IDENTITY_BOUND_COMMUNICATION%')
-)VSQLFIX" R"VSQLFIX(ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC
-LIMIT 25000;
+)VSQLFIX" R"VSQLFIX(ORDER BY record_timestamp_utc DESC, ios_app_record_id DESC;
 )VSQLFIX",
 R"VSQLFIX(
 DROP VIEW IF EXISTS vw_ios_identity_entity_rollup;
@@ -6889,7 +6929,25 @@ SELECT CASE WHEN store_guid LIKE 'ios_%' THEN 'ios' ELSE 'macos_or_unknown' END 
        content_type,
        path_source || ';' || path_status AS provenance
 FROM artifacts
-WHERE trim(COALESCE(file_name,'') || COALESCE(display_name,'') || COALESCE(best_path,'') || COALESCE(content_type,'') || COALESCE(where_froms,'') || COALESCE(index_text_snippet,''))<>'';
+WHERE trim(COALESCE(file_name,'') || COALESCE(display_name,'') || COALESCE(best_path,'') || COALESCE(content_type,'') || COALESCE(where_froms,'') || COALESCE(index_text_snippet,''))<>''
+UNION ALL
+SELECT 'macos_or_unknown' AS platform,
+       'spotlight_cache_text' AS source_table,
+       source_id,
+       store_guid,
+       'Spotlight Store-V2 Cache' AS source_db,
+       linked_artifact_id AS artifact_id,
+       CAST(cache_numeric_id AS TEXT) AS inode_num,
+       cache_file_parent_inode_num AS parent_inode_num,
+       'cache_text' AS field_name,
+       trim(COALESCE(decoded_text,'') || ' ' || COALESCE(decoded_text_preview,'') || ' ' || COALESCE(cache_relative_path,'') || ' ' || COALESCE(linked_artifact_name,'') || ' ' || COALESCE(linked_artifact_path,'') || ' ' || COALESCE(apfs_index_name,'') || ' ' || COALESCE(apfs_index_path,'')) AS search_value,
+       '' AS date_utc,
+       COALESCE(NULLIF(linked_artifact_name,''), NULLIF(apfs_index_name,''), CAST(cache_numeric_id AS TEXT)) AS file_name,
+       COALESCE(NULLIF(linked_artifact_path,''), NULLIF(apfs_index_path,''), NULLIF(cache_file_apfs_path,''), cache_relative_path) AS best_path,
+       cache_text_type AS content_type,
+       'spotlight_cache_text; inode_link_status=' || COALESCE(inode_link_status,'') AS provenance
+FROM vw_spotlight_cache_text_review
+WHERE trim(COALESCE(decoded_text,'') || COALESCE(decoded_text_preview,'') || COALESCE(cache_relative_path,'') || COALESCE(linked_artifact_name,'') || COALESCE(linked_artifact_path,'') || COALESCE(apfs_index_name,'') || COALESCE(apfs_index_path,''))<>'';
 
 CREATE TABLE IF NOT EXISTS ios_ffs_file_inventory (
   ios_file_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8564,6 +8622,17 @@ CREATE TABLE IF NOT EXISTS investigator_notes (
 CREATE INDEX IF NOT EXISTS idx_artifact_tags_artifact ON artifact_tags(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifact_tags_tag ON artifact_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_investigator_notes_target ON investigator_notes(target_type, target_id);
+
+DROP VIEW IF EXISTS vw_spotlight_cache_text_review;
+CREATE VIEW vw_spotlight_cache_text_review AS
+SELECT cache_text_id, source_id, store_guid, cache_numeric_id, cache_relative_path,
+       inode_link_status, linked_artifact_id, linked_artifact_name, linked_artifact_path,
+       apfs_index_name, apfs_index_path, cache_file_inode_num, cache_file_apfs_path,
+       cache_text_type, decoded_text_length, substr(decoded_text,1,1000) AS decoded_text_preview,
+       decoded_text,
+       ingestion_status, notes
+FROM spotlight_cache_text;
+
 CREATE TABLE IF NOT EXISTS gui_checked_artifacts (
   artifact_id INTEGER PRIMARY KEY,
   checked_utc TEXT,
@@ -10731,6 +10800,7 @@ void CaseDatabase::insertCaseInfo(const RunOptions& opt) {
     put("created_utc", nowUtc());
     put("export_profile", opt.exportProfile);
     put("suppress_csv_exports", opt.suppressCsvExports ? "true" : "false");
+    put("gui_full_no_guardrails", opt.guiFullNoGuardrails ? "true" : "false");
     put("profile", opt.profile);
     put("skip_container_hash", opt.skipContainerHash ? "true" : "false");
     put("force_container_hash", opt.forceContainerHash ? "true" : "false");

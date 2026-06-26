@@ -1,0 +1,22 @@
+name: Linux Sanitizer and Static Analysis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanitizer-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y sqlite3 libsqlite3-dev clang-tidy
+      - name: Sanitizer build and self-test
+        run: ./build_linux_sanitized_test.sh
+      - name: Static analysis advisory
+        shell: pwsh
+        run: ./tools/Run-CppStaticAnalysis.ps1

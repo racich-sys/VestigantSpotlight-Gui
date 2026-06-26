@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include "sql_recursion_test.h"
 
 using namespace vestigant::spotlight;
 namespace fs = std::filesystem;
@@ -300,6 +301,9 @@ INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,stor
 ('s','storeA','/staged/storeA','/staged/storeA/store.db','2','2','0','','','2025-01-01T00:00:00Z','------NONAME------','','','','','/','ACTIVE_OR_RESOLVED','',''),
 ('s','storeA','/staged/storeA','/staged/storeA/store.db','10','10','2','','','2025-01-01T00:00:01Z','ParentFolder','','','','','','PARTIAL_OR_NO_PATH','',''),
 ('s','storeA','/staged/storeA','/staged/storeA/store.db','20','20','10','','','2025-01-01T00:00:02Z','target.txt','','','','','','PARTIAL_OR_NO_PATH','','');
+INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,full_path,record_state,field_name,field_value) VALUES
+('s','storeA','/staged/storeA','/staged/storeA/store.db','20','20','10','','PARTIAL_OR_NO_PATH','__native_probe_basename_candidate_01','target.txt'),
+('s','storeA','/staged/storeA','/staged/storeA/store.db','20','20','10','','PARTIAL_OR_NO_PATH','__native_core_probe_string_01','synthetic WhereFroms/path enrichment coverage row');
 )SQL");
         SqliteEnrichment enrichment;
         enrichment.run(db, source, log);
@@ -329,6 +333,7 @@ INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,stor
     return true;
 }
 
+
 int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
@@ -340,6 +345,7 @@ int main(int argc, char** argv) {
     if (!runIosCoreProbeTextContextSmokeTest(out)) { std::cerr << "iOS core probe text context smoke test failed\n"; ok = false; }
     if (!runIosProductionReadinessSmokeTest(out)) { std::cerr << "iOS production readiness smoke test failed\n"; ok = false; }
     if (!runParentInodePathReconstructionSmokeTest(out)) { std::cerr << "Parent-inode path reconstruction smoke test failed\n"; ok = false; }
+    if (!runRecursiveCteSafetySmokeTest(out)) { std::cerr << "Recursive CTE safety smoke test failed\n"; ok = false; }
     if (!runIosAppDbParserSmokeTest()) { std::cerr << "iOS app DB parser smoke test failed\n"; ok = false; }
     if (!runApfsModuleSmokeTest()) { std::cerr << "APFS module smoke test failed\n"; ok = false; }
     if (!runLzfseCodecSmokeTest()) { std::cerr << "Apple/lzfse codec smoke test failed\n"; ok = false; }

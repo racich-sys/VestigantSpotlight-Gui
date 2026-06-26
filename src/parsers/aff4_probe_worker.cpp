@@ -31,6 +31,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -746,7 +747,7 @@ void writeAff4ApfsDirectoryRecordNameIndexOutputs(const fs::path& caseDir,
             std::ofstream out(mdPath, std::ios::binary);
             out << "# AFF4 APFS Directory Record Name Index\n\n";
             out << "Version: " << appVersion() << "\n\n";
-            out << "This local index contains APFS directory-record parent/child/name rows decoded during the direct AFF4/APFS root-tree traversal. V1.6.77 uses it to resolve `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels without relying on the bounded `aff4_apfs_spotlight_name_scan_sample.csv` diagnostic sample.\n\n";
+            out << "This local index contains APFS directory-record parent/child/name rows decoded during the direct AFF4/APFS root-tree traversal. V1.6.84 uses it to resolve `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels without relying on the bounded `aff4_apfs_spotlight_name_scan_sample.csv` diagnostic sample.\n\n";
             out << "## Summary\n\n";
             out << "- Directory-record rows: `" << rows.size() << "`\n";
             out << "- Unique child file IDs: `" << uniqueChildren.size() << "`\n";
@@ -6683,10 +6684,32 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         apfsSpotlightInodeProbeRows.push_back(std::move(ir));
                         return true;
                     };
+                    struct SpotlightInodeLookupKey {
+                        std::uint32_t volumeSequence = 0;
+                        std::uint64_t childFileId = 0;
+                        bool operator==(const SpotlightInodeLookupKey& other) const noexcept {
+                            return volumeSequence == other.volumeSequence && childFileId == other.childFileId;
+                        }
+                    };
+                    struct SpotlightInodeLookupKeyHash {
+                        std::size_t operator()(const SpotlightInodeLookupKey& k) const noexcept {
+                            const std::size_t a = std::hash<std::uint32_t>{}(k.volumeSequence);
+                            const std::size_t b = std::hash<std::uint64_t>{}(k.childFileId);
+                            return a ^ (b + 0x9e3779b97f4a7c15ULL + (a << 6) + (a >> 2));
+                        }
+                    };
+                    std::unordered_map<SpotlightInodeLookupKey, const ApfsSpotlightInodeProbeRow*, SpotlightInodeLookupKeyHash> scannedInodeByTargetKey;
+                    scannedInodeByTargetKey.reserve(allSpotlightScanInodes.size() * 2U + 1U);
+                    for (const auto& cached : allSpotlightScanInodes) {
+                        if (cached.inodeObjectId == 0) continue;
+                        SpotlightInodeLookupKey key{cached.volumeSequence, cached.inodeObjectId};
+                        scannedInodeByTargetKey.emplace(key, &cached);
+                    }
                     for (const auto& cr : apfsSpotlightCopyAttemptRows) {
-                        if (cr.targetKind == "APFS_RESOURCE_FORK_STREAM") continue;
-                        for (const auto& cached : allSpotlightScanInodes) {
-                            if (materializeScannedInodeForCopyAttempt(cr, cached)) break;
+                        if (cr.targetKind == "APFS_RESOURCE_FORK_STREAM" || cr.childFileId == 0) continue;
+                        const auto it = scannedInodeByTargetKey.find(SpotlightInodeLookupKey{cr.volumeSequence, cr.childFileId});
+                        if (it != scannedInodeByTargetKey.end() && it->second) {
+                            materializeScannedInodeForCopyAttempt(cr, *it->second);
                         }
                     }
 

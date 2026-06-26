@@ -1,10 +1,11 @@
 param(
     [string]$Aff4Input = "",
-    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_77",
+    [string]$Out = "Q:\SpotlightCase\TestMacOS_AFF4_V1_6_87",
     [string]$ReaderToolsRoot = "",
-    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip",
+    [string]$ZipPath = "D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_87.zip",
     [switch]$SkipUploadZip,
     [switch]$ForceContainerHash,
+    [switch]$ConfirmSourceContainerHash,
     [switch]$FullScan,
     [switch]$EnableAff4DynamicProbe,
     [switch]$EnableAff4VirtualApfsProbe,
@@ -19,7 +20,7 @@ param(
     [switch]$DiagnosticOutputs,
     [switch]$DecodeCoreNativeValues,
     [switch]$FullNativeValues,
-    [int]$MaxNativeRecords = 25000,
+    [int]$MaxNativeRecords = 0,
     [int]$MaxNativeBlocks = 0,
     [int]$CliTimeoutMinutes = 90
 )
@@ -409,7 +410,18 @@ if ($DiagnosticOutputs) {
     $args += "--aff4-apfs-diagnostic-outputs"
     $args += "--verbose"
 }
-if ($ForceContainerHash) { $args += "--force-container-hash" }
+$sourceHashExplicitlyConfirmed = ($ForceContainerHash -and $ConfirmSourceContainerHash)
+if ($sourceHashExplicitlyConfirmed) {
+    $args += "--force-container-hash"
+    Write-Host "Source-container SHA256 hashing requested for this run because -ForceContainerHash and -ConfirmSourceContainerHash were both supplied."
+} else {
+    $args += "--skip-container-hash"
+    if ($ForceContainerHash -and -not $ConfirmSourceContainerHash) {
+        Write-Host "Ignoring -ForceContainerHash because -ConfirmSourceContainerHash was not supplied. Thin/test mode is passing --skip-container-hash."
+    } else {
+        Write-Host "Thin/test mode: passing --skip-container-hash. Source-container SHA256 will not run unless -ForceContainerHash and -ConfirmSourceContainerHash are both supplied."
+    }
+}
 if ($FullScan) { $args += "--full-scan" }
 if ($EnableAff4DynamicProbe -or $EnableAff4VirtualApfsProbe) { $args += "--enable-aff4-dynamic-probe" }
 if ($EnableAff4StreamInventory) { $args += "--enable-aff4-stream-inventory" }

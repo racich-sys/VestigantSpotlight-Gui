@@ -1,0 +1,38 @@
+V1.6.82 AFF4/cache-text result review
+=====================================
+
+Reviewed uploads:
+- V1_6_82_build.log
+- V1_6_82_AFF4_WRAPPER_RUN_SUMMARY.txt
+- Upload_Thin_MacOS_AFF4_V1_6_82.zip
+- Upload_Thin_MacOS_AFF4_V1_6_82.zip.sha256.txt
+
+Verified from uploaded wrapper/SHA text:
+- Upload ZIP SHA256: 62FC23395CFD1B510451A1B7A9C4BD10C1C22AC5622BB816B61C8E1A5E776B6B
+- RunnerExitCode: 0
+- FullNoGuardrails: True
+- FullNativeValues: False
+- MaxNativeRecords: 0
+- MaxNativeBlocks: 0
+
+Direct ZIP inspection findings:
+- case_summary.json: raw_records=102170, raw_key_values=116445, artifacts=101326, timeline_events=102170, selected_databases=6.
+- aff4_apfs_staged_storev2_parser_probe_summary.json: parse_probe_status=PARSE_PROBE_COMPLETED, max_records_used=0, native_decode_mode=CoreFields, failures=0.
+- aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json: unresolved_before=71402, artifacts_path_updated=35839, estimated_unresolved_after=35563.
+- aff4_apfs_spotlight_cache_text_summary.json was present in the upload bundle.
+- Cache text summary: cache_files_found=7188, numeric_cache_files=7188, bucket_matches_numeric_id=7188, copied_stage_metadata_matched=7188.
+- Cache text inode validation: cache_filename_equals_cache_file_inode=0, cache_filename_differs_from_cache_file_inode=7188.
+- Cache text linkage: artifact_inode_matches=582, raw_record_inode_matches=582, apfs_directory_index_matches=637, apfs_paths_reconstructed=637.
+- Cache text enrichment: artifacts_text_updated=582, artifacts_path_updated=0, inserted_rows=7188, plist_xml_rows=5970, plain_text_rows=1217, utf16_rows=1, decode_failures=0.
+- Parent-inode chain performance remained poor: enrichment_parent_inode_chain_start 2026-06-26T05:17:50Z, enrichment_parent_inode_chain_complete 2026-06-26T05:24:10Z. Base parent links completed immediately; recursive expansion consumed the time and still produced no new reconstructed paths.
+
+Interpretation:
+- The CyberEngage Cache inode statement is partially validated in this evidence: the numeric cache filename is not the APFS inode of the cache .txt file itself, but it does match APFS directory-record child-file IDs for 637 rows and Store-V2 artifact/raw-record inode values for 582 rows.
+- The Cache text pass is now producing review files and adding extracted text to matched artifacts, but APFS-only cache filename matches remain only in the Cache text review table. Those should be elevated into searchable artifact rows with explicit provenance because the filename-to-APFS-directory match validates an indexed object path even without a parsed Store-V2 artifact row.
+- Parent-inode recursive chain needs a safer default. The existing relative-name seed for every artifact causes a large recursive expansion and produced no new paths in this case. Seed only existing absolute paths and root-level names by default; keep arbitrary relative-chain review out of the hot path unless explicitly enabled later.
+
+V1.6.84 first-fix decisions:
+1. Create synthetic/provenance-marked artifacts for Cache text rows that have no matched Store-V2 artifact but do have a cache filename -> APFS directory-record path match.
+2. Preserve cache file APFS inode/path/hash separately in spotlight_cache_text; do not confuse it with the indexed object inode.
+3. Reduce parent-inode recursive CTE work by removing the every-node relative seed from the default recursive path builder. Root/absolute seeds remain.
+4. Record new cache summary field cache_text_artifacts_created.

@@ -1,0 +1,28 @@
+Vestigant Spotlight V1.6.79 path reconstruction implementation review
+
+Input reviewed:
+- User-provided forensic architectural review requesting cross-store inode/path-node persistence, recursive SQL parent path reconstruction, 100,000-row CTE safety test, and paired Store-V2 validation.
+- V1.6.77 source package was treated as source of truth; ai_context.md was read before code changes.
+
+Verified source findings before changes:
+- src/parsers/native_storedb_parser.cpp declared pathNodes inside the per-store parse loop, which prevented parser-time path reconstruction state from carrying between paired .store.db and store.db files.
+- src/enrich_sql/sqlite_enrichment.cpp already had recursive parent-inode reconstruction, so it was not purely shallow. It did not yet include the requested recursive-tree indexes immediately after ANALYZE, temp indexes for temp_parent_inode_nodes, or the requested 20-level safety cap.
+
+V1.6.79 implementation:
+- Native parser now keeps pathNodesByStoreGuid outside the per-store loop and uses pathNodesByStoreGuid[store.storeGuid] inside each store parse, preserving directory nodes across paired files without mixing independent Store-V2 groups.
+- SQLite enrichment now creates idx_artifacts_recursive_tree and idx_artifacts_recursive_parent after ANALYZE.
+- SQLite enrichment now indexes temp_parent_inode_nodes for recursive key and parent lookup.
+- Recursive CTE depth cap changed from 64 to 20 while preserving visited-chain cycle detection.
+- Added tests/sql_recursion_test.cpp and tests/sql_recursion_test.h.
+- CMake and build_windows_msvc.bat now compile the SQL recursion helper into VestigantSpotlightTests.
+
+Validation performed locally:
+- Linux CMake build completed.
+- CLI reported Vestigant Spotlight v1.6.79.
+- VestigantSpotlightTests passed, including the new 100,000-row SQL recursion safety smoke test.
+- Static audit passed for version consistency, wrapper presence, Markdown consolidation, cross-store path-node markers, recursive-index markers, depth cap, MSVC batch inclusion, and raw-string size risk.
+
+Not verified:
+- Windows/MSVC build for V1.6.79.
+- Runtime paired .store.db/store.db folder ingestion.
+- V1.6.79 AFF4 run and whether unresolved/unnamed Spotlight object rows are materially reduced.

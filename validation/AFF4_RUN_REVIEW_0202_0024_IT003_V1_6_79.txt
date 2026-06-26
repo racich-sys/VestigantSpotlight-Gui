@@ -1,0 +1,37 @@
+AFF4 Run Review - 0202_0024-IT003 - V1.6.79
+
+Input artifacts reviewed:
+- V1_6_79_AFF4_WRAPPER_RUN_SUMMARY.txt
+- Upload_Thin_MacOS_AFF4_V1_6_79.zip
+- Upload_Thin_MacOS_AFF4_V1_6_79.zip.sha256.txt
+- V1_6_79_build.log
+
+Wrapper summary:
+- RunnerExitCode: 0
+- Workflow: AFF4Probe
+- FullNoGuardrails: True
+- FullNativeValues: False
+- MaxNativeRecords: 0
+- CaseRoot: Q:\SpotlightCase\TestMacOS_AFF4_V1_6_79
+
+SHA256 of uploaded AFF4 result ZIP:
+- EF17BA187AF39491C486BD4FE250163F2717BAD0DC431A453DDCAA699AE24206
+
+Direct ZIP inspection highlights:
+- case_summary.json: raw_record_count=102170, raw_key_value_count=116445, artifact_count=101326, timeline_event_count=102170, orphaned_or_deleted_candidate_count=0.
+- aff4_apfs_staged_storev2_parser_probe_summary.json: selected_databases=6, max_records_used=0, native_decode_mode=CoreFields, parsed_items=102170, failures=0.
+- aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json: unresolved_before=71402, direct_candidate_rows=35839, parent_candidate_rows=36465, estimated_unresolved_after=35563, artifacts_path_updated=35839, artifacts_name_updated=0, name_scan_paths_reconstructed=35839, no_direct_child_match_rows=34937, parent_only_context_rows=626, direct_ambiguous_rows=0.
+- aff4_apfs_directory_record_name_index_summary.json: directory_record_rows=743039, unique_child_file_ids=738953, unique_parent_object_ids=57941.
+- run_progress.tsv: source_probe_signature_complete scanned only 67108864 bytes for the generic pre-stage source signature probe; full evidentiary SHA256 hashing still completed.
+- run_progress.tsv: enrichment_parent_inode_links_start to enrichment_parent_inode_links_complete spanned approximately 102 seconds for 83592 parent-inode links.
+
+Interpretation:
+- V1.6.79 is a successful AFF4/APFS no-cap CoreFields validation run.
+- The generic pre-stage full-source signature scan optimization worked.
+- The unresolved-object resolver remains materially useful but still leaves an estimated 35563 unresolved rows.
+- Parent-inode enrichment is the next measurable runtime target.
+
+V1.6.84 follow-up implemented:
+- Targeted temporary INTEGER inode-key table for parent-inode link and recursive path-chain phases.
+- Added granular progress markers around parent-inode temp table creation, base link insertion, and recursive chain expansion.
+- Added sanitizer/static-analysis support without changing default Windows release build behavior.

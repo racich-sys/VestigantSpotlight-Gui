@@ -42,4 +42,4 @@ RequireText (Join-Path $SourceRoot 'src\app\app_runner.cpp') 'Store discovery co
 RequireText (Join-Path $SourceRoot 'src\parsers\native_storedb_parser.cpp') 'Validation mode must remain evidence-preserving' 'FullValues fallback to bounded raw probes when structured metadata is empty'
 RequireText (Join-Path $SourceRoot 'src\parsers\native_storedb_parser.cpp') 'kvStmt.bind\(8, effectiveFullPath\)' 'raw key/value full_path uses metadata/reconstructed effective path'
 RequireText (Join-Path $SourceRoot 'src\parsers\native_storedb_parser.cpp') 'if \(parts.empty\(\)\) return \{\};' 'parent-inode reconstruction does not invent root path for unnamed non-root records'
-Write-Host 'Forensic directive verification passed for V1.6.77.'
+Write-Host 'Forensic directive verification passed for V1.6.87.'

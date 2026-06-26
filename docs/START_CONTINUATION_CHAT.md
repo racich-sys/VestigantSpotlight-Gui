@@ -1,69 +1,143 @@
-# Start Continuation Chat - Vestigant Spotlight V1.6.77
+# Vestigant Spotlight / Spotlight2 continuation handoff — continue from V1.6.87
 
-Mandatory first action in a new chat: read `ai_context.md` first from the latest uploaded source package before making any code, script, documentation, or packaging changes. Treat the latest uploaded package as source of truth unless the user uploads a newer one.
+## Project context
 
-Current version/package: `VestigantSpotlightInv_V1_6_77.zip`.
+Vestigant Spotlight / Spotlight2 is a Windows C++ forensic tool for macOS Spotlight Store-V2 and iOS CoreSpotlight analysis, including AFF4/APFS intake, Store-V2 staging, native parser/enrichment, GUI investigator views, Cache text incorporation, and active/current filesystem comparison.
 
-Current primary validation target: rerun the same macOS AFF4/APFS evidence with V1.6.77 to verify: (1) Windows/MSVC build no longer fails in `win32_gui.cpp(3997)` or `gui_export_worker.cpp`; (2) AFF4 staged Store-V2 CoreFields no-cap run still completes; (3) unresolved Spotlight object resolution outputs are produced; (4) `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json` reports direct candidates and any applied APFS-derived names/paths.
+## Strict project rules
 
-Copy/paste PowerShell command after downloading ZIP and PS1 files to `D:\Downloads`:
+1. Read `ai_context.md` first from the latest uploaded source ZIP before making any code, script, documentation, or packaging changes.
+2. Treat the uploaded source ZIP as the source of truth. Do not assume earlier generated files are current unless present in the latest uploaded source.
+3. Every factual/build/runtime/code-change claim must be grounded in uploaded files, tool output, logs, or directly inspected artifacts.
+4. Check for hallucinations before changing code. Verify the claimed issue exists in the current source before implementing.
+5. Keep code modular. Avoid large monolithic additions and oversized C++ raw string literals.
+6. Maintain active Markdown consolidation: exactly five active Markdown files in the package:
+   - `.github/pull_request_template.md`
+   - `ai_context.md`
+   - `docs/PROJECT_REFERENCE_V<version>.md`
+   - `docs/START_CONTINUATION_CHAT.md`
+   - `third_party/lzfse/README.md`
+7. Update `ai_context.md` with only verified solved issues as verified; suspected/unvalidated items must be labeled pending/unverified.
+8. Update `docs/START_CONTINUATION_CHAT.md` last before packaging.
+9. Every package must include root-level one-click PowerShell scripts and exact copy/paste commands.
+10. After providing any build, also provide the needed `.ps1` files and the exact PowerShell command.
+11. When thin results are uploaded, proceed automatically with the next build unless the user explicitly says pause.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
-```
+## Current latest generated source
 
-Expected uploads after run:
+- Latest source package generated: `VestigantSpotlightInv_V1_6_87.zip`
+- Current version: V1.6.87
+- V1.6.87 is a narrow no-hash thin-wrapper hotfix following repeated V1.6.86 source-container hashing during AFF4 thin runs.
+- Treat V1.6.87 as test/validation stage until Windows/MSVC and AFF4 runtime outputs are uploaded.
 
-```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
-D:\Downloads\V1_6_77_build.log
-D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
-```
+## Comparative build detail — V1.6.86 to V1.6.87
 
-Key V1.6.77 changes:
+### V1.6.86 evidence that triggered V1.6.87
 
-- Fixed the V1.6.74 Windows/MSVC `WM_EXPORT_DB_CSV_RESULT` build failure by aligning the message handler with `postExportResult()`'s actual `std::wstring*` payload.
-- Hardened source `std::numeric_limits<...>::max()` / `min()` calls against Windows `min`/`max` macro expansion.
-- Preserved the V1.6.74 unresolved Spotlight object resolution probe and GUI CSV export / Tags-Notes layout work so it can finally be validated after the build fix.
-
-Important standing rules: provide a one-click PowerShell command in every release response; keep active Markdown consolidated to exactly five files; do not claim Windows/MSVC or runtime success without uploaded evidence; do not treat unresolved APFS/Spotlight linkage gaps as deletion proof.
-
-## V1.6.77 immediate status
-
-Latest package prepared: `VestigantSpotlightInv_V1_6_77.zip`.
-
-Mandatory first action: read `ai_context.md` first. Current focus is validating the new full local APFS directory-record name index and whether it reduces unresolved/unnamed Spotlight object rows on the same AFF4 source.
-
-Copy/paste command for the next run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
-```
-
-Expected uploads:
+The user pasted a V1.6.86 AFF4 thin/trial console and log excerpt showing:
 
 ```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
-D:\Downloads\V1_6_77_build.log
-D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
+Source-container SHA256 hashing requested for this run.
+Original container SHA256 hashing started. size_bytes=74468278910
+original_container_hash_start
 ```
 
+This proved the prior same-version V1.6.86 patches were insufficient. The thin run was still hashing the original AFF4 source container.
 
-## Latest handoff update - V1.6.77
+### Verified root-cause finding
 
-Latest package: `VestigantSpotlightInv_V1_6_77.zip`. Read `ai_context.md` first. V1.6.75 Windows build and AFF4 runtime were verified from uploaded artifacts. V1.6.77 adds APFS name-scan parent-chain path reconstruction for unresolved Spotlight object labels and bounds the generic source signature scan for explicit single-AFF4 runs to reduce duplicate full-AFF4 reads while preserving SHA256 hashing.
+The hashing itself was requested before APFS parsing. The exact console phrase was emitted by `tools/Run-SingleAff4SourceProbeAndZip.ps1` only when `$ForceContainerHash` was true.
 
-Copy/paste command for the next AFF4 validation:
+The line-by-line hashing-path review found that `Run-V1_6_86-AfterDownload.ps1` could use a stale external `D:\Downloads\BuildAndRun-V1_6_86-FromDownloadedZip.ps1` or sibling wrapper before bootstrapping from the updated ZIP. That stale same-version wrapper could still pass `-ForceContainerHash`.
+
+### V1.6.87 fixes made
+
+| Area | V1.6.86 problem | V1.6.87 behavior |
+|---|---|---|
+| Versioning | Same-version hotfixes allowed stale wrapper confusion | New version V1.6.87 |
+| One-click wrapper | Could prefer stale `D:\Downloads` sibling wrapper | Always extracts wrapper from the ZIP |
+| Wrapper source of truth | External script could override ZIP internals | ZIP bootstrap is authoritative |
+| AFF4 thin hash flag | Stale wrapper could pass `-ForceContainerHash` | Thin wrappers pass `-SkipContainerHash` |
+| Low-level runner | Honored `-ForceContainerHash` immediately | Requires both `-ForceContainerHash` and `-ConfirmSourceContainerHash` |
+| Thin upload SHA sidecar | Could generate `.sha256.txt` | Not generated by default |
+| Build/download hash display | Could print source ZIP hash during thin workflow | Skipped unless specifically requested |
+
+### Expected V1.6.87 console indicators
+
+Expected:
+
+```text
+Bootstrap policy: extracting wrapper from ZIP and ignoring stale D:\Downloads sibling scripts.
+Thin/test mode: passing --skip-container-hash.
+```
+
+Must not appear in thin/trial run:
+
+```text
+Source-container SHA256 hashing requested for this run.
+Original container SHA256 hashing started.
+original_container_hash_start
+```
+
+## Required next test after V1.6.87
+
+Run the V1.6.87 one-click AFF4 workflow:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_77-AfterDownload.ps1
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_87-AfterDownload.ps1
+```
+
+Required files in `D:\Downloads`:
+
+```text
+D:\Downloads\VestigantSpotlightInv_V1_6_87.zip
+D:\Downloads\Run-V1_6_87-AfterDownload.ps1
 ```
 
 Upload after the run:
 
 ```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_77.zip
-D:\Downloads\V1_6_77_build.log
-D:\Downloads\V1_6_77_AFF4_WRAPPER_RUN_SUMMARY.txt
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_87.zip
+D:\Downloads\V1_6_87_build.log
+D:\Downloads\V1_6_87_AFF4_WRAPPER_RUN_SUMMARY.txt
 ```
 
+If hashing still appears, also upload:
+
+```text
+VestigantSpotlight.log
+run_progress.tsv
+run_status.txt
+console transcript showing the first 80 lines after executing Run-V1_6_87-AfterDownload.ps1
+```
+
+## Other V1.6.86 fixes retained in V1.6.87
+
+V1.6.87 retains the V1.6.86 fix for the V1.6.85 APFS active-comparison SQL exception. The next AFF4 result should still be checked for:
+
+- `aff4_apfs_staged_storev2_enrichment_probe_summary.json` status should be `ENRICHMENT_PROBE_COMPLETED`.
+- `case_summary.json` should return toward the V1.6.84 baseline of roughly `artifact_count=101326` and `timeline_event_count=102170`.
+- `run_progress.tsv` should show APFS active comparison completion or tiered progress markers, not the prior `no such column: a.parent_inode_num` failure.
+
+## Expected next package if changes are needed
+
+- Next version should be V1.6.88 unless a different narrow hotfix naming convention is required.
+- Keep the no-hash thin policy.
+- Do not reintroduce same-version overwrites for wrapper fixes.
+- Update `ai_context.md` first/throughout and `docs/START_CONTINUATION_CHAT.md` last.
+
+## V1.6.87 validation completed before packaging
+
+- Linux CMake build completed.
+- `VestigantSpotlightCli --version` returned `Vestigant Spotlight v1.6.87`.
+- `VestigantSpotlightTests` passed.
+- Hash-path line review audit passed.
+- Static audit passed.
+- No-hash CLI smoke test against a small fake `.aff4` produced `original_container_hash_deferred_default` and did not produce `original_container_hash_start`.
+- ZIP integrity test was performed after packaging.
+
+## V1.6.87 validation not completed
+
+- Windows/MSVC build is unverified until the user runs the provided PowerShell command and uploads `V1_6_87_build.log`.
+- AFF4/APFS runtime parsing/enrichment is unverified until the user uploads the V1.6.87 thin output bundle.
+- GUI runtime is unverified until the user uploads a GUI `VestigantSpotlight.log` and any relevant screenshots.

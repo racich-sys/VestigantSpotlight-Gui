@@ -258,7 +258,7 @@ try {
           "status=incomplete_run_diagnostic_bundle",
           "cli_exit_code=$cliExit",
           "missing_required_upload_samples=$($missingRequiredUploadSamples -join ';')",
-          "note=V1.6.77 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
+          "note=V1.6.87 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
         ) -Encoding UTF8
       } catch {}
     } else {

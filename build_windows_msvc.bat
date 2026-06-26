@@ -191,9 +191,14 @@ echo Compiling self-test entry point...
 cl %CXXFLAGS% /c "tests\main.cpp" /Fo:"%OBJ%\tests_main.obj"
 if errorlevel 1 exit /b !errorlevel!
 
+echo Compiling SQL recursion self-test helper...
+cl %CXXFLAGS% /c "tests\sql_recursion_test.cpp" /Fo:"%OBJ%\sql_recursion_test.obj"
+if errorlevel 1 exit /b !errorlevel!
+
 (
   type "%COMMON_RSP%"
   echo "%OBJ%\tests_main.obj"
+  echo "%OBJ%\sql_recursion_test.obj"
   echo winsqlite3.lib
 ) > "%TESTS_RSP%"
 

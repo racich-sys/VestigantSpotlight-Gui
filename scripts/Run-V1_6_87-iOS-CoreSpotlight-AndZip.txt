@@ -1,0 +1,6 @@
+V1.6.87 iOS CoreSpotlight thin wrapper
+
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_87\scripts\Run-V1_6_87-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
+
+Expected upload:
+D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_6_87.zip

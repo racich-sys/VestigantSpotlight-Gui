@@ -1,8 +1,8 @@
 AFF4_RUN_REVIEW_0202_0024_IT003_V1_6_76_RESOLUTION_NEXT.txt
 
-V1.6.76 uploaded evidence reviewed before V1.6.77:
+V1.6.76 uploaded evidence reviewed before V1.6.79:
 - Wrapper completed with RunnerExitCode=0, FullNoGuardrails=True, FullNativeValues=False, MaxNativeRecords=0.
 - Case summary: raw_records=102,170; raw_key_values=116,445; artifacts=101,326; timeline_events=102,170.
 - Resolver summary: unresolved_before=71,402; direct_candidate_rows=1,340; parent_candidate_rows=26,764; artifacts_name_updated=59; artifacts_path_updated=1,281; name_scan_paths_reconstructed=1,281.
 - Remaining limitation: resolver used bounded aff4_apfs_spotlight_name_scan_sample.csv instead of a full local APFS directory-record name index.
-- V1.6.77 fix: write aff4_apfs_directory_record_name_index.csv locally from the exhausted direct AFF4/APFS directory-record traversal, upload only sample/summary/MD, and make the resolver prefer the full local index.
+- V1.6.79 fix: write aff4_apfs_directory_record_name_index.csv locally from the exhausted direct AFF4/APFS directory-record traversal, upload only sample/summary/MD, and make the resolver prefer the full local index.

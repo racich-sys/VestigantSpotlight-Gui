@@ -1,19 +1,220 @@
-# AI Context - Vestigant Spotlight V1.6.77
+# AI Context - Vestigant Spotlight V1.6.87
 
 This file must be reviewed first before every build, package, script, documentation, or code-change cycle. It is the first-fix reference for recurring project problems.
 
 ## Current baseline
 
-- Current package being prepared: `VestigantSpotlightInv_V1_6_77.zip`.
-- Current source version: `1.6.77`.
-- Latest uploaded source package reviewed first for this cycle: `VestigantSpotlightInv_V1_6_74.zip`.
-- Latest uploaded/runtime evidence reviewed before V1.6.77: user-provided V1.6.74 Windows build failure output in `Pasted text.txt`, uploaded V1.6.72 AFF4 result bundle, user-provided V1.6.68 AFF4 console output, user-provided V1.6.66 console output, uploaded AFF4 run bundle `0202_0024-IT003.zip`, prior `V1_6_64_build.log`, `Upload_To_Chat_V1_6_64_Results.zip`, and `Upload_Thin_iOS_CoreSpotlight_V1_6_64.zip`.
+- Current package being prepared: `VestigantSpotlightInv_V1_6_87.zip`.
+- Current source version: `1.6.87`.
+- Latest uploaded/runtime evidence reviewed before V1.6.87: user-pasted V1.6.86 AFF4 thin console/log excerpt showing the run still printed `Source-container SHA256 hashing requested for this run.` and entered `original_container_hash_start` for the 74,468,278,910-byte AFF4.
+- Standing workflow: proceed with next version/build automatically after uploaded build logs or thin/result bundles unless the user explicitly says to pause.
+- Standing continuation requirement: every new build/package must update `docs/START_CONTINUATION_CHAT.md` last, using the latest continuation file and adding comparative detail against the prior build.
+- Standing one-click command rule: every package must include root-level PowerShell scripts and final responses must include the exact copy/paste PowerShell command immediately after build links.
+
+## V1.6.87 verified root cause and fix - repeated AFF4 thin source-container hashing
+
+### User-provided evidence reviewed
+
+- The user pasted a V1.6.86 thin AFF4 run showing the console still printed `Source-container SHA256 hashing requested for this run.` before CLI execution and the case log then entered `Original container SHA256 hashing started. size_bytes=74468278910` / `original_container_hash_start`.
+- The same excerpt showed the run was still the AFF4 source-probe/thin workflow, not a final full-validation hash run.
+
+### Line-by-line hashing-path review findings
+
+- `src/app/app_runner.cpp` already deferred AFF4/raw source-container hashing when `opt.forceContainerHash` was false; therefore the repeated hash was not caused by APFS parsing or active filesystem comparison.
+- `tools/Run-SingleAff4SourceProbeAndZip.ps1` printed the exact console line `Source-container SHA256 hashing requested for this run.` only when its PowerShell parameter `$ForceContainerHash` was true.
+- `Run-V1_6_86-AfterDownload.ps1` preferred `D:\Downloads\BuildAndRun-V1_6_86-FromDownloadedZip.ps1` or a sibling script before falling back to the source ZIP bootstrap copy. That meant a stale same-version external wrapper in `D:\Downloads` could still pass `-ForceContainerHash`, even if the updated ZIP internals had been fixed.
+- The repeated same-version patching created a stale-file hazard because the command name did not change and Windows could continue using an older adjacent `BuildAndRun` script.
+
+### Implemented in V1.6.87
+
+- Version advanced to V1.6.87 to avoid same-version wrapper cache/staleness confusion.
+- `Run-V1_6_87-AfterDownload.ps1` now always extracts a fresh bootstrap wrapper from `VestigantSpotlightInv_V1_6_87.zip` and intentionally ignores any sibling/stale `BuildAndRun` scripts in `D:\Downloads`.
+- AFF4 thin/trial wrappers pass `-SkipContainerHash` and no longer generate the thin upload ZIP `.sha256.txt` sidecar by default.
+- The low-level AFF4 runner now requires both `-ForceContainerHash` and `-ConfirmSourceContainerHash` before it passes `--force-container-hash` to the CLI. A stale caller that supplies only `-ForceContainerHash` is ignored and converted to `--skip-container-hash` with an explicit console warning.
+- The build/download wrappers no longer display source ZIP SHA256 during thin/test runs. Package hashing is only printed if specifically requested through `-ForcePackageHash` in the lower build script.
+
+### Required next validation
+
+- Run `powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_87-AfterDownload.ps1` after downloading the V1.6.87 source ZIP and the V1.6.87 Run script.
+- The console must show the bootstrap policy: `extracting wrapper from ZIP and ignoring stale D:\Downloads sibling scripts`.
+- The console must show `Thin/test mode: passing --skip-container-hash` or, if a stale caller somehow supplied `-ForceContainerHash`, `Ignoring -ForceContainerHash because -ConfirmSourceContainerHash was not supplied`.
+- The console and logs must not show `Source-container SHA256 hashing requested for this run`, `Original container SHA256 hashing started`, or `original_container_hash_start` during thin/trial runs.
+- Expected uploads after V1.6.87 thin run: `Upload_Thin_MacOS_AFF4_V1_6_87.zip`, `V1_6_87_build.log`, and `V1_6_87_AFF4_WRAPPER_RUN_SUMMARY.txt`. A thin upload `.sha256.txt` sidecar is not expected.
+
+
+## V1.6.86 retained fix guidance - V1.6.85 APFS active-comparison SQL exception
+
+### Evidence reviewed before changing source
+
+- Uploaded `V1_6_85_AFF4_WRAPPER_RUN_SUMMARY.txt` reported `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and `MaxNativeBlocks=0` for `T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4`.
+- Uploaded `Upload_Thin_MacOS_AFF4_V1_6_85.zip.sha256.txt` reported SHA256 `1360B0B37AF2B765AAD23029F2E784B798A996F0186F97081E43AB76E6F615C1`; the sandbox recalculated the same SHA256 from the uploaded ZIP.
+- Direct inspection of uploaded `Upload_Thin_MacOS_AFF4_V1_6_85.zip` found parser output was still uncapped: `raw_record_count=102170`, `raw_key_value_count=116445`, `raw_date_candidate_count=102170`, parser `max_records_used=0`, `max_blocks_used=0`, `selected_databases=6`, and parser `failures=0`.
+- Direct inspection of uploaded V1.6.85 `case_summary.json` found the enrichment regression symptoms: `artifact_count=0` and `timeline_event_count=0`, compared with the V1.6.84 thin baseline of `artifact_count=101326` and `timeline_event_count=102170`.
+- Direct inspection of uploaded V1.6.85 `aff4_apfs_staged_storev2_enrichment_probe_summary.json` found `status=ENRICHMENT_PROBE_EXCEPTION` and notes beginning `sqlite exec failed: no such column: a.parent_inode_num` inside `CREATE TEMP TABLE temp_apfs_active_matches AS`.
+- Direct inspection of uploaded V1.6.85 `run_progress.tsv` found APFS image inventory was materialized before the failure: `active_comparison_prepare_start ... image_file_inventory_rows=738970`, `active_comparison_image_inventory_temp_complete normalized_inventory_rows=738970`, `active_comparison_image_artifacts_temp_complete artifact_rows=101326 comparable_rows=101326`, then `active_comparison_failed`.
+- Direct inspection of uploaded V1.6.85 Cache text summary found Cache text incorporation still completed after the enrichment exception: `cache_files_found=7188`, `inserted_rows=7188`, `artifacts_text_updated=637`, `artifacts_path_updated=204`, `cache_text_artifacts_created=55`, and `decode_failures=0`.
+
+### Verified source finding in V1.6.85
+
+- `src/enrich_sql/sqlite_enrichment.cpp` created `temp_apfs_active_matches` using correlated scalar subqueries with `ORDER BY CASE WHEN a.parent_inode_num<>'' ...`. The uploaded runtime exception showed SQLite did not resolve the outer alias `a.parent_inode_num` in that ORDER BY context during the Windows AFF4 thin run.
+
+### Implemented in V1.6.86 and retained in V1.6.87
+
+- Replaced the fragile `CREATE TEMP TABLE temp_apfs_active_matches AS SELECT ... COALESCE((SELECT ... ORDER BY CASE WHEN a.parent_inode_num ...))` block with a portable match table plus discrete `INSERT OR IGNORE` tiers.
+- Preserved the APFS/image-inventory comparison priority order while avoiding outer-alias references in subquery ORDER BY:
+  1. source/object-id + exact parent match,
+  2. source/object-id with parent optional/blank,
+  3. exact normalized path,
+  4. lower-confidence filename + exact parent fallback,
+  5. lower-confidence filename fallback.
+- Added progress markers for each match tier so the next AFF4 thin upload can show where APFS active comparison spends time and how many rows each tier matched.
+- Updated the active-comparison summary count so source/inode matches include both exact-parent and optional-parent match bases.
+- Retained the V1.6.85 GUI explicit no-cap fix, Cache text search surface changes, and APFS image inventory materialization.
+- Added `validation/V1_6_87_COMPARATIVE_REVIEW_FROM_V1_6_85_THIN_UPLOAD.txt` recording the V1.6.84 -> V1.6.85 comparison and the V1.6.87 fix decision.
+- Local Linux validation: CMake build completed after timeout/resume, `VestigantSpotlightCli --version` reported `Vestigant Spotlight v1.6.87`, `VestigantSpotlightTests` passed, static audit passed, and a Python `sqlite3` portable SQL smoke test for the new APFS match-tier logic passed.
+
+### Unverified until next uploaded V1.6.87 results
+
+- Windows/MSVC V1.6.87 build/link is unverified in this sandbox.
+- AFF4/APFS runtime enrichment completion is unverified until V1.6.87 thin output shows `status=ENRICHMENT_PROBE_COMPLETED` and case summary counts near the V1.6.84 baseline: `artifact_count=101326`, `timeline_event_count=102170`.
+- APFS active comparison is unverified until V1.6.87 `run_progress.tsv` shows `active_comparison_complete status=COMPLETED_APFS_IMAGE_INVENTORY_COMPARISON` or another non-exception completion status.
+- GUI runtime no-cap behavior and GUI Cache text search remain unverified until a GUI `VestigantSpotlight.log` and screenshots/search results are uploaded.
+
+### First-fix guidance after V1.6.87
+
+- Inspect V1.6.87 `aff4_apfs_staged_storev2_enrichment_probe_summary.json` first. If it does not show `ENRICHMENT_PROBE_COMPLETED`, review the `notes` field and `run_progress.tsv` before changing code.
+- Confirm `case_summary.json` returns to approximately `artifact_count=101326` and `timeline_event_count=102170`.
+- Confirm APFS active comparison no longer fails at `temp_apfs_active_matches` and inspect the new `active_comparison_image_match_tier_*` progress markers.
+- If active comparison completes but produces excessive missing candidates, treat those rows as investigative leads only and review the match-basis distribution before changing confidence language.
+- Continue GUI testing separately: upload `VestigantSpotlight.log` after a full/no-guardrails GUI ingestion and confirm effective parser caps remain explicit zero/uncapped.
+
+---
+
+# Historical context preserved from prior package
+
+## Historical AI Context - Vestigant Spotlight V1.6.84
+
+This file must be reviewed first before every build, package, script, documentation, or code-change cycle. It is the first-fix reference for recurring project problems.
+
+## Current baseline
+
+- Current package being prepared: `VestigantSpotlightInv_V1_6_84.zip`.
+- Current source version: `1.6.84`.
+- Latest uploaded source package reviewed first for this cycle: `VestigantSpotlightInv_V1_6_83.zip`.
+- Latest uploaded/runtime evidence reviewed before V1.6.84: uploaded V1.6.83 AFF4 result bundle, wrapper summary, SHA256 text, build log, and the user-provided GUI screenshot showing `Showing 1-250 of 25000 records`.
+- Standing workflow: proceed with next version/build automatically after uploaded build logs or thin/result bundles unless the user explicitly says to pause.
+- Standing one-click command rule: every package must include a root-level `Run-V<version>-AfterDownload.ps1` and final responses must include a copy/paste PowerShell command.
+
+## V1.6.84 verified input and fix guidance - V1.6.83 AFF4 result and GUI review cap
+
+- Verified uploaded `V1_6_83_AFF4_WRAPPER_RUN_SUMMARY.txt` reports `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and AFF4 path `T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4`.
+- Verified uploaded `Upload_Thin_MacOS_AFF4_V1_6_83.zip.sha256.txt` reports SHA256 `2A4B747290B45BE0CBF600EAD9ABD8458E9BA1F2FD845625B4214A4603D7BB97`.
+- Direct ZIP inspection of uploaded V1.6.83 result found `case_summary.json` with `raw_record_count=102170`, `raw_key_value_count=116445`, `artifact_count=101326`, and `timeline_event_count=102170`.
+- Direct ZIP inspection confirmed uncapped CoreFields parsing: `selected_databases=6`, `max_records_used=0`, `raw_records=102170`, and `failures=0`.
+- Cache text validation from V1.6.83: `cache_files_found=7188`, `artifact_inode_matches=582`, `raw_record_inode_matches=582`, `apfs_directory_index_matches=637`, `artifacts_text_updated=637`, `cache_text_artifacts_created=55`, and `decode_failures=0`.
+- Interpretation: the Cache incorporation worked and should stay high priority. The new synthetic Cache text artifact count of `55` is the expected signal that APFS-only Cache filename inode matches are becoming investigator-visible.
+- Unresolved-object baseline remains: `unresolved_before=71402`, `artifacts_path_updated=35839`, `estimated_unresolved_after=35563`.
+- Parent-inode chain performance remains a bottleneck: V1.6.83 `run_progress.tsv` shows chain start `2026-06-26T12:22:54Z`, chain complete `2026-06-26T12:27:16Z`, and `new_reconstructed_paths=0`.
+- V1.6.84 fix: recursive parent-inode path expansion no longer recurses into children that already have absolute paths. Blank or relative-path children can still be improved. Added progress markers `enrichment_parent_inode_chain_seed_ready` and `enrichment_parent_inode_chain_candidates_ready`.
+- User GUI screenshot showed V1.6.82 review status `Showing 1-250 of 25000 records`; V1.6.84 fixes review usability by changing the review rows box to `Rows/all`, allowing `ALL`, `full`, `uncapped`, or `0` to request a full page up to 1,000,000 rows, and status text now explicitly labels full review/no GUI row cap mode.
+- V1.6.84 also removes the hardcoded `LIMIT 25000` from the persistent schema view `vw_ios_identity_activity_detail_sample`. If a future GUI still shows exactly 25,000 rows, first verify the opened case database path and `COUNT(*) FROM timeline_events` before assuming parser capping.
+- First-fix guidance after V1.6.84: inspect `run_progress.tsv` for parent chain duration and new seed/candidate markers; inspect GUI with `Rows/all=ALL` against the full V1.6.84 case; inspect `case_summary.json` and table counts if GUI status still reports 25,000.
+
+# AI Context - Vestigant Spotlight V1.6.84
+
+This file must be reviewed first before every build, package, script, documentation, or code-change cycle. It is the first-fix reference for recurring project problems.
+
+## Current baseline
+
+- Current package being prepared: `VestigantSpotlightInv_V1_6_84.zip`.
+- Current source version: `1.6.84`.
+- Latest uploaded source package reviewed first for this cycle: `VestigantSpotlightInv_V1_6_82.zip`.
+- Latest uploaded/runtime evidence reviewed before V1.6.84: uploaded V1.6.82 AFF4 result bundle, wrapper summary, SHA256 text, and build log.
 - Standing workflow: proceed with next version/build automatically after uploaded build logs or thin/result bundles unless the user explicitly says to pause.
 - Standing script workflow rule from the user: every package must provide one automatic PowerShell entry point that builds first, runs the required self-test, and then runs the selected validation workflow. Keep narrower wrappers available as fallback, but the recommended command must use the most automatic wrapper.
 - Standing one-click command rule from the user: every release must include a root-level PowerShell script that the user can run after downloading the source ZIP and one-click PS1 with a single copy/paste command. The script must build, run required tests, and run the current needed validation workflow by default.
 - Standing command presentation rule from the user: every release response and continuation/reference document must provide all needed PowerShell commands as copy/paste-ready code blocks. Use concrete recommended paths when known. If a placeholder is unavoidable, label exactly what must be replaced.
 
 
+## V1.6.84 verified input and fix guidance - V1.6.82 Cache text results and parent-chain hot path
+
+- Verified uploaded `V1_6_82_AFF4_WRAPPER_RUN_SUMMARY.txt` reports `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and AFF4 path `T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4`.
+- Verified uploaded `Upload_Thin_MacOS_AFF4_V1_6_82.zip.sha256.txt` reports SHA256 `62FC23395CFD1B510451A1B7A9C4BD10C1C22AC5622BB816B61C8E1A5E776B6B`.
+- Direct ZIP inspection of uploaded V1.6.82 result found `case_summary.json` with `raw_record_count=102170`, `raw_key_value_count=116445`, `artifact_count=101326`, and `timeline_event_count=102170`.
+- Direct ZIP inspection confirmed the Cache text output files were included in the upload bundle. `aff4_apfs_spotlight_cache_text_summary.json` reported `cache_files_found=7188`, `numeric_cache_files=7188`, `bucket_matches_numeric_id=7188`, and `copied_stage_metadata_matched=7188`.
+- Cache text inode validation from V1.6.82: `cache_filename_equals_cache_file_inode=0` and `cache_filename_differs_from_cache_file_inode=7188`. This supports the interpretation that the numeric filename is not the cache `.txt` file inode.
+- Cache text linkage from V1.6.82: `artifact_inode_matches=582`, `raw_record_inode_matches=582`, `apfs_directory_index_matches=637`, `apfs_paths_reconstructed=637`, `artifacts_text_updated=582`, and `artifacts_path_updated=0`.
+- Interpretation: the CyberEngage claim that Cache `.txt` filenames correspond to indexed-file inodes is partially validated in this evidence by APFS directory-record matches and artifact/raw-record inode matches. Do not globally assume it; validate per row using Store-V2 and APFS directory-record linkage.
+- V1.6.84 fix: if a Cache `.txt` numeric filename has no parsed Store-V2 artifact match but does have a cache filename -> APFS directory-record path match, create a provenance-marked synthetic artifact row so the cache text is searchable in the main artifact review. Preserve the cache `.txt` file's APFS inode/path/hash separately in `spotlight_cache_text`.
+- V1.6.84 summary addition: `aff4_apfs_spotlight_cache_text_summary.json` now includes `cache_text_artifacts_created`.
+- Direct ZIP inspection of V1.6.82 `run_progress.tsv` found parent-inode chain runtime remained poor: `enrichment_parent_inode_chain_start` at `2026-06-26T05:17:50Z`, `enrichment_parent_inode_chain_complete` at `2026-06-26T05:24:10Z`, and no new parent-chain paths were applied.
+- V1.6.84 fix: remove the every-node relative-name seed from the default parent-inode recursive path CTE. Default recursion now starts from existing absolute path seeds and root-level name seeds only. This preserves high-value path reconstruction while avoiding expensive review-only relative-chain expansion that produced no updates in V1.6.82.
+- First-fix guidance after V1.6.84: inspect `aff4_apfs_spotlight_cache_text_summary.json` for `cache_text_artifacts_created`; expected value should roughly equal APFS-only cache filename matches not already linked to parsed artifacts. Inspect `run_progress.tsv` parent-inode chain start/complete timestamps; runtime should drop materially from V1.6.82's several-minute chain phase if the relative-seed expansion was the cause.
+
+## V1.6.82 verified input and fix guidance - V1.6.80 AFF4 result and Spotlight Cache text priority
+
+- Verified uploaded `V1_6_80_AFF4_WRAPPER_RUN_SUMMARY.txt` reports `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and AFF4 path `T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4`.
+- Verified uploaded `Upload_Thin_MacOS_AFF4_V1_6_80.zip.sha256.txt` reports SHA256 `DEC4E9B837B7CC8ABADCC10A6AAB5CBA96F242B46A52CC79581FBCB3EB36109D`.
+- Direct ZIP inspection of uploaded V1.6.80 result found `case_summary.json` with `raw_record_count=102170`, `raw_key_value_count=116445`, `artifact_count=101326`, and `timeline_event_count=102170`.
+- Direct ZIP inspection of uploaded V1.6.80 unresolved object resolution found `unresolved_before=71402`, `artifacts_path_updated=35839`, and `estimated_unresolved_after=35563`.
+- Direct ZIP inspection of V1.6.80 `run_progress.tsv` found parent-inode base links completed quickly, but recursive chain remained expensive: `enrichment_parent_inode_chain_start` at `20:25:34Z` and `enrichment_parent_inode_chain_complete` at `20:31:58Z`, with `88988` links. This remains a performance area but is not the V1.6.82 priority.
+- User cited CyberEngage stating Spotlight `/Cache` stores text-based versions of documents/emails/chats and each cache file is named after its inode number. Treat this as a hypothesis requiring per-case validation because the APFS copy-out distinguishes the cache `.txt` file inode from the numeric filename.
+- Direct inspection of uploaded V1.6.80 `aff4_apfs_extracted_storev2_stage_files.csv` found `7188` numeric `Cache/**/*.txt` rows under store GUID `7B17F6B7-6868-42CA-A3BB-E31DA5655204`; all `7188` matched the bucket rule `cache_id >> 16 == parent_hex_bucket`; `0` of `7188` numeric filenames equaled the APFS inode of the cache `.txt` file itself; all `7188` differed from the cache file APFS inode.
+- Direct inspection of the user-uploaded `0000.zip` found `7188` `.txt` files totaling about `9656345` bytes; all `7188` matched the same bucket rule; sampled classification found mostly XML/plist-like text plus plaintext and a small number of UTF-16-like rows.
+- Direct inspection of uploaded `aff4_apfs_staged_storev2_artifacts_sample.csv` found `48` cache numeric filenames that matched artifact sample `inode_num` values in the same store GUID. This is partial validation only because the full artifact table is not in the chat upload; V1.6.82 must validate against the full runtime case DB.
+- V1.6.82 priority fix: add a Spotlight Store-V2 Cache text incorporation pass after AFF4/APFS staged Store-V2 enrichment. It scans `ExtractedSpotlight/StagedStoreV2/<GUID>/Cache/**/*.txt`, decodes text/plist/XML/UTF-16 fragments, stores results in `spotlight_cache_text`, exports `aff4_apfs_spotlight_cache_text_sample.csv`, writes `aff4_apfs_spotlight_cache_text_summary.json`, and creates `AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md`.
+- V1.6.82 linkage rule: treat cache filename numeric stem as a candidate indexed-file inode/object ID, not as the APFS inode of the cache text file itself. Link in this order: same-source/store artifact `inode_num`, same-source/store raw record `inode_num`, APFS directory-record index child-file-ID/path, then standalone cache text. Preserve cache `.txt` file APFS inode/path/sha256 separately for provenance.
+- V1.6.82 artifact enrichment: if cache text links to an artifact, populate empty `artifacts.index_text_snippet`; if the cache filename also resolves through the APFS directory-record index and the artifact lacks a path or is unresolved, apply `best_path` with `path_source='SPOTLIGHT_CACHE_FILENAME_INODE_APFS_DIRECTORY_INDEX'` and `path_status='APFS_PATH_FROM_SPOTLIGHT_CACHE_FILENAME_INODE'`.
+- First-fix guidance: after V1.6.82 results, inspect `aff4_apfs_spotlight_cache_text_summary.json` first. Key fields are `cache_files_found`, `cache_filename_equals_cache_file_inode`, `cache_filename_differs_from_cache_file_inode`, `artifact_inode_matches`, `raw_record_inode_matches`, `apfs_directory_index_matches`, `apfs_paths_reconstructed`, `artifacts_text_updated`, and `artifacts_path_updated`. A strong validation of the CyberEngage inode claim is high `artifact_inode_matches` or `apfs_directory_index_matches` with `cache_filename_equals_cache_file_inode=0`, proving the numeric filename identifies the indexed object/file rather than the cache file itself.
+
+## V1.6.80 verified input and fix guidance - uploaded V1.6.79 AFF4 result and deferred triage items
+
+- Verified uploaded `V1_6_79_AFF4_WRAPPER_RUN_SUMMARY.txt` reports `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and AFF4 path `T:\0202_0024-IT003\disk3 2026-06-22 08-12-11\0202_0024-IT003.aff4`.
+- Verified uploaded `Upload_Thin_MacOS_AFF4_V1_6_79.zip.sha256.txt` reports SHA256 `EF17BA187AF39491C486BD4FE250163F2717BAD0DC431A453DDCAA699AE24206`.
+- Direct ZIP inspection of uploaded V1.6.79 result found `case_summary.json` with `raw_record_count=102170`, `raw_key_value_count=116445`, `artifact_count=101326`, `timeline_event_count=102170`, and `orphaned_or_deleted_candidate_count=0`.
+- Direct ZIP inspection of `aff4_apfs_staged_storev2_parser_probe_summary.json` found `selected_databases=6`, `max_records_used=0`, `native_decode_mode=CoreFields`, `parsed_items=102170`, and `failures=0`.
+- Direct ZIP inspection of `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json` found `unresolved_before=71402`, `direct_candidate_rows=35839`, `parent_candidate_rows=36465`, `estimated_unresolved_after=35563`, `artifacts_path_updated=35839`, `artifacts_name_updated=0`, `name_scan_paths_reconstructed=35839`, `no_direct_child_match_rows=34937`, `parent_only_context_rows=626`, and `direct_ambiguous_rows=0`.
+- Direct ZIP inspection of `run_progress.tsv` found the V1.6.79 generic pre-stage AFF4 source signature scan was bounded: `source_probe_signature_complete bytes_scanned=67108864 hits=4`, confirming the prior duplicate full-AFF4 read for generic signature scanning was avoided. The evidentiary full SHA256 hash still ran and completed.
+- Direct ZIP inspection found parent-inode enrichment was still a major runtime area: `enrichment_parent_inode_links_start` to `enrichment_parent_inode_links_complete` spanned about 102 seconds for 83,592 parent-inode links.
+- V1.6.80 fix: parent-inode enrichment now materializes a source-scoped temporary artifact join table with `inode_key` and `parent_inode_key` cast to INTEGER, plus temp indexes on `(source_id, store_guid, inode_key)` and `(source_id, store_guid, parent_inode_key)`. This is a targeted hot-path optimization without migrating persistent schema columns.
+- V1.6.80 fix: recursive parent-inode chain reconstruction now joins on the temporary INTEGER keys rather than text inode strings while preserving the original text columns in review/export tables.
+- V1.6.80 diagnostic improvement: parent-inode enrichment now writes intermediate progress markers `enrichment_parent_inode_join_temp_ready`, `enrichment_parent_inode_base_links_complete`, `enrichment_parent_inode_chain_start`, and `enrichment_parent_inode_chain_complete` so future runs can isolate whether time is spent in base link insertion or recursive chain expansion.
+- V1.6.80 build/test hardening: `CMakeLists.txt` now exposes `ENABLE_SANITIZERS` for ASan/UBSan builds with Clang/GNU, `build_linux_test.sh` supports `ENABLE_SANITIZERS=1`, and `build_linux_sanitized_test.sh` is added as a convenience runner.
+- V1.6.80 static-analysis support: added `tools/Run-CppStaticAnalysis.ps1` as an advisory clang-tidy runner with optional `-Strict`, and added a manual GitHub workflow `linux-sanitizer-static.yml` for sanitizer/static-analysis validation without changing the default Windows/MSVC release path.
+- Deferred: persistent `TEXT` to `INTEGER` schema migration remains high risk and is not implemented in V1.6.84. The targeted temp-key optimization is the safer first step.
+- Deferred: replacing the recursive CTE `instr()` cycle guard remains lower priority while the depth cap is 20.
+- Deferred: `raw_key_values` EAV redesign into JSON/properties storage remains a future schema redesign, not a hotfix.
+- Deferred: APFS traversal modularization into `ApfsVolumeReader` and broad dead-code cleanup require separate tests/refactor phases and should not be mixed into active AFF4 result-validation changes.
+- First-fix guidance: after V1.6.80 AFF4 results, compare `run_progress.tsv` timings for `enrichment_parent_inode_join_temp_ready`, `enrichment_parent_inode_base_links_complete`, `enrichment_parent_inode_chain_start`, and `enrichment_parent_inode_chain_complete` against V1.6.79's single 102-second parent-inode span. Also compare unresolved-object summary values; if `estimated_unresolved_after` remains ~35,563, focus next on object-ID bridge evidence rather than broad APFS traversal rewrites.
+
+## V1.6.79 verified input and fix guidance - uploaded V1.6.78 AFF4 result and code review
+
+- Verified uploaded `V1_6_78_AFF4_WRAPPER_RUN_SUMMARY.txt` reports `RunnerExitCode=0`, `FullNoGuardrails=True`, `FullNativeValues=False`, `MaxNativeRecords=0`, and the expected AFF4 path under `T:\0202_0024-IT003`.
+- Verified uploaded `Upload_Thin_MacOS_AFF4_V1_6_78.zip.sha256.txt` reports SHA256 `102BA79C11DE38A49123675ED7AE39F8C84ADCF12E5B92D10B14FC42E6113B17`.
+- Direct ZIP inspection of uploaded V1.6.78 result found `case_summary.json` with `raw_record_count=102170`, `raw_key_value_count=116445`, `artifact_count=101326`, `timeline_event_count=102170`, and `orphaned_or_deleted_candidate_count=0`.
+- Direct ZIP inspection of `aff4_apfs_staged_storev2_parser_probe_summary.json` found `selected_databases=6`, `max_records_used=0`, `native_decode_mode=CoreFields`, `parsed_items=102170`, and `failures=0`.
+- Direct ZIP inspection of `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json` found `unresolved_before=71402`, `direct_candidate_rows=35839`, `parent_candidate_rows=36465`, `artifacts_path_updated=35839`, `artifacts_name_updated=0`, and `name_scan_paths_reconstructed=35839`.
+- Direct ZIP inspection of `aff4_apfs_directory_record_name_index_summary.json` found `directory_record_rows=743039`, `unique_child_file_ids=738953`, and `unique_parent_object_ids=57941`.
+- V1.6.79 fix: replaced the O(N*M) nested loop in `src/parsers/aff4_probe_worker.cpp` that correlated `apfsSpotlightCopyAttemptRows` to `allSpotlightScanInodes` with a prebuilt `std::unordered_map` keyed by `(volumeSequence, childFileId)`.
+- V1.6.79 fix: moved SQLite planner-statistics refresh to the correct point in `src/enrich_sql/sqlite_enrichment.cpp`; after artifacts/source instances/raw records are populated and before recursive parent-inode path reconstruction, run `ANALYZE artifacts`, `ANALYZE artifact_source_instances`, and `ANALYZE raw_records`.
+- V1.6.79 fix: parent-inode reconstruction self-test now inserts synthetic `raw_key_values`, so the required self-test covers non-empty metadata-key/value enrichment and should not emit the previous header-only warning for that synthetic path test.
+- V1.6.79 diagnostic improvement: unresolved object resolution summary now reports `estimated_unresolved_after`, `no_direct_child_match_rows`, `parent_only_context_rows`, and `direct_ambiguous_rows`.
+- Deferred: changing schema join keys from TEXT to INTEGER is a high-risk schema migration and view-compatibility change; do not attempt without a dedicated migration branch/test bundle.
+- Deferred: replacing recursive CTE string-based cycle guard is lower priority while depth cap remains 20; revisit only if profile evidence shows it is hot.
+- Deferred: APFS traversal modularization, sanitizer gates, and dead-code cleanup are valid maintainability work, but should not be combined with current AFF4 path-resolution validation unless a build/runtime result specifically points there.
+
+## V1.6.79 verified input and fix guidance
+
+- User requested implementation of a forensic architectural review focused on unresolved/unnamed macOS Spotlight objects and parent-path reconstruction.
+- Source verification before coding: `src/parsers/native_storedb_parser.cpp` had `pathNodes` declared inside the per-store parse loop, so parser-time parent path reconstruction did not preserve names learned from a paired `.store.db` while later parsing the matching `store.db`.
+- Source verification before coding: `src/enrich_sql/sqlite_enrichment.cpp` was not purely shallow; it already had a recursive parent-inode chain reconstruction layer. The implementation still lacked the requested persistent recursive-tree indexes immediately after `ANALYZE`, lacked temp-table indexes for the recursive join, and used a deeper `pc.depth < 64` cap rather than the requested safer bounded test path.
+- Fix in V1.6.79: `NativeStoreDbParser::parseStores` now maintains `pathNodesByStoreGuid` outside the individual store loop and reuses `pathNodesByStoreGuid[store.storeGuid]` for each store member. This preserves cross-store directory nodes while keeping separate Store-V2 groups isolated by `store_guid` to avoid inode-number collisions between groups.
+- Fix in V1.6.79: SQLite enrichment now creates `idx_artifacts_recursive_tree` and `idx_artifacts_recursive_parent` after `ANALYZE`, then indexes `temp_parent_inode_nodes` by `(source_id, store_guid, inode_num)` and `(source_id, store_guid, parent_inode_num)` before recursive parent-chain reconstruction.
+- Fix in V1.6.79: recursive parent-chain enrichment now uses a 20-level safety cap for the recursive CTE path expansion. Cycle detection remains in place through the `visited` chain guard.
+- Test added in V1.6.79: `tests/sql_recursion_test.cpp` builds a 100,000-row synthetic inode chain and verifies that a recursive CTE with a 20-level breaker terminates with the expected 21 rows and max depth 20. The test is wired into CMake and the no-CMake Windows/MSVC batch build.
+- Verification: Linux CMake build completed, CLI reported `Vestigant Spotlight v1.6.79`, and `VestigantSpotlightTests` passed including the new SQL recursion safety smoke test. Windows/MSVC build and the paired Store-V2 runtime path-resolution effect are not verified until the user uploads results.
+- First-fix guidance: after a V1.6.79 AFF4 or paired Store-V2 folder test, inspect artifact/path metrics before changing APFS code. Compare `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json`, `aff4_apfs_staged_storev2_artifacts_sample.csv`, `parent_inode_links`, `vw_path_reconstruction`, and artifacts with `path_source` in `PARENT_INODE_CHAIN_RECONSTRUCTION` or `PARENT_INODE_RELATIVE_CHAIN_REVIEW`.
+- Matched Store-V2 folder validation guidance: if the user provides or runs against a paired UUID Store-V2 directory containing both `.store.db` and `store.db`, the expected validation signal is a material increase in non-placeholder `full_path` / `best_path` rows for `store.db` records whose parent directory records came from `.store.db`.
 
 ## V1.6.77 verified input and fix guidance
 

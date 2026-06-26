@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <atomic>
 #include <chrono>
+#include <iterator>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -874,7 +875,7 @@ void createUploadBundle(const fs::path& caseDir) {
         const std::vector<fs::path> rootFiles = {
             "CASE_REVIEW_SUMMARY.txt", "investigator_dashboard.html", "INVESTIGATOR_UI_GUIDE.md", "IOS_CORESPOTLIGHT_PLAN.md", "UPLOAD_README.txt", "TARGETED_EXPORT_README.txt", "Export-SpotlightTargetedData.ps1", "Create-UploadZip.ps1",
             "case_info.json", "case_summary.json", "case_summary.csv",
-            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json", "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv", "aff4_apfs_directory_record_name_index_sample.csv", "aff4_apfs_directory_record_name_index_summary.json", "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md",
+            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json", "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv", "aff4_apfs_directory_record_name_index_sample.csv", "aff4_apfs_directory_record_name_index_summary.json", "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md", "aff4_apfs_spotlight_cache_text_sample.csv", "aff4_apfs_spotlight_cache_text_summary.json", "AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md",
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
@@ -2955,6 +2956,16 @@ if ($matched -eq 0) {
 }
 
 
+std::string sqlQuoteLiteral(const std::string& s) {
+    std::string out = "'";
+    for (char ch : s) {
+        if (ch == '\'') out += "''";
+        else out.push_back(ch);
+    }
+    out.push_back('\'');
+    return out;
+}
+
 std::string jsonEscapeSimple(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 16);
@@ -4475,6 +4486,9 @@ struct Aff4ApfsUnresolvedObjectResolutionCounts {
     long long artifactsNameUpdated = 0;
     long long artifactsPathUpdated = 0;
     long long nameScanPathsReconstructed = 0;
+    long long noDirectChildMatchRows = 0;
+    long long parentOnlyContextRows = 0;
+    long long directAmbiguousRows = 0;
     std::string notes;
 };
 
@@ -4785,7 +4799,11 @@ WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STORE
                     resolutionStatus = "PARENT_OBJECT_HAS_APFS_CHILDREN_ONLY";
                     confidence = "LOW_PARENT_CONTEXT_ONLY";
                     notes = "The Store-V2 parent object identifier appears in APFS name-scan rows, but the child object identifier was not directly resolved.";
+                    ++c.parentOnlyContextRows;
+                } else {
+                    ++c.noDirectChildMatchRows;
                 }
+                if (resolutionStatus == "DIRECT_APFS_CHILD_MATCH_AMBIGUOUS") ++c.directAmbiguousRows;
 
                 out << csvEscape(std::to_string(artifactId)) << ','
                     << csvEscape(storeGuid) << ','
@@ -4808,7 +4826,8 @@ WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STORE
             db.commit();
             c.status = "RESOLUTION_PROBE_COMPLETED";
             c.notes = "APFS directory-record name index rows were matched against unresolved Store-V2 object identifiers. Direct child-file-ID matches may now use logical-directory paths or reconstructed APFS name-index parent chains; parent-only context is exported for review and is not applied.";
-            appendRunStatus(caseDir, "aff4_apfs_unresolved_object_resolution_complete", "unresolved=" + std::to_string(c.unresolvedBefore) + " direct_candidates=" + std::to_string(c.directCandidateRows) + " names_updated=" + std::to_string(c.artifactsNameUpdated) + " paths_updated=" + std::to_string(c.artifactsPathUpdated) + " name_scan_paths_reconstructed=" + std::to_string(c.nameScanPathsReconstructed));
+            const long long unresolvedAfterEstimate = c.unresolvedBefore - c.artifactsNameUpdated - c.artifactsPathUpdated;
+            appendRunStatus(caseDir, "aff4_apfs_unresolved_object_resolution_complete", "unresolved=" + std::to_string(c.unresolvedBefore) + " estimated_unresolved_after=" + std::to_string(unresolvedAfterEstimate < 0 ? 0 : unresolvedAfterEstimate) + " direct_candidates=" + std::to_string(c.directCandidateRows) + " names_updated=" + std::to_string(c.artifactsNameUpdated) + " paths_updated=" + std::to_string(c.artifactsPathUpdated) + " no_direct_child_match=" + std::to_string(c.noDirectChildMatchRows) + " parent_only_context=" + std::to_string(c.parentOnlyContextRows) + " direct_ambiguous=" + std::to_string(c.directAmbiguousRows) + " name_scan_paths_reconstructed=" + std::to_string(c.nameScanPathsReconstructed));
             log.info("AFF4 APFS unresolved Spotlight object resolution probe written: " + pathString(outCsv));
         }
     } catch (const std::exception& ex) {
@@ -4828,9 +4847,14 @@ WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STORE
         out << "  \"unresolved_before\": " << c.unresolvedBefore << ",\n";
         out << "  \"direct_candidate_rows\": " << c.directCandidateRows << ",\n";
         out << "  \"parent_candidate_rows\": " << c.parentCandidateRows << ",\n";
+        const long long unresolvedAfterEstimate = c.unresolvedBefore - c.artifactsNameUpdated - c.artifactsPathUpdated;
+        out << "  \"estimated_unresolved_after\": " << (unresolvedAfterEstimate < 0 ? 0 : unresolvedAfterEstimate) << ",\n";
         out << "  \"artifacts_name_updated\": " << c.artifactsNameUpdated << ",\n";
         out << "  \"artifacts_path_updated\": " << c.artifactsPathUpdated << ",\n";
         out << "  \"name_scan_paths_reconstructed\": " << c.nameScanPathsReconstructed << ",\n";
+        out << "  \"no_direct_child_match_rows\": " << c.noDirectChildMatchRows << ",\n";
+        out << "  \"parent_only_context_rows\": " << c.parentOnlyContextRows << ",\n";
+        out << "  \"direct_ambiguous_rows\": " << c.directAmbiguousRows << ",\n";
         out << "  \"notes\": \"" << jsonEscape(c.notes) << "\"\n";
         out << "}\n";
     } catch (const std::exception& ex) {
@@ -4842,15 +4866,20 @@ WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STORE
         out << "# AFF4 APFS Unresolved Spotlight Object Resolution Probe\n\n";
         out << "Version: " << appVersion() << "\n\n";
         out << "## Scope\n\n";
-        out << "This diagnostic attempts to reduce `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels by comparing Store-V2 object identifiers to APFS directory-record `child_file_id_candidate` values. V1.6.77 prefers the full local `aff4_apfs_directory_record_name_index.csv` when available and falls back to `aff4_apfs_spotlight_name_scan_sample.csv`. When the logical directory walk does not contain a full path, it also attempts a guarded APFS name-index parent-chain reconstruction.\n\n";
+        out << "This diagnostic attempts to reduce `UNRESOLVED_SPOTLIGHT_OBJECT_INODE_*` labels by comparing Store-V2 object identifiers to APFS directory-record `child_file_id_candidate` values. V1.6.84 prefers the full local `aff4_apfs_directory_record_name_index.csv` when available and falls back to `aff4_apfs_spotlight_name_scan_sample.csv`. When the logical directory walk does not contain a full path, it also attempts a guarded APFS name-index parent-chain reconstruction.\n\n";
         out << "## Summary\n\n";
         out << "- Status: `" << c.status << "`\n";
+        const long long unresolvedAfterEstimate = c.unresolvedBefore - c.artifactsNameUpdated - c.artifactsPathUpdated;
         out << "- Unresolved artifacts before probe: `" << c.unresolvedBefore << "`\n";
+        out << "- Estimated unresolved artifacts after applied name/path updates: `" << (unresolvedAfterEstimate < 0 ? 0 : unresolvedAfterEstimate) << "`\n";
         out << "- Direct APFS child-file-ID candidate rows: `" << c.directCandidateRows << "`\n";
         out << "- Parent-context candidate rows: `" << c.parentCandidateRows << "`\n";
         out << "- Artifact names updated: `" << c.artifactsNameUpdated << "`\n";
         out << "- Artifact paths updated: `" << c.artifactsPathUpdated << "`\n";
-        out << "- APFS name-scan parent-chain paths reconstructed: `" << c.nameScanPathsReconstructed << "`\n\n";
+        out << "- APFS name-scan parent-chain paths reconstructed: `" << c.nameScanPathsReconstructed << "`\n";
+        out << "- Rows with no direct APFS child-file-ID match: `" << c.noDirectChildMatchRows << "`\n";
+        out << "- Parent-only context rows: `" << c.parentOnlyContextRows << "`\n";
+        out << "- Ambiguous direct child matches: `" << c.directAmbiguousRows << "`\n\n";
         out << "## Output\n\n";
         out << "- `aff4_apfs_unresolved_spotlight_object_resolution_probe.csv`\n";
         out << "- `aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json`\n\n";
@@ -4860,6 +4889,648 @@ WHERE source_id=? AND artifact_id=? AND path_status IN ('UNRESOLVED_NATIVE_STORE
         log.warn(std::string("Unable to write AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md: ") + ex.what());
     }
 
+    return c;
+}
+
+
+struct SpotlightCacheTextIncorporationCounts {
+    long long cacheFilesFound = 0;
+    long long numericCacheFiles = 0;
+    long long bucketMatches = 0;
+    long long copiedStageMetadataMatched = 0;
+    long long cacheFilenameEqualsCacheFileInode = 0;
+    long long cacheFilenameDiffersFromCacheFileInode = 0;
+    long long artifactInodeMatches = 0;
+    long long rawRecordInodeMatches = 0;
+    long long apfsDirectoryIndexMatches = 0;
+    long long apfsPathsReconstructed = 0;
+    long long artifactsTextUpdated = 0;
+    long long artifactsPathUpdated = 0;
+    long long cacheTextArtifactsCreated = 0;
+    long long insertedRows = 0;
+    long long plistXmlRows = 0;
+    long long utf16Rows = 0;
+    long long plainTextRows = 0;
+    long long decodeFailures = 0;
+    std::string status = "NOT_RUN";
+    std::string notes;
+};
+
+struct SpotlightCacheStageMetadata {
+    std::string cacheFileInode;
+    std::string cacheFileParentInode;
+    std::string cacheFileApfsPath;
+    std::string sha256;
+    long long sizeBytes = 0;
+    std::uint64_t volumeSequence = 0;
+};
+
+struct SpotlightCacheApfsNameNode {
+    std::uint64_t parent = 0;
+    std::string name;
+};
+
+std::string spotlightCacheMetaKey(const std::string& storeGuid, const std::string& rel) {
+    return asciiLower(storeGuid) + "|" + asciiLower(rel);
+}
+
+std::string spotlightCacheApfsKey(std::uint64_t volumeSequence, std::uint64_t fileId) {
+    return std::to_string(volumeSequence) + ":" + std::to_string(fileId);
+}
+
+bool parseUnsigned64Strict(const std::string& s, std::uint64_t& out) {
+    if (s.empty()) return false;
+    for (char ch : s) if (!std::isdigit(static_cast<unsigned char>(ch))) return false;
+    try { out = static_cast<std::uint64_t>(std::stoull(s)); return true; }
+    catch (...) { return false; }
+}
+
+std::string extractApfsAbsolutePathFromNotes(const std::string& notes) {
+    const std::string markerText = "apfs_absolute_path=";
+    const auto pos = notes.find(markerText);
+    if (pos == std::string::npos) return {};
+    std::string value = notes.substr(pos + markerText.size());
+    const auto semi = value.find(';');
+    if (semi != std::string::npos) value = value.substr(0, semi);
+    while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' ' || value.back() == '\t')) value.pop_back();
+    return value;
+}
+
+std::string normalizeSlashCopy(std::string s) {
+    std::replace(s.begin(), s.end(), '\\', '/');
+    while (!s.empty() && s.front() == '/') s.erase(s.begin());
+    return s;
+}
+
+std::string relativePathForCacheFile(const fs::path& storeRoot, const fs::path& filePath) {
+    std::error_code ec;
+    fs::path rel = fs::relative(filePath, storeRoot, ec);
+    if (ec) rel = filePath.filename();
+    return normalizeSlashCopy(pathString(rel));
+}
+
+std::string detectCacheTextType(const std::string& text, const std::vector<unsigned char>& bytes, bool utf16) {
+    std::string prefix = text.substr(0, std::min<std::size_t>(text.size(), 256U));
+    const std::string lower = asciiLower(prefix);
+    if (utf16) return "UTF16_TEXT";
+    if (lower.find("<?xml") != std::string::npos || lower.find("<plist") != std::string::npos) return "PLIST_OR_XML_TEXT";
+    if (bytes.size() >= 8 && std::memcmp(bytes.data(), "bplist00", 8) == 0) return "BPLIST_BYTES";
+    if (lower.find("text found") != std::string::npos) return "SPOTLIGHT_EXTRACTED_TEXT_FRAGMENT";
+    return "PLAINTEXT_OR_EXTRACTED_TEXT";
+}
+
+std::string decodeCacheTextBytes(const std::vector<unsigned char>& bytes, bool& utf16Likely) {
+    utf16Likely = false;
+    if (bytes.empty()) return {};
+    std::size_t zerosOdd = 0, zerosEven = 0;
+    const std::size_t inspect = std::min<std::size_t>(bytes.size(), 2048U);
+    for (std::size_t i = 0; i < inspect; ++i) {
+        if (bytes[i] == 0) {
+            if ((i % 2U) == 0U) ++zerosEven; else ++zerosOdd;
+        }
+    }
+    const bool bomLe = bytes.size() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe;
+    const bool bomBe = bytes.size() >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff;
+    utf16Likely = bomLe || bomBe || (inspect >= 64U && (zerosOdd > inspect / 4U || zerosEven > inspect / 4U));
+    std::string out;
+    out.reserve(bytes.size());
+    if (utf16Likely) {
+        const bool be = bomBe;
+        std::size_t i = (bomLe || bomBe) ? 2U : 0U;
+        for (; i + 1U < bytes.size(); i += 2U) {
+            const unsigned char lo = be ? bytes[i + 1U] : bytes[i];
+            const unsigned char hi = be ? bytes[i] : bytes[i + 1U];
+            const std::uint16_t wc = static_cast<std::uint16_t>(lo) | (static_cast<std::uint16_t>(hi) << 8);
+            if (wc == 0) continue;
+            if (wc == '\r') { out.push_back('\n'); continue; }
+            if (wc < 0x80U) out.push_back(static_cast<char>(wc));
+            else out.push_back('?');
+        }
+    } else {
+        for (unsigned char c : bytes) {
+            if (c == 0) continue;
+            if (c == '\r') out.push_back('\n');
+            else out.push_back(static_cast<char>(c));
+        }
+    }
+    constexpr std::size_t kMaxStoredCacheText = 256U * 1024U;
+    if (out.size() > kMaxStoredCacheText) out.resize(kMaxStoredCacheText);
+    return out;
+}
+
+std::string compactCacheTextSnippet(std::string s, std::size_t maxLen = 1000U) {
+    for (char& ch : s) {
+        if (ch == '\r' || ch == '\n' || ch == '\t') ch = ' ';
+    }
+    while (s.find("  ") != std::string::npos) s.replace(s.find("  "), 2, " ");
+    if (s.size() > maxLen) s = s.substr(0, maxLen);
+    return s;
+}
+
+std::unordered_map<std::string, SpotlightCacheStageMetadata> loadSpotlightCacheStageMetadata(const fs::path& caseDir) {
+    std::unordered_map<std::string, SpotlightCacheStageMetadata> out;
+    const fs::path csvPath = caseDir / "aff4_apfs_extracted_storev2_stage_files.csv";
+    if (!fs::exists(csvPath)) return out;
+    std::ifstream in(csvPath, std::ios::binary);
+    std::string line;
+    if (!std::getline(in, line)) return out;
+    const auto headers = csvParseLine(line);
+    auto idx = [&](const std::string& h) -> int {
+        for (std::size_t i = 0; i < headers.size(); ++i) if (headers[i] == h) return static_cast<int>(i);
+        return -1;
+    };
+    const int iGuid = idx("storev2_group_name"), iRel = idx("storev2_relative_path"), iChild = idx("child_file_id"), iParent = idx("parent_object_id"), iSha = idx("output_sha256"), iSize = idx("output_size_bytes"), iNotes = idx("notes"), iVol = idx("volume_sequence");
+    while (std::getline(in, line)) {
+        const auto cols = csvParseLine(line);
+        auto col = [&](int i) -> std::string { return (i >= 0 && static_cast<std::size_t>(i) < cols.size()) ? cols[static_cast<std::size_t>(i)] : std::string(); };
+        std::string rel = normalizeSlashCopy(col(iRel));
+        if (rel.find("Cache/") == std::string::npos || rel.size() < 4 || rel.substr(rel.size() - 4) != ".txt") continue;
+        SpotlightCacheStageMetadata m;
+        m.cacheFileInode = col(iChild);
+        m.cacheFileParentInode = col(iParent);
+        m.sha256 = col(iSha);
+        try { m.sizeBytes = col(iSize).empty() ? 0LL : std::stoll(col(iSize)); } catch (...) {}
+        try { m.volumeSequence = col(iVol).empty() ? 0ULL : static_cast<std::uint64_t>(std::stoull(col(iVol))); } catch (...) {}
+        m.cacheFileApfsPath = extractApfsAbsolutePathFromNotes(col(iNotes));
+        out[spotlightCacheMetaKey(col(iGuid), rel)] = std::move(m);
+    }
+    return out;
+}
+
+
+struct ApfsImageInventoryMaterializationCounts {
+    long long logicalWalkRows = 0;
+    long long directoryIndexRows = 0;
+    long long insertedRows = 0;
+    long long finalInventoryRows = 0;
+    std::string status = "NOT_RUN";
+    std::string notes;
+};
+
+long long parseLongLongOrZero(const std::string& s) {
+    try {
+        if (s.empty()) return 0;
+        return std::stoll(s);
+    } catch (...) {
+        return 0;
+    }
+}
+
+std::string csvColumn(const std::vector<std::string>& cols, int index) {
+    if (index < 0 || static_cast<std::size_t>(index) >= cols.size()) return {};
+    return cols[static_cast<std::size_t>(index)];
+}
+
+int csvHeaderIndex(const std::vector<std::string>& headers, const std::string& name) {
+    for (std::size_t i = 0; i < headers.size(); ++i) if (headers[i] == name) return static_cast<int>(i);
+    return -1;
+}
+
+std::string inventoryFileNameFromPathOrName(const std::string& path, const std::string& name) {
+    if (!name.empty()) return name;
+    std::string p = path;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    while (!p.empty() && p.back() == '/') p.pop_back();
+    const auto pos = p.find_last_of('/');
+    return pos == std::string::npos ? p : p.substr(pos + 1);
+}
+
+void bindApfsInventoryRow(SqlStatement& st,
+                          const EvidenceSource& source,
+                          const fs::path& originalInput,
+                          const std::string& volumeName,
+                          const std::string& volumeSequence,
+                          const std::string& childId,
+                          const std::string& parentId,
+                          const std::string& fullPath,
+                          const std::string& name,
+                          long long isDirectory,
+                          const std::string& provenance) {
+    int i = 1;
+    st.bind(i++, source.sourceId);
+    st.bind(i++, std::string("AFF4"));
+    st.bind(i++, pathString(originalInput));
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string("AFF4/APFS direct-map volume_sequence=") + volumeSequence);
+    st.bind(i++, 0LL);
+    st.bind(i++, std::string(""));
+    st.bind(i++, 0LL);
+    st.bind(i++, std::string("APFS"));
+    st.bind(i++, std::string("volume_sequence=") + volumeSequence);
+    st.bind(i++, volumeName);
+    st.bind(i++, childId);
+    st.bind(i++, parentId);
+    st.bind(i++, childId);
+    st.bind(i++, parentId);
+    st.bind(i++, fullPath);
+    st.bind(i++, inventoryFileNameFromPathOrName(fullPath, name));
+    st.bind(i++, isDirectory);
+    st.bind(i++, 0LL);
+    st.bind(i++, 0LL);
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string(""));
+    st.bind(i++, std::string("HIGH_AFF4_APFS_DIRECTORY_RECORD"));
+    st.bind(i++, std::string("ACTIVE_APFS_DIRECTORY_RECORD"));
+    st.bind(i++, provenance);
+    st.bind(i++, nowUtc());
+    st.stepDone();
+    st.reset();
+}
+
+ApfsImageInventoryMaterializationCounts materializeAff4ApfsImageInventoryFromCsvs(const fs::path& caseDir,
+                                                                                  const EvidenceSource& source,
+                                                                                  const fs::path& originalInput,
+                                                                                  CaseDatabase& db,
+                                                                                  Logger& log) {
+    ApfsImageInventoryMaterializationCounts c;
+    const fs::path logicalWalkCsv = caseDir / "aff4_apfs_logical_directory_walk.csv";
+    const fs::path directoryIndexCsv = fs::exists(caseDir / "aff4_apfs_directory_record_name_index.csv")
+        ? (caseDir / "aff4_apfs_directory_record_name_index.csv")
+        : (caseDir / "aff4_apfs_directory_record_name_index_sample.csv");
+    const bool hasLogicalWalk = fs::exists(logicalWalkCsv);
+    const bool hasDirectoryIndex = fs::exists(directoryIndexCsv);
+    if (!hasLogicalWalk && !hasDirectoryIndex) {
+        c.status = "SKIPPED_NO_APFS_DIRECTORY_CSVS";
+        c.notes = "No aff4_apfs_logical_directory_walk.csv or aff4_apfs_directory_record_name_index.csv was available to populate image_file_inventory.";
+        appendRunStatus(caseDir, "aff4_apfs_image_inventory_skipped", c.notes);
+        log.info("AFF4/APFS image inventory materialization skipped: no APFS directory walk/name-index CSVs are present.");
+        return c;
+    }
+
+    const std::string sid = sqlQuoteLiteral(source.sourceId);
+    std::set<std::string> insertedKeys;
+    try {
+        appendRunStatus(caseDir, "aff4_apfs_image_inventory_materialize_start", "populate image_file_inventory from APFS logical directory/name-index rows");
+        db.begin();
+        db.exec("DELETE FROM image_file_inventory WHERE source_id=" + sid + " AND (container_type='AFF4' OR provenance LIKE 'AFF4_APFS_%');");
+        auto ins = db.prepare("INSERT INTO image_file_inventory(source_id,container_type,container_path,aff4_stream_id,aff4_stream_name,partition_index,partition_scheme,partition_offset_bytes,filesystem_type,apfs_container_id,apfs_volume_name,filesystem_object_id,parent_filesystem_object_id,inode_num,parent_inode_num,full_path,file_name,is_directory,logical_size_bytes,allocated_size_bytes,created_utc,modified_utc,accessed_utc,changed_utc,file_sha256,source_confidence,extraction_status,provenance,created_utc_inventory) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+
+        if (hasLogicalWalk) {
+            std::ifstream in(logicalWalkCsv, std::ios::binary);
+            std::string line;
+            if (std::getline(in, line)) {
+                const auto h = csvParseLine(line);
+                const int iVolSeq = csvHeaderIndex(h, "volume_sequence");
+                const int iVolName = csvHeaderIndex(h, "volume_name");
+                const int iParent = csvHeaderIndex(h, "parent_object_id");
+                const int iChild = csvHeaderIndex(h, "child_file_id");
+                const int iName = csvHeaderIndex(h, "name");
+                const int iRole = csvHeaderIndex(h, "walk_role");
+                const int iPath = csvHeaderIndex(h, "apfs_absolute_path");
+                while (std::getline(in, line)) {
+                    const auto cols = csvParseLine(line);
+                    const std::string child = csvColumn(cols, iChild);
+                    if (child.empty() || child == "0") continue;
+                    const std::string volSeq = csvColumn(cols, iVolSeq);
+                    const std::string key = volSeq + ":" + child;
+                    if (insertedKeys.count(key)) continue;
+                    const std::string fullPath = csvColumn(cols, iPath);
+                    if (fullPath.empty()) continue;
+                    const std::string role = csvColumn(cols, iRole);
+                    const long long isDir = (role.find("DIRECTORY") != std::string::npos) ? 1LL : 0LL;
+                    bindApfsInventoryRow(ins, source, originalInput, csvColumn(cols, iVolName), volSeq, child, csvColumn(cols, iParent), fullPath, csvColumn(cols, iName), isDir, "AFF4_APFS_LOGICAL_DIRECTORY_WALK");
+                    insertedKeys.insert(key);
+                    ++c.logicalWalkRows;
+                    ++c.insertedRows;
+                }
+            }
+        }
+
+        if (hasDirectoryIndex) {
+            std::ifstream in(directoryIndexCsv, std::ios::binary);
+            std::string line;
+            if (std::getline(in, line)) {
+                const auto h = csvParseLine(line);
+                const int iVolSeq = csvHeaderIndex(h, "volume_sequence");
+                const int iVolName = csvHeaderIndex(h, "volume_name");
+                const int iParent = csvHeaderIndex(h, "parent_object_id_candidate");
+                const int iChild = csvHeaderIndex(h, "child_file_id_candidate");
+                const int iName = csvHeaderIndex(h, "decoded_name");
+                while (std::getline(in, line)) {
+                    const auto cols = csvParseLine(line);
+                    const std::string child = csvColumn(cols, iChild);
+                    if (child.empty() || child == "0") continue;
+                    const std::string volSeq = csvColumn(cols, iVolSeq);
+                    const std::string key = volSeq + ":" + child;
+                    if (insertedKeys.count(key)) continue;
+                    bindApfsInventoryRow(ins, source, originalInput, csvColumn(cols, iVolName), volSeq, child, csvColumn(cols, iParent), "", csvColumn(cols, iName), 0LL, "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX");
+                    insertedKeys.insert(key);
+                    ++c.directoryIndexRows;
+                    ++c.insertedRows;
+                }
+            }
+        }
+
+        c.finalInventoryRows = scalarCountForSource(db, "image_file_inventory", source.sourceId);
+        db.exec("UPDATE image_inventory_sources SET inventory_file_count=(SELECT COUNT(*) FROM image_file_inventory WHERE source_id=" + sid + " AND COALESCE(is_directory,0)=0), inventory_directory_count=(SELECT COUNT(*) FROM image_file_inventory WHERE source_id=" + sid + " AND COALESCE(is_directory,0)<>0), comparison_candidate_count=(SELECT COUNT(*) FROM artifacts WHERE source_id=" + sid + "), comparison_ready=CASE WHEN (SELECT COUNT(*) FROM image_file_inventory WHERE source_id=" + sid + ")>0 THEN 1 ELSE comparison_ready END, active_comparison_status=CASE WHEN (SELECT COUNT(*) FROM image_file_inventory WHERE source_id=" + sid + ")>0 THEN 'APFS_IMAGE_FILE_INVENTORY_READY' ELSE active_comparison_status END, next_action='Run enrichment active-file comparison against APFS-derived image_file_inventory rows.' WHERE source_id=" + sid + ";");
+        db.commit();
+        c.status = "APFS_IMAGE_FILE_INVENTORY_MATERIALIZED";
+        c.notes = "Populated image_file_inventory from APFS logical-directory walk and directory-record name-index rows. Missing/not-present classifications remain investigative leads only, not deletion proof.";
+        appendRunStatus(caseDir, "aff4_apfs_image_inventory_materialize_complete", "inserted_rows=" + std::to_string(c.insertedRows) + " final_inventory_rows=" + std::to_string(c.finalInventoryRows) + " logical_walk_rows=" + std::to_string(c.logicalWalkRows) + " directory_index_rows=" + std::to_string(c.directoryIndexRows));
+        log.info("AFF4/APFS image_file_inventory materialized: inserted_rows=" + std::to_string(c.insertedRows) + " final_inventory_rows=" + std::to_string(c.finalInventoryRows));
+    } catch (const std::exception& ex) {
+        db.rollbackNoThrow();
+        c.status = "APFS_IMAGE_FILE_INVENTORY_MATERIALIZE_EXCEPTION";
+        c.notes = ex.what();
+        appendRunStatus(caseDir, "aff4_apfs_image_inventory_materialize_failed", c.notes);
+        log.warn(std::string("AFF4/APFS image inventory materialization failed: ") + ex.what());
+    }
+    return c;
+}
+
+std::unordered_map<std::string, SpotlightCacheApfsNameNode> loadApfsDirectoryNameIndexForCache(const fs::path& caseDir) {
+    std::unordered_map<std::string, SpotlightCacheApfsNameNode> out;
+    const fs::path csvPath = caseDir / "aff4_apfs_directory_record_name_index.csv";
+    const fs::path fallback = caseDir / "aff4_apfs_directory_record_name_index_sample.csv";
+    const fs::path usePath = fs::exists(csvPath) ? csvPath : fallback;
+    if (!fs::exists(usePath)) return out;
+    std::ifstream in(usePath, std::ios::binary);
+    std::string line;
+    if (!std::getline(in, line)) return out;
+    const auto headers = csvParseLine(line);
+    auto idx = [&](const std::string& h) -> int {
+        for (std::size_t i = 0; i < headers.size(); ++i) if (headers[i] == h) return static_cast<int>(i);
+        return -1;
+    };
+    const int iVol = idx("volume_sequence"), iParent = idx("parent_object_id_candidate"), iChild = idx("child_file_id_candidate"), iName = idx("decoded_name");
+    while (std::getline(in, line)) {
+        const auto cols = csvParseLine(line);
+        auto col = [&](int i) -> std::string { return (i >= 0 && static_cast<std::size_t>(i) < cols.size()) ? cols[static_cast<std::size_t>(i)] : std::string(); };
+        std::uint64_t vol = 0, parent = 0, child = 0;
+        if (!parseUnsigned64Strict(col(iVol), vol) || !parseUnsigned64Strict(col(iParent), parent) || !parseUnsigned64Strict(col(iChild), child) || child == 0) continue;
+        const std::string name = col(iName);
+        if (name.empty()) continue;
+        out.emplace(spotlightCacheApfsKey(vol, child), SpotlightCacheApfsNameNode{parent, name});
+    }
+    return out;
+}
+
+std::string reconstructCacheApfsPath(std::uint64_t volumeSequence,
+                                     std::uint64_t childFileId,
+                                     const std::unordered_map<std::string, SpotlightCacheApfsNameNode>& nodes) {
+    std::vector<std::string> parts;
+    std::set<std::uint64_t> seen;
+    std::uint64_t cur = childFileId;
+    for (std::size_t depth = 0; depth < 64U && cur != 0; ++depth) {
+        if (!seen.insert(cur).second) break;
+        const auto it = nodes.find(spotlightCacheApfsKey(volumeSequence, cur));
+        if (it == nodes.end()) break;
+        if (!it->second.name.empty()) parts.push_back(it->second.name);
+        if (it->second.parent == 0 || it->second.parent == 2 || it->second.parent == cur) break;
+        cur = it->second.parent;
+    }
+    if (parts.empty()) return {};
+    std::reverse(parts.begin(), parts.end());
+    std::string out = "/";
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i != 0) out += "/";
+        out += parts[i];
+    }
+    return out;
+}
+
+SpotlightCacheTextIncorporationCounts runSpotlightCacheTextIncorporation(const fs::path& caseDir,
+                                                                          const EvidenceSource& source,
+                                                                          CaseDatabase& db,
+                                                                          Logger& log) {
+    SpotlightCacheTextIncorporationCounts c;
+    const fs::path stagedRoot = caseDir / "ExtractedSpotlight" / "StagedStoreV2";
+    const fs::path sampleCsv = caseDir / "aff4_apfs_spotlight_cache_text_sample.csv";
+    const fs::path summaryJson = caseDir / "aff4_apfs_spotlight_cache_text_summary.json";
+    const fs::path mdPath = caseDir / "AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md";
+    try {
+        appendRunStatus(caseDir, "aff4_apfs_spotlight_cache_text_start", "scan StagedStoreV2 Cache/**/*.txt and link numeric names to Store-V2/APFS inodes");
+        db.exec("DELETE FROM spotlight_cache_text WHERE source_id=" + sqlQuoteLiteral(source.sourceId) + ";");
+        if (!fs::exists(stagedRoot)) {
+            c.status = "NO_STAGED_STOREV2_ROOT";
+            c.notes = "ExtractedSpotlight/StagedStoreV2 not present.";
+        } else {
+            auto stageMeta = loadSpotlightCacheStageMetadata(caseDir);
+            auto apfsNodes = loadApfsDirectoryNameIndexForCache(caseDir);
+            auto artifactStmt = db.prepare("SELECT artifact_id,file_name,best_path FROM artifacts WHERE source_id=? AND store_guid=? AND inode_num=? ORDER BY artifact_id LIMIT 1");
+            auto rawStmt = db.prepare("SELECT raw_record_id FROM raw_records WHERE source_id=? AND store_guid=? AND inode_num=? ORDER BY raw_record_id LIMIT 1");
+            auto ins = db.prepare("INSERT INTO spotlight_cache_text(source_id,store_guid,cache_relative_path,cache_numeric_id,cache_bucket_hex,bucket_matches_numeric_id,cache_file_inode_num,cache_file_parent_inode_num,cache_file_apfs_path,cache_file_sha256,cache_file_size_bytes,linked_artifact_id,linked_raw_record_id,inode_link_status,linked_artifact_name,linked_artifact_path,apfs_index_name,apfs_index_path,cache_text_type,decoded_text,decoded_text_length,decoded_text_sha256,ingestion_status,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            auto updateText = db.prepare("UPDATE artifacts SET index_text_snippet=CASE WHEN COALESCE(index_text_snippet,'')='' THEN ? ELSE index_text_snippet END WHERE artifact_id=?");
+            auto updatePath = db.prepare("UPDATE artifacts SET best_path=?, normalized_mac_path=COALESCE(NULLIF(normalized_mac_path,''), ?), path_source='SPOTLIGHT_CACHE_FILENAME_INODE_APFS_DIRECTORY_INDEX', path_status='APFS_PATH_FROM_SPOTLIGHT_CACHE_FILENAME_INODE', confidence='MEDIUM' WHERE artifact_id=? AND ?<>'' AND (COALESCE(best_path,'')='' OR path_status='UNRESOLVED_NATIVE_STOREV2_OBJECT_IDENTIFIER_LABEL' OR COALESCE(path_status,'')='')");
+            auto insertCacheArtifact = db.prepare("INSERT INTO artifacts(source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,normalized_mac_path,path_source,path_status,content_type,content_type_tree,index_text_snippet,confidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            auto insertCacheSourceInstance = db.prepare("INSERT INTO artifact_source_instances(artifact_id,raw_record_id,source_id,store_guid,inode_num,source_db,source_db_role,file_name,best_path) VALUES(?,?,?,?,?,?,?,?,?)");
+            db.begin();
+            fs::create_directories(sampleCsv.parent_path());
+            std::ofstream sample(sampleCsv, std::ios::binary);
+            sample << "cache_text_id,store_guid,cache_numeric_id,cache_relative_path,bucket_matches_numeric_id,cache_file_inode_num,cache_file_apfs_path,linked_artifact_id,linked_raw_record_id,inode_link_status,linked_artifact_name,linked_artifact_path,apfs_index_name,apfs_index_path,cache_text_type,decoded_text_length,decoded_text_preview,notes\n";
+            constexpr long long kSampleLimit = 5000;
+            std::error_code ec;
+            for (const auto& storeEntry : fs::directory_iterator(stagedRoot, ec)) {
+                if (ec) break;
+                if (!storeEntry.is_directory()) continue;
+                const std::string storeGuid = storeEntry.path().filename().string();
+                const fs::path cacheRoot = storeEntry.path() / "Cache";
+                if (!fs::exists(cacheRoot)) continue;
+                std::error_code recEc;
+                for (const auto& entry : fs::recursive_directory_iterator(cacheRoot, recEc)) {
+                    if (recEc) break;
+                    if (!entry.is_regular_file()) continue;
+                    if (asciiLower(entry.path().extension().string()) != ".txt") continue;
+                    ++c.cacheFilesFound;
+                    const std::string rel = relativePathForCacheFile(storeEntry.path(), entry.path());
+                    const std::string stem = entry.path().stem().string();
+                    std::uint64_t cacheId = 0;
+                    if (!parseUnsigned64Strict(stem, cacheId)) continue;
+                    ++c.numericCacheFiles;
+                    const std::string bucketHex = entry.path().parent_path().filename().string();
+                    bool bucketMatches = false;
+                    try { bucketMatches = (static_cast<std::uint64_t>(std::stoull(bucketHex, nullptr, 16)) == (cacheId >> 16)); } catch (...) {}
+                    if (bucketMatches) ++c.bucketMatches;
+                    SpotlightCacheStageMetadata meta;
+                    const auto metaIt = stageMeta.find(spotlightCacheMetaKey(storeGuid, rel));
+                    if (metaIt != stageMeta.end()) { meta = metaIt->second; ++c.copiedStageMetadataMatched; }
+                    std::uint64_t cacheFileInodeValue = 0;
+                    if (parseUnsigned64Strict(meta.cacheFileInode, cacheFileInodeValue)) {
+                        if (cacheFileInodeValue == cacheId) ++c.cacheFilenameEqualsCacheFileInode;
+                        else ++c.cacheFilenameDiffersFromCacheFileInode;
+                    }
+                    long long artifactId = 0, rawRecordId = 0;
+                    std::string artifactName, artifactPath;
+                    artifactStmt.bind(1, source.sourceId); artifactStmt.bind(2, storeGuid); artifactStmt.bind(3, std::to_string(cacheId));
+                    if (artifactStmt.stepRow()) { artifactId = artifactStmt.colInt64(0); artifactName = artifactStmt.colText(1); artifactPath = artifactStmt.colText(2); ++c.artifactInodeMatches; }
+                    artifactStmt.reset();
+                    rawStmt.bind(1, source.sourceId); rawStmt.bind(2, storeGuid); rawStmt.bind(3, std::to_string(cacheId));
+                    if (rawStmt.stepRow()) { rawRecordId = rawStmt.colInt64(0); ++c.rawRecordInodeMatches; }
+                    rawStmt.reset();
+                    std::string apfsName, apfsPath;
+                    std::uint64_t apfsParentId = 0;
+                    if (meta.volumeSequence != 0) {
+                        const auto nodeIt = apfsNodes.find(spotlightCacheApfsKey(meta.volumeSequence, cacheId));
+                        if (nodeIt != apfsNodes.end()) {
+                            apfsName = nodeIt->second.name;
+                            apfsParentId = nodeIt->second.parent;
+                            ++c.apfsDirectoryIndexMatches;
+                            apfsPath = reconstructCacheApfsPath(meta.volumeSequence, cacheId, apfsNodes);
+                            if (!apfsPath.empty()) ++c.apfsPathsReconstructed;
+                        }
+                    }
+                    std::vector<unsigned char> bytes;
+                    try {
+                        std::ifstream in(entry.path(), std::ios::binary);
+                        constexpr std::size_t kMaxRead = 256U * 1024U;
+                        bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                        if (bytes.size() > kMaxRead) bytes.resize(kMaxRead);
+                    } catch (...) {}
+                    bool utf16 = false;
+                    std::string text = decodeCacheTextBytes(bytes, utf16);
+                    const std::string textType = detectCacheTextType(text, bytes, utf16);
+                    if (text.empty() && !bytes.empty()) ++c.decodeFailures;
+                    if (textType == "PLIST_OR_XML_TEXT") ++c.plistXmlRows;
+                    else if (textType == "UTF16_TEXT") ++c.utf16Rows;
+                    else ++c.plainTextRows;
+                    const std::string textHash = text.empty() ? std::string() : sha256Bytes(reinterpret_cast<const unsigned char*>(text.data()), text.size());
+                    const std::string snippet = compactCacheTextSnippet(text);
+                    bool createdCacheArtifact = false;
+                    if (artifactId == 0 && !apfsPath.empty()) {
+                        const std::string createdName = apfsName.empty() ? entry.path().filename().string() : apfsName;
+                        insertCacheArtifact.bind(1, source.sourceId);
+                        insertCacheArtifact.bind(2, storeGuid);
+                        insertCacheArtifact.bind(3, std::to_string(cacheId));
+                        if (apfsParentId != 0) insertCacheArtifact.bind(4, std::to_string(apfsParentId)); else insertCacheArtifact.bindNull(4);
+                        insertCacheArtifact.bind(5, createdName);
+                        insertCacheArtifact.bind(6, createdName);
+                        insertCacheArtifact.bind(7, apfsPath);
+                        insertCacheArtifact.bind(8, apfsPath);
+                        insertCacheArtifact.bind(9, "SPOTLIGHT_CACHE_FILENAME_INODE_APFS_DIRECTORY_INDEX");
+                        insertCacheArtifact.bind(10, "APFS_PATH_FROM_SPOTLIGHT_CACHE_FILENAME_INODE");
+                        insertCacheArtifact.bind(11, "Spotlight Store-V2 Cache Text");
+                        insertCacheArtifact.bind(12, "public.text;com.apple.metadata.spotlight-cache");
+                        insertCacheArtifact.bind(13, snippet);
+                        insertCacheArtifact.bind(14, "MEDIUM_CACHE_FILENAME_INODE_APFS_MATCH");
+                        insertCacheArtifact.stepDone();
+                        insertCacheArtifact.reset();
+                        artifactId = static_cast<long long>(sqlite3_last_insert_rowid(db.raw()));
+                        artifactName = createdName;
+                        artifactPath = apfsPath;
+                        ++c.cacheTextArtifactsCreated;
+                        createdCacheArtifact = true;
+                        insertCacheSourceInstance.bind(1, artifactId);
+                        if (rawRecordId != 0) insertCacheSourceInstance.bind(2, rawRecordId); else insertCacheSourceInstance.bindNull(2);
+                        insertCacheSourceInstance.bind(3, source.sourceId);
+                        insertCacheSourceInstance.bind(4, storeGuid);
+                        insertCacheSourceInstance.bind(5, std::to_string(cacheId));
+                        insertCacheSourceInstance.bind(6, "SpotlightCacheText");
+                        insertCacheSourceInstance.bind(7, "CACHE_FILENAME_INODE_APFS_DIRECTORY_MATCH");
+                        insertCacheSourceInstance.bind(8, createdName);
+                        insertCacheSourceInstance.bind(9, apfsPath);
+                        insertCacheSourceInstance.stepDone();
+                        insertCacheSourceInstance.reset();
+                    }
+                    std::string status;
+                    if (createdCacheArtifact) status = "CACHE_FILENAME_MATCHES_APFS_DIRECTORY_RECORD_CREATED_CACHE_TEXT_ARTIFACT";
+                    else if (artifactId != 0 && !apfsPath.empty()) status = "CACHE_FILENAME_MATCHES_ARTIFACT_AND_APFS_INODE";
+                    else if (artifactId != 0) status = "CACHE_FILENAME_MATCHES_ARTIFACT_INODE";
+                    else if (rawRecordId != 0) status = "CACHE_FILENAME_MATCHES_RAW_RECORD_INODE";
+                    else if (!apfsPath.empty()) status = "CACHE_FILENAME_MATCHES_APFS_DIRECTORY_RECORD_ONLY";
+                    else status = "CACHE_TEXT_STANDALONE_UNLINKED";
+                    std::string notes = "cache filename numeric stem treated as candidate indexed-file inode; cache_file_inode_num records the APFS inode of the cache .txt file itself";
+                    if (createdCacheArtifact) notes += "; synthetic artifact created from cache filename inode plus APFS directory-record path so the extracted text is searchable in artifact review";
+                    if (cacheFileInodeValue != 0 && cacheFileInodeValue != cacheId) notes += "; filename_does_not_equal_cache_file_inode";
+                    ins.bind(1, source.sourceId); ins.bind(2, storeGuid); ins.bind(3, rel); ins.bind(4, static_cast<long long>(cacheId)); ins.bind(5, bucketHex); ins.bind(6, bucketMatches ? 1LL : 0LL);
+                    ins.bind(7, meta.cacheFileInode); ins.bind(8, meta.cacheFileParentInode); ins.bind(9, meta.cacheFileApfsPath); ins.bind(10, meta.sha256); ins.bind(11, meta.sizeBytes);
+                    if (artifactId != 0) ins.bind(12, artifactId); else ins.bindNull(12);
+                    if (rawRecordId != 0) ins.bind(13, rawRecordId); else ins.bindNull(13);
+                    ins.bind(14, status); ins.bind(15, artifactName); ins.bind(16, artifactPath); ins.bind(17, apfsName); ins.bind(18, apfsPath); ins.bind(19, textType); ins.bind(20, text); ins.bind(21, static_cast<long long>(text.size())); ins.bind(22, textHash); ins.bind(23, text.empty() ? "NO_DECODED_TEXT" : "DECODED_TEXT_STORED"); ins.bind(24, notes); ins.stepDone(); ins.reset();
+                    ++c.insertedRows;
+                    if (artifactId != 0 && !snippet.empty()) {
+                        updateText.bind(1, snippet);
+                        updateText.bind(2, artifactId);
+                        updateText.stepDone();
+                        const int changed = sqlite3_changes(db.raw());
+                        updateText.reset();
+                        if (changed > 0) ++c.artifactsTextUpdated;
+                    }
+                    if (artifactId != 0 && !apfsPath.empty() && !createdCacheArtifact) {
+                        updatePath.bind(1, apfsPath);
+                        updatePath.bind(2, apfsPath);
+                        updatePath.bind(3, artifactId);
+                        updatePath.bind(4, apfsPath);
+                        updatePath.stepDone();
+                        const int changed = sqlite3_changes(db.raw());
+                        updatePath.reset();
+                        if (changed > 0) ++c.artifactsPathUpdated;
+                    }
+                    if (c.insertedRows <= kSampleLimit) {
+                        sample << c.insertedRows << ',' << csvEscape(storeGuid) << ',' << cacheId << ',' << csvEscape(rel) << ',' << (bucketMatches ? 1 : 0) << ','
+                               << csvEscape(meta.cacheFileInode) << ',' << csvEscape(meta.cacheFileApfsPath) << ',' << artifactId << ',' << rawRecordId << ',' << csvEscape(status) << ','
+                               << csvEscape(artifactName) << ',' << csvEscape(artifactPath) << ',' << csvEscape(apfsName) << ',' << csvEscape(apfsPath) << ',' << csvEscape(textType) << ',' << text.size() << ',' << csvEscape(snippet) << ',' << csvEscape(notes) << "\n";
+                    }
+                }
+            }
+            db.commit();
+            c.status = "CACHE_TEXT_INCORPORATION_COMPLETED";
+            c.notes = "Spotlight Store-V2 Cache .txt files were decoded and linked by numeric filename as a candidate indexed-file inode; cache file APFS inode is recorded separately.";
+        }
+    } catch (const std::exception& ex) {
+        db.rollbackNoThrow();
+        c.status = "CACHE_TEXT_INCORPORATION_EXCEPTION";
+        c.notes = ex.what();
+        log.warn(std::string("Spotlight cache text incorporation failed: ") + ex.what());
+    }
+    try {
+        std::ofstream out(summaryJson, std::ios::binary);
+        out << "{\n";
+        out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        out << "  \"app_version\": \"" << appVersion() << "\",\n";
+        out << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        out << "  \"status\": \"" << jsonEscape(c.status) << "\",\n";
+        out << "  \"cache_files_found\": " << c.cacheFilesFound << ",\n";
+        out << "  \"numeric_cache_files\": " << c.numericCacheFiles << ",\n";
+        out << "  \"bucket_matches_numeric_id\": " << c.bucketMatches << ",\n";
+        out << "  \"copied_stage_metadata_matched\": " << c.copiedStageMetadataMatched << ",\n";
+        out << "  \"cache_filename_equals_cache_file_inode\": " << c.cacheFilenameEqualsCacheFileInode << ",\n";
+        out << "  \"cache_filename_differs_from_cache_file_inode\": " << c.cacheFilenameDiffersFromCacheFileInode << ",\n";
+        out << "  \"artifact_inode_matches\": " << c.artifactInodeMatches << ",\n";
+        out << "  \"raw_record_inode_matches\": " << c.rawRecordInodeMatches << ",\n";
+        out << "  \"apfs_directory_index_matches\": " << c.apfsDirectoryIndexMatches << ",\n";
+        out << "  \"apfs_paths_reconstructed\": " << c.apfsPathsReconstructed << ",\n";
+        out << "  \"artifacts_text_updated\": " << c.artifactsTextUpdated << ",\n";
+        out << "  \"artifacts_path_updated\": " << c.artifactsPathUpdated << ",\n";
+        out << "  \"cache_text_artifacts_created\": " << c.cacheTextArtifactsCreated << ",\n";
+        out << "  \"inserted_rows\": " << c.insertedRows << ",\n";
+        out << "  \"plist_xml_rows\": " << c.plistXmlRows << ",\n";
+        out << "  \"utf16_rows\": " << c.utf16Rows << ",\n";
+        out << "  \"plain_text_rows\": " << c.plainTextRows << ",\n";
+        out << "  \"decode_failures\": " << c.decodeFailures << ",\n";
+        out << "  \"sample_csv\": \"aff4_apfs_spotlight_cache_text_sample.csv\",\n";
+        out << "  \"notes\": \"" << jsonEscape(c.notes) << "\"\n";
+        out << "}\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write aff4_apfs_spotlight_cache_text_summary.json: ") + ex.what());
+    }
+    try {
+        std::ofstream out(mdPath, std::ios::binary);
+        out << "# AFF4 APFS Spotlight Cache Text\n\n";
+        out << "Version: " << appVersion() << "\n\n";
+        out << "## Scope\n\n";
+        out << "This pass scans `ExtractedSpotlight/StagedStoreV2/<GUID>/Cache/**/*.txt`, decodes text/plist/XML fragments, stores them in `spotlight_cache_text`, and treats the numeric filename as a candidate inode for the indexed object. The APFS inode of the cache `.txt` file itself is recorded separately so the relationship can be validated rather than assumed.\n\n";
+        out << "## Outputs\n\n";
+        out << "- `spotlight_cache_text` SQLite table\n";
+        out << "- `vw_spotlight_cache_text_review` SQLite view\n";
+        out << "- `aff4_apfs_spotlight_cache_text_sample.csv`\n";
+        out << "- `aff4_apfs_spotlight_cache_text_summary.json`\n\n";
+        out << "## Summary\n\n";
+        out << "- Status: `" << c.status << "`\n";
+        out << "- Cache `.txt` files found: `" << c.cacheFilesFound << "`\n";
+        out << "- Artifact inode matches: `" << c.artifactInodeMatches << "`\n";
+        out << "- APFS directory index matches: `" << c.apfsDirectoryIndexMatches << "`\n";
+        out << "- Cache-text artifacts created from APFS-only matches: `" << c.cacheTextArtifactsCreated << "`\n";
+        out << "- Cache filename equals cache-file APFS inode: `" << c.cacheFilenameEqualsCacheFileInode << "`\n";
+        out << "- Cache filename differs from cache-file APFS inode: `" << c.cacheFilenameDiffersFromCacheFileInode << "`\n\n";
+        out << "## Interpretation caution\n\n";
+        out << "A numeric cache filename is treated as a candidate indexed-file inode/object identifier only when it links to Store-V2 artifacts/raw records or APFS directory-record rows. Unlinked cache text remains standalone Spotlight cached text with Store-V2 provenance.\n";
+    } catch (const std::exception& ex) {
+        log.warn(std::string("Unable to write AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md: ") + ex.what());
+    }
+    appendRunStatus(caseDir, "aff4_apfs_spotlight_cache_text_complete", "cache_files=" + std::to_string(c.cacheFilesFound) + " artifact_matches=" + std::to_string(c.artifactInodeMatches) + " apfs_matches=" + std::to_string(c.apfsDirectoryIndexMatches));
     return c;
 }
 
@@ -5837,6 +6508,13 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
     log.info("Input=" + pathString(opt.input));
     log.info("CaseDir=" + pathString(caseDir));
     log.info("EvidenceRoot=" + pathString(opt.evidenceRoot));
+    log.info("Effective parser caps: effective_max_native_records=" + std::to_string(opt.maxNativeRecords) +
+             " max_native_records_explicit=" + std::string(opt.maxNativeRecordsExplicit ? "true" : "false") +
+             " effective_max_native_blocks=" + std::to_string(opt.maxNativeBlocks) +
+             " full_no_guardrails=" + std::string((opt.fullScan && opt.dbSizeGuardrailBytes == 0 && opt.maxNativeRecords == 0 && opt.maxNativeBlocks == 0) ? "true" : "false") +
+             " gui_full_no_guardrails=" + std::string(opt.guiFullNoGuardrails ? "true" : "false") +
+             " cache_text_enabled=" + std::string(isAff4SourcePath(opt.input) ? "true" : "normal_workflow") +
+             " active_filesystem_inventory_enabled=" + std::string((opt.materializeIosFfsInventory || isAff4SourcePath(opt.input)) ? "true" : "deferred_or_not_requested"));
     if (!opt.reuseIosCache.empty()) log.info("ReuseIosCache=" + pathString(opt.reuseIosCache));
     if (opt.experimentalFullNativeValues && toLower(opt.exportProfile) == "investigator") {
         appendRunStatus(caseDir, "validation_profile_full_values_investigator", "full native metadata decoding with investigator exports enabled");
@@ -5959,9 +6637,10 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         db.insertEvidenceSource(source);
 
         if (aff4InputSource || rawImageInputSource) {
-            const bool deferLargeImageHash = (opt.skipContainerHash || (sourceProbeMode && (aff4InputSource || rawImageInputSource) && !opt.forceContainerHash));
-            if (deferLargeImageHash && !opt.skipContainerHash && !opt.forceContainerHash) {
-                log.warn("Full original-container SHA256 deferred by default for AFF4/raw source-probe development speed. Use --force-container-hash when a full evidentiary hash is needed.");
+            const bool deferLargeImageHash = !opt.forceContainerHash;
+            if (deferLargeImageHash) {
+                appendRunStatus(caseDir, "original_container_hash_deferred_default", "source container SHA256 skipped by default for trial/thin runs; use --force-container-hash for full validation or production hashing");
+                log.warn("Full original-container SHA256 skipped by default. Use --force-container-hash when a full evidentiary hash is needed.");
             }
             registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash, caseDir, opt.externalSourceSha256, opt.externalSourceHashNote);
             const std::string stage = aff4InputSource ? "aff4_apfs_source_registered" : "unsupported_raw_image_source";
@@ -5975,6 +6654,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             writeSourceIntakeArtifacts(caseDir, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
             writeImageInventoryReadinessCsv(caseDir, source, opt.input, sourceProbe, partitionProbe, nextAction, log);
             writeReaderToolReadinessArtifacts(caseDir, opt, source, opt.input, sourceProbe, log);
+            persistImageInventoryReadiness(db, source, opt.input, sourceProbe, partitionProbe, nextAction, log);
             if (aff4InputSource) {
                 writeAff4ApfsV1DiagnosticRerunPlan(caseDir, source, opt, opt.input, log);
                 appendRunStatus(caseDir, "aff4_zip_single_file_probe", "parse AFF4 ZIP central directory from explicit input file only");
@@ -5989,8 +6669,18 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 result.storeCount = countDistinctStoreGroups(stagedParserResult.candidates, false);
                 result.validStoreCount = countDistinctStoreGroups(stagedParserResult.candidates, true);
                 result.selectedParserDatabaseCount = stagedParserResult.selected.size();
+                appendRunStatus(caseDir, "aff4_apfs_image_inventory_materialize", "materialize APFS-derived image_file_inventory rows before active filesystem comparison");
+                const auto apfsInventoryCounts = materializeAff4ApfsImageInventoryFromCsvs(caseDir, source, opt.input, db, log);
+                (void)apfsInventoryCounts;
                 appendRunStatus(caseDir, "aff4_apfs_staged_storev2_enrichment_probe", "enrich APFS-staged Store-V2 parser rows when present");
                 const auto stagedEnrichmentCounts = runAff4ApfsStagedStoreV2EnrichmentProbe(caseDir, source, db, log);
+                appendRunStatus(caseDir, "aff4_apfs_spotlight_cache_text_probe", "decode and link Store-V2 Cache .txt extracted text");
+                const auto cacheTextCounts = runSpotlightCacheTextIncorporation(caseDir, source, db, log);
+                log.info("Spotlight Cache text GUI/search summary: cache_files_found=" + std::to_string(cacheTextCounts.cacheFilesFound) +
+                         " spotlight_cache_text_rows=" + std::to_string(cacheTextCounts.insertedRows) +
+                         " artifacts_text_updated=" + std::to_string(cacheTextCounts.artifactsTextUpdated) +
+                         " cache_text_artifacts_created=" + std::to_string(cacheTextCounts.cacheTextArtifactsCreated) +
+                         " cache_text_search_view_registered=true");
                 result.rawRecordCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawRecordsBefore));
                 result.rawKeyValueCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawKeyValuesBefore));
                 result.rawDateCandidateCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawDateCandidatesBefore));
@@ -6018,7 +6708,6 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 appendRunStatus(caseDir, "aff4_stream_inventory_complete", aff4Inventory.status + " lines=" + std::to_string(aff4Inventory.rawLineCount));
             }
             persistSourceProbeInventory(db, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
-            persistImageInventoryReadiness(db, source, opt.input, sourceProbe, partitionProbe, nextAction, log);
             store.writeSummary(result);
             writeUiAndIosPlanningFiles(caseDir);
             createUploadBundle(caseDir);
@@ -6057,11 +6746,10 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         persistSourceProbeInventory(db, source, opt.input, discoverySource.inputPath, stores, "DISCOVERY_COMPLETE", "Proceed to parser selection and native parsing for supported folder/ZIP sources.", sourceProbe, partitionProbe, log);
         persistImageInventoryReadiness(db, source, opt.input, sourceProbe, partitionProbe, "Folder/ZIP Spotlight parsing can proceed; active image comparison requires image_file_inventory from AFF4/APFS enumeration.", log);
         if (zipInputSource) {
-            bool effectiveSkipContainerHash = opt.skipContainerHash;
-            if (profile == SourceProfileKind::IOS && !opt.forceContainerHash && !effectiveSkipContainerHash) {
-                effectiveSkipContainerHash = true;
-                appendRunStatus(caseDir, "original_container_hash_deferred_ios_zip", "large iOS ZIP source registered without full SHA256 for parser/review speed; use --force-container-hash for evidentiary hash run");
-                log.warn("Full original-container SHA256 deferred by default for iOS FFS ZIP parser/review speed. Use --force-container-hash when a full evidentiary hash is required.");
+            bool effectiveSkipContainerHash = !opt.forceContainerHash;
+            if (effectiveSkipContainerHash) {
+                appendRunStatus(caseDir, "original_container_hash_deferred_default", "source ZIP SHA256 skipped by default for trial/thin runs; use --force-container-hash for full validation or production hashing");
+                log.warn("Full original-container SHA256 skipped by default. Use --force-container-hash when a full evidentiary hash is required.");
             }
             registerOriginalContainerSource(db, source, opt.input, stagedContainerWorkingRoot, source.notes, log, effectiveSkipContainerHash, caseDir, opt.externalSourceSha256, opt.externalSourceHashNote);
             if (profile == SourceProfileKind::IOS) {
@@ -6243,7 +6931,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
         SqliteEnrichment enrichment;
         EvidenceSource enrichmentSource = source;
         if (!enrichmentSource.evidenceRoot.empty()) {
-            log.info("Direct --evidence-root comparison is not used in V1.6.77. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
+            log.info("Direct --evidence-root comparison is not used in V1.6.84. Active filesystem comparison uses validated in-case iOS FFS lookup rows when available; AFF4/APFS image-inventory comparison remains pending.");
             enrichmentSource.evidenceRoot.clear();
         }
         auto counts = enrichment.run(db, enrichmentSource, log);

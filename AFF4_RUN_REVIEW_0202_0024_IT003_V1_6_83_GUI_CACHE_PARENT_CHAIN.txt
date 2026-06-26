@@ -1,0 +1,50 @@
+Vestigant Spotlight V1.6.83 AFF4 result review for V1.6.84 changes
+
+Uploaded evidence reviewed:
+- V1_6_83_AFF4_WRAPPER_RUN_SUMMARY.txt: RunnerExitCode=0, FullNoGuardrails=True, FullNativeValues=False, MaxNativeRecords=0.
+- Upload_Thin_MacOS_AFF4_V1_6_83.zip.sha256.txt: SHA256=2A4B747290B45BE0CBF600EAD9ABD8458E9BA1F2FD845625B4214A4603D7BB97.
+
+Direct ZIP inspection findings:
+- raw_records=102170
+- raw_key_values=116445
+- artifacts=101326
+- timeline_events=102170
+- selected_databases=6
+- max_records_used=0
+- native_decode_mode=CoreFields
+
+Unresolved-object resolution:
+- unresolved_before=71402
+- artifacts_path_updated=35839
+- estimated_unresolved_after=35563
+- name_scan_paths_reconstructed=35839
+
+Directory index:
+- directory_record_rows=743039
+- unique_child_file_ids=738953
+- unique_parent_object_ids=57941
+
+Cache text:
+- cache_files_found=7188
+- artifact_inode_matches=582
+- raw_record_inode_matches=582
+- apfs_directory_index_matches=637
+- apfs_paths_reconstructed=637
+- artifacts_text_updated=637
+- cache_text_artifacts_created=55
+- decode_failures=0
+
+Parent-inode runtime signal:
+- V1.6.83 run_progress.tsv shows enrichment_parent_inode_chain_start at 2026-06-26T12:22:54Z and enrichment_parent_inode_chain_complete at 2026-06-26T12:27:16Z.
+- That phase still took about 262 seconds and produced new_reconstructed_paths=0.
+- V1.6.84 therefore narrows the recursive child expansion so artifacts already carrying absolute paths are not re-recursed, while relative/blank-path children can still be improved.
+
+GUI full review/no-cap issue:
+- User screenshot of V1.6.82 GUI showed: Showing 1-250 of 25000 records / More rows available / Page size=250.
+- V1.6.84 changes the review row control label to Rows/all, allows all/full/uncapped/0 as full-page review mode, raises the page-size hard maximum to 1,000,000, and updates status text to state when full review/no GUI row cap mode is active.
+- V1.6.84 also removes the persistent schema view LIMIT 25000 in vw_ios_identity_activity_detail_sample so the case schema no longer bakes in a 25,000-row review view cap.
+
+Not verified until upload:
+- Windows/MSVC build for V1.6.84.
+- GUI runtime behavior for Rows/all.
+- Whether parent-inode chain runtime drops in the full AFF4 run.

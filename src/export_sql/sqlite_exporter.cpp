@@ -443,7 +443,7 @@ void writeCaseReviewSummary(CaseDatabase& db, const fs::path& file, Logger& log)
     appendExportRunStatus(file, 96, "export_case_summary_top_content_types_complete", "top content type summary written");
     appendExportRunStatus(file, 96, "export_case_summary_limitations_start", "limitations section");
     out << "\nImportant limitations\n";
-    out << "- Active filesystem comparison is disabled in V1.6.77 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
+    out << "- Active filesystem comparison is disabled in V1.6.84 pending validated image-inventory join implementation; existence_status remains NOT_CHECKED unless populated by another workflow.\n";
     out << "- Deleted/orphaned classification is disabled until a reliable Mac filesystem evidence root is available.\n";
     out << "- Path reconstruction is Spotlight-native and confidence-rated; unresolved parent inodes can still support same-folder grouping.\n";
     out << "- Native value decoding is still under active validation; raw native key/value exports are preserved for review.\n";
@@ -2801,7 +2801,7 @@ void SqliteExporter::exportUploadSamples(CaseDatabase& db, const fs::path& sampl
         fs::copy_file(ioPath(fullExport), ioPath(samplePath), fs::copy_options::overwrite_existing, ec);
         if (ec) return false;
         const long long rowCount = countCsvDataRows(samplePath);
-        manifest << csvEscape(sampleName) << ',' << csvEscape(sourceView) << ',' << rowCount << ',' << csvEscape(exportedLimit) << ',' << csvEscape(notes + " (reused already-written export; V1.6.77 avoids duplicate SQL materialization)") << "\n";
+        manifest << csvEscape(sampleName) << ',' << csvEscape(sourceView) << ',' << rowCount << ',' << csvEscape(exportedLimit) << ',' << csvEscape(notes + " (reused already-written export; V1.6.84 avoids duplicate SQL materialization)") << "\n";
         appendExportRunStatus(samplePath, 95, "export_upload_sample_reuse", sampleName + " from " + fullExportName + " rows=" + std::to_string(rowCount));
         log.info("Reused existing export for upload sample: " + pathString(fullExport) + " -> " + pathString(samplePath));
         return true;

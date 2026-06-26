@@ -798,6 +798,7 @@ int macReviewViewSortRank(const ViewSpec& v) {
     const std::wstring name = v.displayName ? v.displayName : L"";
     static const wchar_t* kV1PriorityNames[] = {
         L"Investigator - Keyword Search Values",
+        L"Spotlight Cache Text",
         L"Investigator - Usage Timeline",
         L"Investigator - Usage Artifacts",
         L"Investigator - Object Usage Summary",
@@ -1235,9 +1236,19 @@ int selectedViewIndex() {
     return sel;
 }
 int pageSize() {
-    int n = _wtoi(getText(gPageSize).c_str());
+    std::wstring text = getText(gPageSize);
+    text.erase(text.begin(), std::find_if(text.begin(), text.end(), [](wchar_t ch) { return !std::iswspace(ch); }));
+    text.erase(std::find_if(text.rbegin(), text.rend(), [](wchar_t ch) { return !std::iswspace(ch); }).base(), text.end());
+    std::wstring lower = lowerW(text);
+    if (lower == L"all" || lower == L"full" || lower == L"uncapped" || lower == L"0") {
+        // V1.6.84: explicit full review/no-cap page mode.  The GUI still uses
+        // SQLite-backed pagination by default, but a user can type ALL/0 to load
+        // the full matching review set into the owner-data list for case review.
+        return 1000000;
+    }
+    int n = _wtoi(text.c_str());
     if (n < 100) n = 100;
-    if (n > 50000) n = 50000;
+    if (n > 1000000) n = 1000000;
     return n;
 }
 std::size_t parseSizeBox(HWND h, std::size_t fallback) {
@@ -2177,6 +2188,8 @@ void loadReviewPage() {
             if (result->totalRows >= 0) os << L" of " << result->totalRows << L" records";
             os << (result->hasNext ? L"    More rows available" : L"    Last page");
             os << L"    Page size=" << ps;
+            if (ps >= 1000000) os << L"    Full review/no GUI row cap mode";
+            else os << L"    Paginated review; type ALL or 0 in Rows/all for full no-cap page";
             os << L"    Checked artifacts=" << static_cast<unsigned long long>(checkedCountAtRequest);
             os << L"    Loaded in background in " << result->elapsedMs << L" ms";
             if (!search.empty()) os << L"    Search=\"" << widen(search) << L"\"";
@@ -3106,6 +3119,7 @@ void worker() {
         opt.exportProfile = exportProfile == 1 ? "investigator" : exportProfile == 2 ? "diagnostics" : exportProfile == 3 ? "full" : "minimal";
         opt.suppressCsvExports = (gSuppressCsvExports && SendMessageW(gSuppressCsvExports, BM_GETCHECK, 0, 0) == BST_CHECKED);
         const bool fullNoGuardrails = (gFullNoGuardrails && SendMessageW(gFullNoGuardrails, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        opt.guiFullNoGuardrails = fullNoGuardrails;
         if (opt.suppressCsvExports) {
             opt.exportProfile = "none";
             postLog(L"CSV review exports disabled for this run. SQLite case database will remain available for GUI review.");
@@ -3155,6 +3169,7 @@ void worker() {
         }
         if (fullNoGuardrails) {
             opt.maxNativeRecords = 0;
+            opt.maxNativeRecordsExplicit = true;
             opt.maxNativeBlocks = 0;
             opt.dbSizeGuardrailBytes = 0;
             opt.forceContainerHash = true;
@@ -3165,7 +3180,18 @@ void worker() {
             opt.reuseIosCache.clear();
             opt.fullScan = true;
             if (!opt.suppressCsvExports) opt.exportProfile = "full";
-            postLog(L"Full extraction / no guardrails validation enabled: cache reuse is disabled; native record/block limits and DB/WAL guardrail are disabled; full iOS FFS/app DB materialization and full native key/value persistence are enabled. Expect full source ZIP listing/extraction, very large DB/WAL files, and long runtime.");
+            postLog(L"Full extraction / no guardrails validation enabled: cache reuse is disabled; native record/block limits and DB/WAL guardrail are disabled; explicit max_native_records=0 and max_native_blocks=0 are passed to parser/probe code; full iOS FFS/app DB materialization and full native key/value persistence are enabled. Expect full source ZIP listing/extraction, very large DB/WAL files, and long runtime.");
+        }
+        {
+            std::ostringstream cap;
+            cap << "GUI effective parser caps: effective_max_native_records=" << opt.maxNativeRecords
+                << " max_native_records_explicit=" << (opt.maxNativeRecordsExplicit ? "true" : "false")
+                << " effective_max_native_blocks=" << opt.maxNativeBlocks
+                << " full_no_guardrails=" << (fullNoGuardrails ? "true" : "false")
+                << " gui_full_no_guardrails=" << (opt.guiFullNoGuardrails ? "true" : "false")
+                << " cache_text_enabled=" << (aff4SourceSelected ? "true" : "normal_workflow")
+                << " active_filesystem_inventory_enabled=" << ((opt.materializeIosFfsInventory || aff4SourceSelected) ? "true" : "deferred_or_not_requested");
+            postLog(widen(cap.str()));
         }
         if (opt.experimentalFullNativeValues) postLog(L"Full native metadata parsing is enabled for the selected workflow.");
         else postLog(L"Stable native header/core parsing is enabled. Full native metadata parsing is available through the checkbox above.");
@@ -3386,7 +3412,7 @@ void createReviewControls(HWND hwnd) {
     gCancelLoad = buttonR(hwnd, L"Cancel Load", ID_REVIEW_CANCEL_LOAD, 650, y0 + 21, 96, 24);
     EnableWindow(gCancelLoad, FALSE);
     gResetFilters = buttonR(hwnd, L"Reset", ID_REVIEW_RESET_FILTERS, 752, y0 + 21, 72, 24);
-    labelR(hwnd, L"Rows", 830, y0 + 26, 42, 20); gPageSize = editR(hwnd, 872, y0 + 22, 56, 22, L"250");
+    labelR(hwnd, L"Rows/all", 830, y0 + 26, 68, 20); gPageSize = editR(hwnd, 902, y0 + 22, 72, 22, L"250");
     gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 248, y0 + 52, 96, 24);
     gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 350, y0 + 52, 88, 24);
     gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 444, y0 + 52, 104, 24);
@@ -3559,7 +3585,7 @@ void layoutControls(HWND hwnd) {
     moveIf(gRefresh, 564, y0 + 21, 80, 24);
     moveIf(gCancelLoad, 650, y0 + 21, 96, 24);
     moveIf(gResetFilters, 752, y0 + 21, 72, 24);
-    moveIf(gPageSize, 872, y0 + 22, 56, 22);
+    moveIf(gPageSize, 902, y0 + 22, 72, 22);
     moveIf(gPrev, reviewX, y0 + 52, 96, 24);
     moveIf(gNext, reviewX + 102, y0 + 52, 88, 24);
     moveIf(gExportPage, reviewX + 196, y0 + 52, 104, 24);
