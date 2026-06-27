@@ -1,4 +1,4 @@
-# AI Context - Vestigant Spotlight V1.6.101
+# Vestigant Spotlight V1.6.101 Project Reference
 
 This file must be reviewed first before every build, package, script, documentation, or code-change cycle. Do not rely on chat memory for project-critical state; if something needs to be remembered, put it in this file and in `docs/START_CONTINUATION_CHAT.md` before packaging.
 
@@ -159,21 +159,6 @@ D:\Downloads\V1_6_101_AFF4_WRAPPER_RUN_SUMMARY.txt
 
 A thin `.sha256.txt` sidecar is not expected unless a full-validation hash workflow is explicitly requested.
 
-## V1.6.101 post-cache validation export rule
+## V1.6.101 update
 
-V1.6.100 completed successfully and reduced observed run time to about 583 seconds, but review of the thin upload showed the POI/high-priority CSVs were written before Spotlight Cache text incorporation. The early thin high-priority queue had 34 rows, while the later comparison sidecar high-priority queue had 125 rows after cache text was available. This means any future POI/high-priority validation CSVs must be refreshed after cache-text processing, not only immediately after Store-V2 enrichment.
-
-V1.6.101 adds a post-cache validation export refresh. After `aff4_apfs_spotlight_cache_text_complete`, the app rebuilds the high-priority validation queue and overwrites the bounded POI/high-priority CSVs with post-cache values. The thin CSV evidence packet remains compact and bounded; full row-level validation evidence remains in `comparison.sqlite.high_priority_validation_evidence_packet`.
-
-Expected post-cache markers:
-
-```text
-aff4_apfs_post_cache_validation_exports_start
-aff4_apfs_post_cache_high_priority_queue_temp_start
-aff4_apfs_post_cache_high_priority_queue_temp_complete
-aff4_apfs_post_cache_high_priority_evidence_compact_export_start
-aff4_apfs_post_cache_high_priority_evidence_compact_export_complete
-aff4_apfs_post_cache_validation_exports_complete
-```
-
-For the current AFF4 test case, the V1.6.101 high-priority queue CSV should increase from the pre-cache 34-row value toward the post-cache sidecar count observed in V1.6.100, around 125 rows, without reintroducing the two-hour full evidence packet CSV export.
+V1.6.101 refreshes POI/high-priority validation CSV outputs after Spotlight Cache text incorporation. V1.6.100 wrote the fast compact high-priority CSV before cache text rows were available, so the thin high-priority queue showed 34 rows while the later comparison sidecar showed 125 rows. V1.6.101 keeps the compact bounded CSV design but overwrites the relevant POI/high-priority CSVs after cache processing so the upload bundle reflects post-cache validation leads.

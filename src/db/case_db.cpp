@@ -1583,7 +1583,64 @@ WHERE COALESCE(usage_field_summary,'')<>''
    OR COALESCE(first_used_candidate_utc,'')<>''
    OR COALESCE(used_dates_count,0)>0
    OR COALESCE(use_count_value,'')<>'';
+)SQL");
 
+    exec(R"SQL(
+DROP VIEW IF EXISTS vw_forensic_usage_open_bounds;
+CREATE VIEW vw_forensic_usage_open_bounds AS
+WITH usage_dates AS (
+  SELECT artifact_id,
+         MIN(parsed_utc) AS first_opened_utc,
+         MAX(parsed_utc) AS last_opened_utc,
+         COUNT(*) AS usage_date_count,
+         GROUP_CONCAT(DISTINCT field_name) AS usage_source_fields,
+         GROUP_CONCAT(DISTINCT date_type) AS usage_date_types
+  FROM raw_date_candidates
+  WHERE artifact_id IS NOT NULL
+    AND COALESCE(parsed_utc,'')<>''
+    AND (
+      lower(COALESCE(field_name,'')) IN ('kmditemuseddates','kmditemlastuseddate','last_used_date','lastuseddate')
+      OR lower(COALESCE(field_name,'')) LIKE '%useddate%'
+      OR lower(COALESCE(field_name,'')) LIKE '%lastused%'
+      OR lower(COALESCE(field_name,'')) LIKE '%use%date%'
+      OR lower(COALESCE(date_type,'')) LIKE '%usage%'
+      OR lower(COALESCE(date_type,'')) LIKE '%used%'
+    )
+  GROUP BY artifact_id
+)
+SELECT a.artifact_id,
+       a.source_id,
+       a.store_guid,
+       a.inode_num,
+       a.parent_inode_num,
+       a.file_name,
+       a.display_name,
+       a.best_path,
+       a.content_type,
+       COALESCE(u.first_opened_utc, a.first_used_candidate_utc, '') AS first_opened_utc,
+       COALESCE(u.last_opened_utc, a.last_used_date_utc, '') AS last_opened_utc,
+       COALESCE(u.usage_date_count, a.used_dates_count, 0) AS total_interactions,
+       COALESCE(u.usage_source_fields, a.usage_field_summary, '') AS usage_source_fields,
+       COALESCE(u.usage_date_types, '') AS usage_date_types,
+       a.use_count_value,
+       a.open_count_estimate,
+       a.where_froms AS origin_url,
+       a.path_source,
+       a.path_status,
+       a.existence_status,
+       a.confidence,
+       'Spotlight usage/open-date interpretation requires field provenance review; rows are investigative leads, not proof of user intent.' AS interpretation
+FROM artifacts a
+LEFT JOIN usage_dates u ON u.artifact_id=a.artifact_id
+WHERE COALESCE(u.usage_date_count,0)>0
+   OR COALESCE(a.first_used_candidate_utc,'')<>''
+   OR COALESCE(a.last_used_date_utc,'')<>''
+   OR COALESCE(a.used_dates_count,0)>0
+   OR COALESCE(a.use_count_value,'')<>''
+ORDER BY COALESCE(NULLIF(u.last_opened_utc,''), NULLIF(a.last_used_date_utc,''), NULLIF(a.first_used_candidate_utc,''), a.artifact_id) DESC;
+)SQL");
+
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_timeline_usage_focus;
 CREATE VIEW vw_timeline_usage_focus AS
 SELECT t.timeline_id,t.event_timestamp_utc AS event_utc,t.event_type,t.event_source_field,t.artifact_id,t.source_id,t.store_guid,t.inode_num,
@@ -1594,21 +1651,27 @@ WHERE lower(COALESCE(t.event_source_field,'')) LIKE '%used%'
    OR lower(COALESCE(t.event_type,'')) LIKE '%used%'
    OR lower(COALESCE(t.event_source_field,'')) LIKE '%usage%'
    OR lower(COALESCE(t.event_source_field,'')) LIKE '%open%';
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_wherefroms_downloads;
 CREATE VIEW vw_wherefroms_downloads AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,where_froms,
        downloaded_date_utc,last_updated_utc,existence_status,deleted_or_orphaned_candidate,confidence
 FROM artifacts
 WHERE COALESCE(where_froms,'')<>'' OR COALESCE(downloaded_date_utc,'')<>'';
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_recent_activity;
 CREATE VIEW vw_recent_activity AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,
        last_updated_utc,first_used_candidate_utc,last_used_date_utc,used_dates_count,use_count_value,where_froms,confidence
 FROM artifacts
 WHERE COALESCE(last_updated_utc,'')<>'' OR COALESCE(last_used_date_utc,'')<>'' OR COALESCE(first_used_candidate_utc,'')<>'';
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_content_type_summary;
 CREATE VIEW vw_content_type_summary AS
 SELECT COALESCE(NULLIF(content_type,''),'(blank)') AS content_type,
@@ -1621,7 +1684,9 @@ SELECT COALESCE(NULLIF(content_type,''),'(blank)') AS content_type,
        SUM(CAST(COALESCE(NULLIF(physical_size_bytes,''),'0') AS INTEGER)) AS total_physical_size_bytes
 FROM artifacts
 GROUP BY COALESCE(NULLIF(content_type,''),'(blank)');
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_store_content_type_summary;
 CREATE VIEW vw_store_content_type_summary AS
 SELECT store_guid,
@@ -1632,7 +1697,9 @@ SELECT store_guid,
        MAX(NULLIF(last_updated_utc,'')) AS last_last_updated_utc
 FROM artifacts
 GROUP BY store_guid, COALESCE(NULLIF(content_type,''),'(blank)');
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_folder_activity;
 CREATE VIEW vw_folder_activity AS
 SELECT store_guid,
@@ -1647,7 +1714,9 @@ FROM artifacts
 WHERE COALESCE(parent_inode_num,'')<>''
 GROUP BY store_guid, parent_inode_num
 HAVING COUNT(*) > 1;
+)SQL");
 
+    exec(R"SQL(
 DROP VIEW IF EXISTS vw_path_reconstruction;
 CREATE VIEW vw_path_reconstruction AS
 SELECT pl.link_id,
@@ -3635,9 +3704,229 @@ SELECT artifact_id,
        date_association_confidence
 FROM artifact_date_summary;
 
+DROP VIEW IF EXISTS vw_artifact_time_summary;
+CREATE VIEW vw_artifact_time_summary AS
+SELECT artifact_id,
+       source_id,
+       store_guid,
+       inode_num,
+       parent_inode_num,
+       file_name,
+       display_name,
+       best_path,
+       path_source,
+       path_status,
+       logical_size_bytes,
+       physical_size_bytes,
+       content_type,
+       first_date_utc,
+       last_date_utc,
+       created_earliest_utc,
+       created_latest_utc,
+       modified_earliest_utc,
+       modified_latest_utc,
+       downloaded_earliest_utc,
+       downloaded_latest_utc,
+       usage_earliest_utc,
+       usage_latest_utc,
+       interesting_or_index_earliest_utc,
+       interesting_or_index_latest_utc,
+       total_date_count,
+       created_date_count,
+       modified_date_count,
+       downloaded_date_count,
+       usage_date_count,
+       interesting_or_index_date_count,
+       metadata_seen_or_index_updated_count,
+       other_date_count,
+       likely_snapshot_or_index_date_count,
+       available_date_fields,
+       interpreted_date_types,
+       snapshot_warning_reasons,
+       date_association_status,
+       date_association_confidence,
+       'One investigator-facing time summary row per artifact/file/folder/inode; raw_date_candidates retains per-date provenance and drilldown.' AS interpretation_note
+FROM artifact_date_summary;
+
 )SQL");
 
     exec(R"SQL(
+
+
+DROP VIEW IF EXISTS vw_investigator_points_of_interest;
+CREATE VIEW vw_investigator_points_of_interest AS
+WITH missing AS (
+  SELECT artifact_id,source_id,COUNT(*) AS missing_candidate_rows,
+         GROUP_CONCAT(DISTINCT existence_status) AS missing_statuses,
+         GROUP_CONCAT(DISTINCT orphan_reason) AS missing_reasons,
+         MAX(CASE WHEN COALESCE(index_text_snippet,'')<>'' THEN index_text_snippet ELSE '' END) AS missing_text_sample
+  FROM orphaned_deleted_candidates
+  WHERE artifact_id IS NOT NULL
+  GROUP BY artifact_id,source_id
+), cache AS (
+  SELECT linked_artifact_id AS artifact_id,source_id,COUNT(*) AS cache_text_rows,
+         MAX(decoded_text_length) AS max_cache_text_length,
+         MIN(COALESCE(NULLIF(apfs_index_path,''),NULLIF(linked_artifact_path,''),NULLIF(cache_file_apfs_path,''),'')) AS cache_path_sample,
+         MAX(substr(decoded_text,1,500)) AS cache_text_sample
+  FROM spotlight_cache_text
+  WHERE linked_artifact_id IS NOT NULL
+  GROUP BY linked_artifact_id,source_id
+), ext AS (
+  SELECT artifact_id,source_id,COUNT(*) AS external_volume_rows,
+         GROUP_CONCAT(DISTINCT mounted_volume_name) AS mounted_volume_names,
+         GROUP_CONCAT(DISTINCT reason) AS external_volume_reasons
+  FROM external_volume_candidates
+  WHERE artifact_id IS NOT NULL
+  GROUP BY artifact_id,source_id
+), scored AS (
+  SELECT a.artifact_id,a.source_id,a.store_guid,a.inode_num,a.parent_inode_num,
+         a.file_name,a.display_name,a.best_path,a.path_source,a.path_status,a.content_type,
+         a.logical_size_bytes,a.physical_size_bytes,a.where_froms,a.existence_status,
+         a.deleted_or_orphaned_candidate,a.matched_filesystem_path,a.confidence,
+         t.first_date_utc,t.last_date_utc,t.usage_earliest_utc,t.usage_latest_utc,
+         COALESCE(t.usage_date_count,0) AS usage_date_count,
+         COALESCE(t.total_date_count,0) AS total_date_count,
+         COALESCE(t.downloaded_date_count,0) AS downloaded_date_count,
+         t.available_date_fields,t.snapshot_warning_reasons,
+         COALESCE(m.missing_candidate_rows,0) AS missing_candidate_rows,
+         COALESCE(m.missing_statuses,'') AS missing_statuses,
+         COALESCE(m.missing_reasons,'') AS missing_reasons,
+         COALESCE(c.cache_text_rows,0) AS cache_text_rows,
+         COALESCE(c.max_cache_text_length,0) AS max_cache_text_length,
+         COALESCE(c.cache_path_sample,'') AS cache_path_sample,
+         COALESCE(e.external_volume_rows,0) AS external_volume_rows,
+         COALESCE(e.mounted_volume_names,'') AS mounted_volume_names,
+         COALESCE(NULLIF(c.cache_text_sample,''),NULLIF(m.missing_text_sample,''),NULLIF(a.index_text_snippet,''),'') AS evidence_text_sample,
+)SQL" R"SQL(         (CASE WHEN COALESCE(m.missing_candidate_rows,0)>0 THEN 50 ELSE 0 END +
+          CASE WHEN COALESCE(t.usage_date_count,0)>0 OR COALESCE(a.used_dates_count,0)>0 OR COALESCE(NULLIF(a.last_used_date_utc,''),'')<>'' THEN 30 ELSE 0 END +
+          CASE WHEN COALESCE(c.cache_text_rows,0)>0 THEN 25 ELSE 0 END +
+          CASE WHEN COALESCE(NULLIF(a.where_froms,''),'')<>'' OR COALESCE(t.downloaded_date_count,0)>0 THEN 20 ELSE 0 END +
+          CASE WHEN COALESCE(e.external_volume_rows,0)>0 THEN 20 ELSE 0 END +
+          CASE WHEN COALESCE(NULLIF(a.best_path,''),'')<>'' THEN 5 ELSE 0 END) AS poi_score
+  FROM artifacts a
+  LEFT JOIN artifact_date_summary t ON t.artifact_id=a.artifact_id
+  LEFT JOIN missing m ON m.artifact_id=a.artifact_id AND m.source_id=a.source_id
+  LEFT JOIN cache c ON c.artifact_id=a.artifact_id AND c.source_id=a.source_id
+  LEFT JOIN ext e ON e.artifact_id=a.artifact_id AND e.source_id=a.source_id
+)
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,
+       path_source,path_status,content_type,logical_size_bytes,physical_size_bytes,existence_status,
+       deleted_or_orphaned_candidate,matched_filesystem_path,poi_score,
+       CASE WHEN poi_score>=80 THEN 'HIGH_VALIDATION_PRIORITY'
+            WHEN poi_score>=50 THEN 'MEDIUM_VALIDATION_PRIORITY'
+            ELSE 'LOW_VALIDATION_PRIORITY' END AS poi_priority,
+       CASE WHEN missing_candidate_rows>0 AND usage_date_count>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_WITH_USAGE_DATES'
+            WHEN missing_candidate_rows>0 AND cache_text_rows>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_WITH_CACHE_TEXT'
+            WHEN missing_candidate_rows>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_LEAD'
+            WHEN cache_text_rows>0 AND usage_date_count>0 THEN 'CACHE_TEXT_WITH_USAGE_DATES'
+            WHEN cache_text_rows>0 THEN 'CACHE_TEXT_LEAD'
+            WHEN usage_date_count>0 THEN 'USAGE_DATE_LEAD'
+            WHEN COALESCE(NULLIF(where_froms,''),'')<>'' THEN 'WHERE_FROM_DOWNLOAD_LEAD'
+            WHEN external_volume_rows>0 THEN 'EXTERNAL_VOLUME_REFERENCE_LEAD'
+            ELSE 'GENERAL_CONTEXT_LEAD' END AS poi_category,
+       usage_earliest_utc,usage_latest_utc,usage_date_count,total_date_count,first_date_utc,last_date_utc,
+       downloaded_date_count,missing_candidate_rows,missing_statuses,missing_reasons,cache_text_rows,max_cache_text_length,
+       cache_path_sample,external_volume_rows,mounted_volume_names,where_froms,available_date_fields,snapshot_warning_reasons,
+       substr(evidence_text_sample,1,500) AS evidence_text_sample,
+       TRIM(
+         (CASE WHEN missing_candidate_rows>0 THEN 'orphaned_deleted_candidates;active_file_comparison;image_file_inventory;' ELSE '' END) ||
+         (CASE WHEN usage_date_count>0 THEN 'artifact_date_summary;raw_date_candidates;timeline_events;' ELSE '' END) ||
+         (CASE WHEN cache_text_rows>0 THEN 'spotlight_cache_text;raw_key_values;' ELSE '' END) ||
+         (CASE WHEN COALESCE(NULLIF(where_froms,''),'')<>'' OR downloaded_date_count>0 THEN 'raw_key_values;artifact_date_summary;' ELSE '' END) ||
+         (CASE WHEN external_volume_rows>0 THEN 'external_volume_candidates;raw_key_values;' ELSE '' END) ||
+         'artifacts'
+       , ';') AS validation_evidence_tables,
+       CASE
+         WHEN missing_candidate_rows>0 AND usage_date_count>0 THEN 'Validate APFS inventory non-match by inode/path, then validate usage fields in raw_date_candidates and source Store-V2 rows.'
+         WHEN missing_candidate_rows>0 AND cache_text_rows>0 THEN 'Validate APFS inventory non-match, then review linked cache text and raw key/value provenance.'
+         WHEN missing_candidate_rows>0 THEN 'Validate APFS inventory non-match by inode, parent inode, normalized path, and source image review.'
+         WHEN cache_text_rows>0 THEN 'Validate linked cache text against spotlight_cache_text, raw key/value rows, and the source Store-V2/cache file.'
+         WHEN usage_date_count>0 THEN 'Validate usage/open date interpretation against raw_date_candidates and raw Store-V2 field names.'
+         WHEN COALESCE(NULLIF(where_froms,''),'')<>'' OR downloaded_date_count>0 THEN 'Validate download/where-from context against raw key/value fields and date candidates.'
+         WHEN external_volume_rows>0 THEN 'Validate external volume context against external_volume_candidates and raw Spotlight metadata.'
+         ELSE 'Validate artifact context against artifacts, raw_key_values, and source image evidence.'
+       END AS validation_workflow,
+       'UNVALIDATED_INVESTIGATIVE_LEAD' AS validation_status,
+       'Point-of-interest score is a triage rank only. Independently validate against raw evidence tables, sidecar inventory/comparison rows, and the source image before reporting.' AS interpretation_note
+FROM scored
+WHERE poi_score>0;
+)SQL");
+
+    exec(R"SQL(
+
+DROP VIEW IF EXISTS vw_investigator_high_priority_validation_queue;
+CREATE VIEW vw_investigator_high_priority_validation_queue AS
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,
+       content_type,existence_status,poi_score,poi_priority,poi_category,
+       usage_earliest_utc,usage_latest_utc,usage_date_count,total_date_count,first_date_utc,last_date_utc,
+       missing_candidate_rows,missing_statuses,missing_reasons,cache_text_rows,max_cache_text_length,
+       cache_path_sample,where_froms,evidence_text_sample,validation_evidence_tables,
+       validation_workflow,validation_status,interpretation_note,
+       'READY_FOR_APPLICATION_VALIDATION' AS validation_queue_status,
+       'Validate this row against raw_date_candidates, raw_key_values, artifacts, active_file_comparison, image_file_inventory, and source Store-V2/APFS evidence before reporting.' AS validation_queue_instruction
+FROM vw_investigator_points_of_interest
+WHERE poi_score>=80 OR poi_priority='HIGH_VALIDATION_PRIORITY'
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC;
+)SQL");
+
+    exec(R"SQL(
+
+DROP VIEW IF EXISTS vw_high_priority_validation_evidence_packet;
+CREATE VIEW vw_high_priority_validation_evidence_packet AS
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'raw_date_candidates' AS evidence_table,
+       CAST(d.raw_date_id AS TEXT) AS evidence_id,d.field_name AS evidence_field,
+       COALESCE(NULLIF(d.parsed_utc,''),d.field_value) AS evidence_value,d.parsed_utc AS evidence_utc,
+       COALESCE(d.date_type,'date') AS evidence_category,
+       'raw_date_candidates.raw_date_id=' || CAST(d.raw_date_id AS TEXT) || '; parse_method=' || COALESCE(d.parse_method,'') AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN raw_date_candidates d ON d.source_id=q.source_id AND d.artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'raw_key_values' AS evidence_table,
+       CAST(kv.raw_kv_id AS TEXT) AS evidence_id,kv.field_name AS evidence_field,
+       substr(kv.field_value,1,1000) AS evidence_value,'' AS evidence_utc,
+       'metadata_field' AS evidence_category,
+       'raw_key_values.raw_kv_id=' || CAST(kv.raw_kv_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN raw_key_values kv ON kv.source_id=q.source_id AND kv.store_guid=q.store_guid AND kv.inode_num=q.inode_num
+WHERE lower(kv.field_name) LIKE '%used%' OR lower(kv.field_name) LIKE '%download%' OR lower(kv.field_name) LIKE '%wherefrom%' OR lower(kv.field_name) LIKE '%display%' OR lower(kv.field_name) LIKE '%contenttype%' OR lower(kv.field_name) LIKE '%path%'
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'orphaned_deleted_candidates' AS evidence_table,
+       CAST(o.candidate_id AS TEXT) AS evidence_id,o.existence_status AS evidence_field,
+       COALESCE(NULLIF(o.orphan_reason,''),o.best_path,o.file_name) AS evidence_value,'' AS evidence_utc,
+       'active_inventory_non_match' AS evidence_category,
+       'orphaned_deleted_candidates.candidate_id=' || CAST(o.candidate_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN orphaned_deleted_candidates o ON o.source_id=q.source_id AND o.artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'spotlight_cache_text' AS evidence_table,
+       CAST(c.cache_text_id AS TEXT) AS evidence_id,c.cache_text_type AS evidence_field,
+       substr(COALESCE(NULLIF(c.decoded_text,''),c.cache_relative_path),1,1000) AS evidence_value,'' AS evidence_utc,
+       'cache_text' AS evidence_category,
+       'spotlight_cache_text.cache_text_id=' || CAST(c.cache_text_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN spotlight_cache_text c ON c.source_id=q.source_id AND c.linked_artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'vw_spotlight_active_file_comparison' AS evidence_table,
+       CAST(c.artifact_id AS TEXT) AS evidence_id,c.active_file_comparison_status AS evidence_field,
+       COALESCE(NULLIF(c.comparison_notes,''),c.matched_image_path,'') AS evidence_value,'' AS evidence_utc,
+       'active_file_comparison' AS evidence_category,
+       'vw_spotlight_active_file_comparison.artifact_id=' || CAST(c.artifact_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN vw_spotlight_active_file_comparison c ON c.source_id=q.source_id AND c.artifact_id=q.artifact_id;
+)SQL");
+
+    exec(R"SQL(
+
 DROP VIEW IF EXISTS vw_object_usage_summary;
 CREATE VIEW vw_object_usage_summary AS
 WITH usage_artifacts AS (
@@ -6735,7 +7024,64 @@ WHERE COALESCE(usage_field_summary,'')<>''
    OR COALESCE(first_used_candidate_utc,'')<>''
    OR COALESCE(used_dates_count,0)>0
    OR COALESCE(use_count_value,'')<>'';
+)SQL");
 
+    execGuiSql(R"SQL(
+DROP VIEW IF EXISTS vw_forensic_usage_open_bounds;
+CREATE VIEW vw_forensic_usage_open_bounds AS
+WITH usage_dates AS (
+  SELECT artifact_id,
+         MIN(parsed_utc) AS first_opened_utc,
+         MAX(parsed_utc) AS last_opened_utc,
+         COUNT(*) AS usage_date_count,
+         GROUP_CONCAT(DISTINCT field_name) AS usage_source_fields,
+         GROUP_CONCAT(DISTINCT date_type) AS usage_date_types
+  FROM raw_date_candidates
+  WHERE artifact_id IS NOT NULL
+    AND COALESCE(parsed_utc,'')<>''
+    AND (
+      lower(COALESCE(field_name,'')) IN ('kmditemuseddates','kmditemlastuseddate','last_used_date','lastuseddate')
+      OR lower(COALESCE(field_name,'')) LIKE '%useddate%'
+      OR lower(COALESCE(field_name,'')) LIKE '%lastused%'
+      OR lower(COALESCE(field_name,'')) LIKE '%use%date%'
+      OR lower(COALESCE(date_type,'')) LIKE '%usage%'
+      OR lower(COALESCE(date_type,'')) LIKE '%used%'
+    )
+  GROUP BY artifact_id
+)
+SELECT a.artifact_id,
+       a.source_id,
+       a.store_guid,
+       a.inode_num,
+       a.parent_inode_num,
+       a.file_name,
+       a.display_name,
+       a.best_path,
+       a.content_type,
+       COALESCE(u.first_opened_utc, a.first_used_candidate_utc, '') AS first_opened_utc,
+       COALESCE(u.last_opened_utc, a.last_used_date_utc, '') AS last_opened_utc,
+       COALESCE(u.usage_date_count, a.used_dates_count, 0) AS total_interactions,
+       COALESCE(u.usage_source_fields, a.usage_field_summary, '') AS usage_source_fields,
+       COALESCE(u.usage_date_types, '') AS usage_date_types,
+       a.use_count_value,
+       a.open_count_estimate,
+       a.where_froms AS origin_url,
+       a.path_source,
+       a.path_status,
+       a.existence_status,
+       a.confidence,
+       'Spotlight usage/open-date interpretation requires field provenance review; rows are investigative leads, not proof of user intent.' AS interpretation
+FROM artifacts a
+LEFT JOIN usage_dates u ON u.artifact_id=a.artifact_id
+WHERE COALESCE(u.usage_date_count,0)>0
+   OR COALESCE(a.first_used_candidate_utc,'')<>''
+   OR COALESCE(a.last_used_date_utc,'')<>''
+   OR COALESCE(a.used_dates_count,0)>0
+   OR COALESCE(a.use_count_value,'')<>''
+ORDER BY COALESCE(NULLIF(u.last_opened_utc,''), NULLIF(a.last_used_date_utc,''), NULLIF(a.first_used_candidate_utc,''), a.artifact_id) DESC;
+)SQL");
+
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_timeline_usage_focus;
 CREATE VIEW vw_timeline_usage_focus AS
 SELECT t.timeline_id,t.event_timestamp_utc AS event_utc,t.event_type,t.event_source_field,t.artifact_id,t.source_id,t.store_guid,t.inode_num,
@@ -6746,21 +7092,27 @@ WHERE lower(COALESCE(t.event_source_field,'')) LIKE '%used%'
    OR lower(COALESCE(t.event_type,'')) LIKE '%used%'
    OR lower(COALESCE(t.event_source_field,'')) LIKE '%usage%'
    OR lower(COALESCE(t.event_source_field,'')) LIKE '%open%';
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_wherefroms_downloads;
 CREATE VIEW vw_wherefroms_downloads AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,where_froms,
        downloaded_date_utc,last_updated_utc,existence_status,deleted_or_orphaned_candidate,confidence
 FROM artifacts
 WHERE COALESCE(where_froms,'')<>'' OR COALESCE(downloaded_date_utc,'')<>'';
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_recent_activity;
 CREATE VIEW vw_recent_activity AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,
        last_updated_utc,first_used_candidate_utc,last_used_date_utc,used_dates_count,use_count_value,where_froms,confidence
 FROM artifacts
 WHERE COALESCE(last_updated_utc,'')<>'' OR COALESCE(last_used_date_utc,'')<>'' OR COALESCE(first_used_candidate_utc,'')<>'';
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_content_type_summary;
 CREATE VIEW vw_content_type_summary AS
 SELECT COALESCE(NULLIF(content_type,''),'(blank)') AS content_type,
@@ -6773,7 +7125,9 @@ SELECT COALESCE(NULLIF(content_type,''),'(blank)') AS content_type,
        SUM(CAST(COALESCE(NULLIF(physical_size_bytes,''),'0') AS INTEGER)) AS total_physical_size_bytes
 FROM artifacts
 GROUP BY COALESCE(NULLIF(content_type,''),'(blank)');
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_store_content_type_summary;
 CREATE VIEW vw_store_content_type_summary AS
 SELECT store_guid,
@@ -6784,7 +7138,9 @@ SELECT store_guid,
        MAX(NULLIF(last_updated_utc,'')) AS last_last_updated_utc
 FROM artifacts
 GROUP BY store_guid, COALESCE(NULLIF(content_type,''),'(blank)');
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_folder_activity;
 CREATE VIEW vw_folder_activity AS
 SELECT store_guid,
@@ -6799,7 +7155,9 @@ FROM artifacts
 WHERE COALESCE(parent_inode_num,'')<>''
 GROUP BY store_guid, parent_inode_num
 HAVING COUNT(*) > 1;
+)SQL");
 
+    execGuiSql(R"SQL(
 DROP VIEW IF EXISTS vw_path_reconstruction;
 CREATE VIEW vw_path_reconstruction AS
 SELECT pl.link_id,
@@ -9012,8 +9370,229 @@ SELECT artifact_id,
        date_association_status,
        date_association_confidence
 FROM artifact_date_summary;
+
+DROP VIEW IF EXISTS vw_artifact_time_summary;
+CREATE VIEW vw_artifact_time_summary AS
+SELECT artifact_id,
+       source_id,
+       store_guid,
+       inode_num,
+       parent_inode_num,
+       file_name,
+       display_name,
+       best_path,
+       path_source,
+       path_status,
+       logical_size_bytes,
+       physical_size_bytes,
+       content_type,
+       first_date_utc,
+       last_date_utc,
+       created_earliest_utc,
+       created_latest_utc,
+       modified_earliest_utc,
+       modified_latest_utc,
+       downloaded_earliest_utc,
+       downloaded_latest_utc,
+       usage_earliest_utc,
+       usage_latest_utc,
+       interesting_or_index_earliest_utc,
+       interesting_or_index_latest_utc,
+       total_date_count,
+       created_date_count,
+       modified_date_count,
+       downloaded_date_count,
+       usage_date_count,
+       interesting_or_index_date_count,
+       metadata_seen_or_index_updated_count,
+       other_date_count,
+       likely_snapshot_or_index_date_count,
+       available_date_fields,
+       interpreted_date_types,
+       snapshot_warning_reasons,
+       date_association_status,
+       date_association_confidence,
+       'One investigator-facing time summary row per artifact/file/folder/inode; raw_date_candidates retains per-date provenance and drilldown.' AS interpretation_note
+FROM artifact_date_summary;
+
 )SQL");
     execGuiSql(R"SQL(
+
+
+DROP VIEW IF EXISTS vw_investigator_points_of_interest;
+CREATE VIEW vw_investigator_points_of_interest AS
+WITH missing AS (
+  SELECT artifact_id,source_id,COUNT(*) AS missing_candidate_rows,
+         GROUP_CONCAT(DISTINCT existence_status) AS missing_statuses,
+         GROUP_CONCAT(DISTINCT orphan_reason) AS missing_reasons,
+         MAX(CASE WHEN COALESCE(index_text_snippet,'')<>'' THEN index_text_snippet ELSE '' END) AS missing_text_sample
+  FROM orphaned_deleted_candidates
+  WHERE artifact_id IS NOT NULL
+  GROUP BY artifact_id,source_id
+), cache AS (
+  SELECT linked_artifact_id AS artifact_id,source_id,COUNT(*) AS cache_text_rows,
+         MAX(decoded_text_length) AS max_cache_text_length,
+         MIN(COALESCE(NULLIF(apfs_index_path,''),NULLIF(linked_artifact_path,''),NULLIF(cache_file_apfs_path,''),'')) AS cache_path_sample,
+         MAX(substr(decoded_text,1,500)) AS cache_text_sample
+  FROM spotlight_cache_text
+  WHERE linked_artifact_id IS NOT NULL
+  GROUP BY linked_artifact_id,source_id
+), ext AS (
+  SELECT artifact_id,source_id,COUNT(*) AS external_volume_rows,
+         GROUP_CONCAT(DISTINCT mounted_volume_name) AS mounted_volume_names,
+         GROUP_CONCAT(DISTINCT reason) AS external_volume_reasons
+  FROM external_volume_candidates
+  WHERE artifact_id IS NOT NULL
+  GROUP BY artifact_id,source_id
+), scored AS (
+  SELECT a.artifact_id,a.source_id,a.store_guid,a.inode_num,a.parent_inode_num,
+         a.file_name,a.display_name,a.best_path,a.path_source,a.path_status,a.content_type,
+         a.logical_size_bytes,a.physical_size_bytes,a.where_froms,a.existence_status,
+         a.deleted_or_orphaned_candidate,a.matched_filesystem_path,a.confidence,
+         t.first_date_utc,t.last_date_utc,t.usage_earliest_utc,t.usage_latest_utc,
+         COALESCE(t.usage_date_count,0) AS usage_date_count,
+         COALESCE(t.total_date_count,0) AS total_date_count,
+         COALESCE(t.downloaded_date_count,0) AS downloaded_date_count,
+         t.available_date_fields,t.snapshot_warning_reasons,
+         COALESCE(m.missing_candidate_rows,0) AS missing_candidate_rows,
+         COALESCE(m.missing_statuses,'') AS missing_statuses,
+         COALESCE(m.missing_reasons,'') AS missing_reasons,
+         COALESCE(c.cache_text_rows,0) AS cache_text_rows,
+         COALESCE(c.max_cache_text_length,0) AS max_cache_text_length,
+         COALESCE(c.cache_path_sample,'') AS cache_path_sample,
+         COALESCE(e.external_volume_rows,0) AS external_volume_rows,
+         COALESCE(e.mounted_volume_names,'') AS mounted_volume_names,
+         COALESCE(NULLIF(c.cache_text_sample,''),NULLIF(m.missing_text_sample,''),NULLIF(a.index_text_snippet,''),'') AS evidence_text_sample,
+)SQL" R"SQL(         (CASE WHEN COALESCE(m.missing_candidate_rows,0)>0 THEN 50 ELSE 0 END +
+          CASE WHEN COALESCE(t.usage_date_count,0)>0 OR COALESCE(a.used_dates_count,0)>0 OR COALESCE(NULLIF(a.last_used_date_utc,''),'')<>'' THEN 30 ELSE 0 END +
+          CASE WHEN COALESCE(c.cache_text_rows,0)>0 THEN 25 ELSE 0 END +
+          CASE WHEN COALESCE(NULLIF(a.where_froms,''),'')<>'' OR COALESCE(t.downloaded_date_count,0)>0 THEN 20 ELSE 0 END +
+          CASE WHEN COALESCE(e.external_volume_rows,0)>0 THEN 20 ELSE 0 END +
+          CASE WHEN COALESCE(NULLIF(a.best_path,''),'')<>'' THEN 5 ELSE 0 END) AS poi_score
+  FROM artifacts a
+  LEFT JOIN artifact_date_summary t ON t.artifact_id=a.artifact_id
+  LEFT JOIN missing m ON m.artifact_id=a.artifact_id AND m.source_id=a.source_id
+  LEFT JOIN cache c ON c.artifact_id=a.artifact_id AND c.source_id=a.source_id
+  LEFT JOIN ext e ON e.artifact_id=a.artifact_id AND e.source_id=a.source_id
+)
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,
+       path_source,path_status,content_type,logical_size_bytes,physical_size_bytes,existence_status,
+       deleted_or_orphaned_candidate,matched_filesystem_path,poi_score,
+       CASE WHEN poi_score>=80 THEN 'HIGH_VALIDATION_PRIORITY'
+            WHEN poi_score>=50 THEN 'MEDIUM_VALIDATION_PRIORITY'
+            ELSE 'LOW_VALIDATION_PRIORITY' END AS poi_priority,
+       CASE WHEN missing_candidate_rows>0 AND usage_date_count>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_WITH_USAGE_DATES'
+            WHEN missing_candidate_rows>0 AND cache_text_rows>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_WITH_CACHE_TEXT'
+            WHEN missing_candidate_rows>0 THEN 'MISSING_FROM_ACTIVE_INVENTORY_LEAD'
+            WHEN cache_text_rows>0 AND usage_date_count>0 THEN 'CACHE_TEXT_WITH_USAGE_DATES'
+            WHEN cache_text_rows>0 THEN 'CACHE_TEXT_LEAD'
+            WHEN usage_date_count>0 THEN 'USAGE_DATE_LEAD'
+            WHEN COALESCE(NULLIF(where_froms,''),'')<>'' THEN 'WHERE_FROM_DOWNLOAD_LEAD'
+            WHEN external_volume_rows>0 THEN 'EXTERNAL_VOLUME_REFERENCE_LEAD'
+            ELSE 'GENERAL_CONTEXT_LEAD' END AS poi_category,
+       usage_earliest_utc,usage_latest_utc,usage_date_count,total_date_count,first_date_utc,last_date_utc,
+       downloaded_date_count,missing_candidate_rows,missing_statuses,missing_reasons,cache_text_rows,max_cache_text_length,
+       cache_path_sample,external_volume_rows,mounted_volume_names,where_froms,available_date_fields,snapshot_warning_reasons,
+       substr(evidence_text_sample,1,500) AS evidence_text_sample,
+       TRIM(
+         (CASE WHEN missing_candidate_rows>0 THEN 'orphaned_deleted_candidates;active_file_comparison;image_file_inventory;' ELSE '' END) ||
+         (CASE WHEN usage_date_count>0 THEN 'artifact_date_summary;raw_date_candidates;timeline_events;' ELSE '' END) ||
+         (CASE WHEN cache_text_rows>0 THEN 'spotlight_cache_text;raw_key_values;' ELSE '' END) ||
+         (CASE WHEN COALESCE(NULLIF(where_froms,''),'')<>'' OR downloaded_date_count>0 THEN 'raw_key_values;artifact_date_summary;' ELSE '' END) ||
+         (CASE WHEN external_volume_rows>0 THEN 'external_volume_candidates;raw_key_values;' ELSE '' END) ||
+         'artifacts'
+       , ';') AS validation_evidence_tables,
+       CASE
+         WHEN missing_candidate_rows>0 AND usage_date_count>0 THEN 'Validate APFS inventory non-match by inode/path, then validate usage fields in raw_date_candidates and source Store-V2 rows.'
+         WHEN missing_candidate_rows>0 AND cache_text_rows>0 THEN 'Validate APFS inventory non-match, then review linked cache text and raw key/value provenance.'
+         WHEN missing_candidate_rows>0 THEN 'Validate APFS inventory non-match by inode, parent inode, normalized path, and source image review.'
+         WHEN cache_text_rows>0 THEN 'Validate linked cache text against spotlight_cache_text, raw key/value rows, and the source Store-V2/cache file.'
+         WHEN usage_date_count>0 THEN 'Validate usage/open date interpretation against raw_date_candidates and raw Store-V2 field names.'
+         WHEN COALESCE(NULLIF(where_froms,''),'')<>'' OR downloaded_date_count>0 THEN 'Validate download/where-from context against raw key/value fields and date candidates.'
+         WHEN external_volume_rows>0 THEN 'Validate external volume context against external_volume_candidates and raw Spotlight metadata.'
+         ELSE 'Validate artifact context against artifacts, raw_key_values, and source image evidence.'
+       END AS validation_workflow,
+       'UNVALIDATED_INVESTIGATIVE_LEAD' AS validation_status,
+       'Point-of-interest score is a triage rank only. Independently validate against raw evidence tables, sidecar inventory/comparison rows, and the source image before reporting.' AS interpretation_note
+FROM scored
+WHERE poi_score>0;
+)SQL");
+
+    exec(R"SQL(
+
+DROP VIEW IF EXISTS vw_investigator_high_priority_validation_queue;
+CREATE VIEW vw_investigator_high_priority_validation_queue AS
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,
+       content_type,existence_status,poi_score,poi_priority,poi_category,
+       usage_earliest_utc,usage_latest_utc,usage_date_count,total_date_count,first_date_utc,last_date_utc,
+       missing_candidate_rows,missing_statuses,missing_reasons,cache_text_rows,max_cache_text_length,
+       cache_path_sample,where_froms,evidence_text_sample,validation_evidence_tables,
+       validation_workflow,validation_status,interpretation_note,
+       'READY_FOR_APPLICATION_VALIDATION' AS validation_queue_status,
+       'Validate this row against raw_date_candidates, raw_key_values, artifacts, active_file_comparison, image_file_inventory, and source Store-V2/APFS evidence before reporting.' AS validation_queue_instruction
+FROM vw_investigator_points_of_interest
+WHERE poi_score>=80 OR poi_priority='HIGH_VALIDATION_PRIORITY'
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC;
+)SQL");
+
+    exec(R"SQL(
+
+DROP VIEW IF EXISTS vw_high_priority_validation_evidence_packet;
+CREATE VIEW vw_high_priority_validation_evidence_packet AS
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'raw_date_candidates' AS evidence_table,
+       CAST(d.raw_date_id AS TEXT) AS evidence_id,d.field_name AS evidence_field,
+       COALESCE(NULLIF(d.parsed_utc,''),d.field_value) AS evidence_value,d.parsed_utc AS evidence_utc,
+       COALESCE(d.date_type,'date') AS evidence_category,
+       'raw_date_candidates.raw_date_id=' || CAST(d.raw_date_id AS TEXT) || '; parse_method=' || COALESCE(d.parse_method,'') AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN raw_date_candidates d ON d.source_id=q.source_id AND d.artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'raw_key_values' AS evidence_table,
+       CAST(kv.raw_kv_id AS TEXT) AS evidence_id,kv.field_name AS evidence_field,
+       substr(kv.field_value,1,1000) AS evidence_value,'' AS evidence_utc,
+       'metadata_field' AS evidence_category,
+       'raw_key_values.raw_kv_id=' || CAST(kv.raw_kv_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN raw_key_values kv ON kv.source_id=q.source_id AND kv.store_guid=q.store_guid AND kv.inode_num=q.inode_num
+WHERE lower(kv.field_name) LIKE '%used%' OR lower(kv.field_name) LIKE '%download%' OR lower(kv.field_name) LIKE '%wherefrom%' OR lower(kv.field_name) LIKE '%display%' OR lower(kv.field_name) LIKE '%contenttype%' OR lower(kv.field_name) LIKE '%path%'
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'orphaned_deleted_candidates' AS evidence_table,
+       CAST(o.candidate_id AS TEXT) AS evidence_id,o.existence_status AS evidence_field,
+       COALESCE(NULLIF(o.orphan_reason,''),o.best_path,o.file_name) AS evidence_value,'' AS evidence_utc,
+       'active_inventory_non_match' AS evidence_category,
+       'orphaned_deleted_candidates.candidate_id=' || CAST(o.candidate_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN orphaned_deleted_candidates o ON o.source_id=q.source_id AND o.artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'spotlight_cache_text' AS evidence_table,
+       CAST(c.cache_text_id AS TEXT) AS evidence_id,c.cache_text_type AS evidence_field,
+       substr(COALESCE(NULLIF(c.decoded_text,''),c.cache_relative_path),1,1000) AS evidence_value,'' AS evidence_utc,
+       'cache_text' AS evidence_category,
+       'spotlight_cache_text.cache_text_id=' || CAST(c.cache_text_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN spotlight_cache_text c ON c.source_id=q.source_id AND c.linked_artifact_id=q.artifact_id
+UNION ALL
+SELECT q.artifact_id,q.source_id,q.store_guid,q.inode_num,q.parent_inode_num,q.file_name,q.best_path,
+       q.poi_score,q.poi_priority,q.poi_category,'vw_spotlight_active_file_comparison' AS evidence_table,
+       CAST(c.artifact_id AS TEXT) AS evidence_id,c.active_file_comparison_status AS evidence_field,
+       COALESCE(NULLIF(c.comparison_notes,''),c.matched_image_path,'') AS evidence_value,'' AS evidence_utc,
+       'active_file_comparison' AS evidence_category,
+       'vw_spotlight_active_file_comparison.artifact_id=' || CAST(c.artifact_id AS TEXT) AS validation_locator,
+       q.validation_status
+FROM vw_investigator_high_priority_validation_queue q
+JOIN vw_spotlight_active_file_comparison c ON c.source_id=q.source_id AND c.artifact_id=q.artifact_id;
+)SQL");
+
+    exec(R"SQL(
+
 DROP VIEW IF EXISTS vw_object_usage_summary;
 CREATE VIEW vw_object_usage_summary AS
 WITH usage_artifacts AS (

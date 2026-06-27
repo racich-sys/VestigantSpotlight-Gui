@@ -3093,7 +3093,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                         if (rel.empty()) rel = safeStageComponent(std::to_string(cr.sequence) + "_fid_" + std::to_string(cr.childFileId) + "_" + cr.targetName);
                         return rel;
                     };
-                    constexpr std::uint64_t kDirectMaxSingleCopyOutBytes = 512ULL * 1024ULL * 1024ULL;
+                    const std::uint64_t kDirectMaxSingleCopyOutBytes = opt.pressureTestMode ? (std::numeric_limits<std::uint64_t>::max)() : (512ULL * 1024ULL * 1024ULL);
                     const fs::path directStageRoot = caseDir / "ExtractedSpotlight" / "StagedStoreV2";
                     for (const auto& cr : directSpotlightCopyAttemptRows) {
                         const auto extIt = extentsByTargetSequence.find(cr.sequence);
@@ -3227,7 +3227,7 @@ void Aff4ProbeWorker::executeDirectMapReaderProbe(const fs::path& caseDir,
                             std::error_code sizeEc;
                             const auto sz = fs::file_size(outPath, sizeEc);
                             row.outputSizeBytes = sizeEc ? 0ULL : static_cast<std::uint64_t>(sz);
-                            try { row.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { row.notes = std::string("sha256_failed: ") + ex.what(); }
+                            if (opt.pressureTestMode) { row.outputSha256 = "SKIPPED_BY_PRESSURE_TEST_MODE"; } else { try { row.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { row.notes = std::string("sha256_failed: ") + ex.what(); } }
                             if (syntheticZeroBytes != 0 || hasSparseGap || hasZeroPhysical) {
                                 row.copyStatus = "COPIED_WITH_RECORDED_SYNTHETIC_ZERO_REGIONS";
                                 row.validationStatus = (row.outputSizeBytes == directLogicalSize) ? "SIZE_MATCH_WITH_ZERO_FILL_PROVENANCE" : "SIZE_MISMATCH_AFTER_ZERO_FILL_COPY";
@@ -6157,6 +6157,17 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         return true;
                     };
 
+                    auto isLikelyNumericSpotlightCacheTextName = [&](const std::string& lname) -> bool {
+                        if (lname.size() <= 4 || lname.substr(lname.size() - 4) != ".txt") return false;
+                        const std::string stem = lname.substr(0, lname.size() - 4);
+                        if (stem.empty()) return false;
+                        for (const char ch : stem) {
+                            const unsigned char u = static_cast<unsigned char>(ch);
+                            if (!std::isxdigit(u)) return false;
+                        }
+                        return true;
+                    };
+
                     auto isSpotlightStoreV2TopLevelComponentName = [&](const std::string& lname) -> bool {
                         if (lname == ".store.db" || lname == "store.db" || lname == "store.db-wal" || lname == "store.db-shm") return true;
                         if (lname == "0.directorystorefile" || lname == "0.directorystorefile.shadow") return true;
@@ -6176,6 +6187,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         const std::string lname = asciiLower(name);
                         return lname == ".spotlight-v100" || lname == "store-v2" || lname == "index.db" ||
                                isSpotlightStoreV2TopLevelComponentName(lname) ||
+                               isLikelyNumericSpotlightCacheTextName(lname) ||
                                lname.find("spotlight") != std::string::npos || lname.find("corespotlight") != std::string::npos;
                     };
 
@@ -6192,6 +6204,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         if (lname.rfind("live.", 0) == 0 || lname == "permstore" || lname == "journalexclusion" || lname == "journals.migration_secondchance" || lname == "reversestore.updates" || lname == "store.updates" || lname == "store_generation" || lname == "reversedirectorystore" || lname == "reversedirectorystore.shadow") return "SPOTLIGHT_STOREV2_TOPLEVEL_COMPONENT";
                         if (lname == "cab.created" || lname == "cab.modified" || lname == "lion.created" || lname == "lion.modified" || lname == "star.created" || lname == "star.modified" || lname == "tmp.cab" || lname == "tmp.lion" || lname == "tmp.star") return "SPOTLIGHT_STOREV2_TOPLEVEL_COMPONENT";
                         if (lname.rfind("tmp.spotlight", 0) == 0) return "TMP_SPOTLIGHT_COMPONENT";
+                        if (isLikelyNumericSpotlightCacheTextName(lname)) return "SPOTLIGHT_STOREV2_CACHE_TEXT_FILE";
                         if (lname.find("corespotlight") != std::string::npos) return "IOS_CORESPOTLIGHT_NAME";
                         if (lname == "index.db") return "IOS_CORESPOTLIGHT_INDEX_DB_FILE";
                         return "SPOTLIGHT_RELATED_NAME";
@@ -6677,7 +6690,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         if (ir.inodeDstreamSize != 0 && ir.inodeDstreamSize <= ir.inodeDstreamAllocedSize) {
                             spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeDstreamSize;
                             spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "INO_EXT_TYPE_DSTREAM.size.scan_correlation";
-                        } else if (ir.inodeUncompressedSize != 0 && ir.inodeUncompressedSize <= (512ULL * 1024ULL * 1024ULL)) {
+                        } else if (ir.inodeUncompressedSize != 0 && ir.inodeUncompressedSize <= (opt.pressureTestMode ? (std::numeric_limits<std::uint64_t>::max)() : (512ULL * 1024ULL * 1024ULL))) {
                             spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeUncompressedSize;
                             spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "j_inode_val.uncompressed_size.scan_correlation";
                         }
@@ -7010,7 +7023,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                                         if (ir.inodeDstreamSize != 0 && ir.inodeDstreamSize <= ir.inodeDstreamAllocedSize) {
                                             spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeDstreamSize;
                                             spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "INO_EXT_TYPE_DSTREAM.size";
-                                        } else if (ir.inodeUncompressedSize != 0 && ir.inodeUncompressedSize <= (512ULL * 1024ULL * 1024ULL)) {
+                                        } else if (ir.inodeUncompressedSize != 0 && ir.inodeUncompressedSize <= (opt.pressureTestMode ? (std::numeric_limits<std::uint64_t>::max)() : (512ULL * 1024ULL * 1024ULL))) {
                                             spotlightLogicalSizeByTargetSequence[cr.sequence] = ir.inodeUncompressedSize;
                                             spotlightLogicalSizeSourceByTargetSequence[cr.sequence] = "j_inode_val.uncompressed_size";
                                         }
@@ -7370,7 +7383,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                         apfsSpotlightFileCopyOutRows.push_back(row);
                     };
 
-                    constexpr std::uint64_t kMaxSingleCopyOutBytes = 512ULL * 1024ULL * 1024ULL;
+                    const std::uint64_t kMaxSingleCopyOutBytes = opt.pressureTestMode ? (std::numeric_limits<std::uint64_t>::max)() : (512ULL * 1024ULL * 1024ULL);
                     std::size_t copiedOutFileCount = 0;
                     const fs::path extractedRoot = caseDir / "ExtractedSpotlight" / "aff4_apfs";
 
@@ -7659,7 +7672,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             std::error_code sizeEc;
                             const auto sz = fs::file_size(outPath, sizeEc);
                             row.outputSizeBytes = sizeEc ? 0ULL : static_cast<std::uint64_t>(sz);
-                            try { row.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { row.notes = std::string("sha256_failed: ") + ex.what(); }
+                            if (opt.pressureTestMode) { row.outputSha256 = "SKIPPED_BY_PRESSURE_TEST_MODE"; } else { try { row.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { row.notes = std::string("sha256_failed: ") + ex.what(); } }
                             if (decodedLogicalExceedsExtentChain) {
                                 row.copyStatus = "COPIED_PARTIAL_COMPRESSED_OR_RSRC_FORK_CANDIDATE";
                                 row.validationStatus = "PARTIAL_LOGICAL_SIZE_EXCEEDS_EXTENT_CHAIN";
@@ -7749,7 +7762,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
 
                             std::vector<unsigned char> resourceBytes;
                             std::string readErr;
-                            if (!readFileBytesBounded(fs::path(rfIt->second.outputPath), 512ULL * 1024ULL * 1024ULL, resourceBytes, readErr)) {
+                            if (!readFileBytesBounded(fs::path(rfIt->second.outputPath), kMaxSingleCopyOutBytes, resourceBytes, readErr)) {
                                 outRow.notes = "resource_fork_read_failed=" + readErr + "; resource_row_sequence=" + std::to_string(rfIt->second.sequence);
                                 apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
                                 continue;
@@ -7781,7 +7794,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             outRow.outputPath = pathString(outPath);
                             outRow.outputRelativePath = pathString(fs::relative(outPath, caseDir));
                             outRow.outputSizeBytes = sizeEc ? 0ULL : static_cast<std::uint64_t>(sz);
-                            try { outRow.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { outRow.notes = std::string("sha256_failed: ") + ex.what(); }
+                            if (opt.pressureTestMode) { outRow.outputSha256 = "SKIPPED_BY_PRESSURE_TEST_MODE"; } else { try { outRow.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { outRow.notes = std::string("sha256_failed: ") + ex.what(); } }
                             if (!recon.data.empty()) {
                                 const std::size_t previewLen = std::min<std::size_t>(recon.data.size(), 96U);
                                 std::vector<unsigned char> preview(recon.data.begin(), recon.data.begin() + static_cast<std::ptrdiff_t>(previewLen));
@@ -7855,7 +7868,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
 
                             std::vector<unsigned char> resourceBytes;
                             std::string readErr;
-                            if (!readFileBytesBounded(fs::path(rfIt->second.outputPath), 512ULL * 1024ULL * 1024ULL, resourceBytes, readErr)) {
+                            if (!readFileBytesBounded(fs::path(rfIt->second.outputPath), kMaxSingleCopyOutBytes, resourceBytes, readErr)) {
                                 outRow.notes = "synthetic_base=1; resource_fork_read_failed=" + readErr + "; resource_row_sequence=" + std::to_string(rfIt->second.sequence);
                                 apfsSpotlightFileCopyOutRows.push_back(std::move(outRow));
                                 continue;
@@ -7886,7 +7899,7 @@ void Aff4ProbeWorker::executeDynamicLoadProbe(const fs::path& caseDir,
                             outRow.outputPath = pathString(outPath);
                             outRow.outputRelativePath = pathString(fs::relative(outPath, caseDir));
                             outRow.outputSizeBytes = sizeEc2 ? 0ULL : static_cast<std::uint64_t>(sz2);
-                            try { outRow.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { outRow.notes = std::string("synthetic_base=1; sha256_failed: ") + ex.what(); }
+                            if (opt.pressureTestMode) { outRow.outputSha256 = "SKIPPED_BY_PRESSURE_TEST_MODE"; } else { try { outRow.outputSha256 = sha256File(outPath); } catch (const std::exception& ex) { outRow.notes = std::string("synthetic_base=1; sha256_failed: ") + ex.what(); } }
                             if (!recon.data.empty()) {
                                 const std::size_t previewLen = std::min<std::size_t>(recon.data.size(), 96U);
                                 std::vector<unsigned char> preview(recon.data.begin(), recon.data.begin() + static_cast<std::ptrdiff_t>(previewLen));

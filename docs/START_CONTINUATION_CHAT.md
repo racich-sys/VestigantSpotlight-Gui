@@ -1,143 +1,124 @@
-# Vestigant Spotlight / Spotlight2 continuation handoff — continue from V1.6.87
+# Start Continuation Chat - Vestigant Spotlight V1.6.101
 
-## Project context
+Use this to continue the project seamlessly in a new chat.
 
-Vestigant Spotlight / Spotlight2 is a Windows C++ forensic tool for macOS Spotlight Store-V2 and iOS CoreSpotlight analysis, including AFF4/APFS intake, Store-V2 staging, native parser/enrichment, GUI investigator views, Cache text incorporation, and active/current filesystem comparison.
+## Current state
 
-## Strict project rules
+Current package: `VestigantSpotlightInv_V1_6_101.zip`.
 
-1. Read `ai_context.md` first from the latest uploaded source ZIP before making any code, script, documentation, or packaging changes.
-2. Treat the uploaded source ZIP as the source of truth. Do not assume earlier generated files are current unless present in the latest uploaded source.
-3. Every factual/build/runtime/code-change claim must be grounded in uploaded files, tool output, logs, or directly inspected artifacts.
-4. Check for hallucinations before changing code. Verify the claimed issue exists in the current source before implementing.
-5. Keep code modular. Avoid large monolithic additions and oversized C++ raw string literals.
-6. Maintain active Markdown consolidation: exactly five active Markdown files in the package:
-   - `.github/pull_request_template.md`
-   - `ai_context.md`
-   - `docs/PROJECT_REFERENCE_V<version>.md`
-   - `docs/START_CONTINUATION_CHAT.md`
-   - `third_party/lzfse/README.md`
-7. Update `ai_context.md` with only verified solved issues as verified; suspected/unvalidated items must be labeled pending/unverified.
-8. Update `docs/START_CONTINUATION_CHAT.md` last before packaging.
-9. Every package must include root-level one-click PowerShell scripts and exact copy/paste commands.
-10. After providing any build, also provide the needed `.ps1` files and the exact PowerShell command.
-11. When thin results are uploaded, proceed automatically with the next build unless the user explicitly says pause.
+V1.6.101 was built after reviewing the V1.6.100 thin upload. The V1.6.100 wrapper summary showed `PressureTestMode=True`, `ForceContainerHash=False`, `SkipContainerHash=True`, `FullNativeValues=True`, `MaxNativeRecords=0`, `MaxNativeBlocks=0`, and `RunnerExitCode=0`. The V1.6.100 Windows/MSVC build log showed CLI/tests/GUI built and self-test passed.
 
-## Current latest generated source
+## Standing instructions
 
-- Latest source package generated: `VestigantSpotlightInv_V1_6_87.zip`
-- Current version: V1.6.87
-- V1.6.87 is a narrow no-hash thin-wrapper hotfix following repeated V1.6.86 source-container hashing during AFF4 thin runs.
-- Treat V1.6.87 as test/validation stage until Windows/MSVC and AFF4 runtime outputs are uploaded.
+1. Read `ai_context.md` first.
+2. Treat the latest uploaded source ZIP as the source of truth.
+3. Verify every claimed issue against uploaded logs/thin results/source/tool output before changing code.
+4. Do not build again until the user uploads the next thin result or explicitly tells you to build.
+5. When a thin result is uploaded, review and proceed unless the user explicitly says pause.
+6. Keep exactly five active Markdown files in the package.
+7. Update `ai_context.md` whenever something needs to be remembered; do not rely on chat memory.
+8. Keep SQLite as the authoritative forensic case DB. DuckDB is only a possible reporting sidecar. RocksDB or per-store SQLite temp DBs are only possible parser scratch/cache options.
+9. Investigator timeline rows must remain grouped by file/folder/inode. Raw date candidates remain the drilldown/provenance table.
+10. Points of interest are unvalidated investigative leads. The user/application independently validates results.
 
-## Comparative build detail — V1.6.86 to V1.6.87
+## V1.6.100 thin review
 
-### V1.6.86 evidence that triggered V1.6.87
+V1.6.100 completed successfully with `RunnerExitCode=0` and fixed the prior perceived stall. The thin performance summary reported an observed `run_progress` duration of about 583 seconds and no slow exports above threshold.
 
-The user pasted a V1.6.86 AFF4 thin/trial console and log excerpt showing:
+Core V1.6.100 counts remained stable:
 
 ```text
-Source-container SHA256 hashing requested for this run.
-Original container SHA256 hashing started. size_bytes=74468278910
-original_container_hash_start
+raw_record_count=102170
+raw_key_value_count=4225419
+raw_date_candidate_count=815736
+artifact_count=101326
+usage_evidence_count=1092
+timeline_event_count=101326
 ```
 
-This proved the prior same-version V1.6.86 patches were insufficient. The thin run was still hashing the original AFF4 source container.
+V1.6.100 compacted the high-priority validation evidence CSV correctly: `aff4_apfs_staged_storev2_high_priority_validation_evidence_packet.csv` wrote 34 compact rows instead of spending about two hours expanding a full row-level packet into the thin upload.
 
-### Verified root-cause finding
+The new issue found in V1.6.100 was export ordering: POI/high-priority CSVs were written before Spotlight Cache text incorporation. The early high-priority CSV had 34 rows, but the later comparison sidecar high-priority queue had 125 rows after cache text was available. This means the thin CSVs could under-report cache-text-driven validation leads even though the sidecar contained them.
 
-The hashing itself was requested before APFS parsing. The exact console phrase was emitted by `tools/Run-SingleAff4SourceProbeAndZip.ps1` only when `$ForceContainerHash` was true.
+## V1.6.101 changes
 
-The line-by-line hashing-path review found that `Run-V1_6_86-AfterDownload.ps1` could use a stale external `D:\Downloads\BuildAndRun-V1_6_86-FromDownloadedZip.ps1` or sibling wrapper before bootstrapping from the updated ZIP. That stale same-version wrapper could still pass `-ForceContainerHash`.
+V1.6.101 adds a post-cache validation export refresh:
 
-### V1.6.87 fixes made
+- New function: `refreshAff4ApfsPostCacheValidationExports()`.
+- Called after `runSpotlightCacheTextIncorporation()` and before readiness/three-database sidecar refresh.
+- Rebuilds `temp_aff4_high_priority_validation_queue` after cache text rows are available.
+- Overwrites these bounded CSVs with post-cache values:
+  - `aff4_apfs_staged_storev2_points_of_interest_summary.csv`
+  - `aff4_apfs_staged_storev2_points_of_interest_sample.csv`
+  - `aff4_apfs_staged_storev2_points_of_interest_validation_sample.csv`
+  - `aff4_apfs_staged_storev2_high_priority_validation_queue.csv`
+  - `aff4_apfs_staged_storev2_high_priority_validation_evidence_packet.csv`
+- Keeps the thin evidence packet compact and bounded.
+- Keeps the full row-level validation evidence in `comparison.sqlite.high_priority_validation_evidence_packet`.
 
-| Area | V1.6.86 problem | V1.6.87 behavior |
-|---|---|---|
-| Versioning | Same-version hotfixes allowed stale wrapper confusion | New version V1.6.87 |
-| One-click wrapper | Could prefer stale `D:\Downloads` sibling wrapper | Always extracts wrapper from the ZIP |
-| Wrapper source of truth | External script could override ZIP internals | ZIP bootstrap is authoritative |
-| AFF4 thin hash flag | Stale wrapper could pass `-ForceContainerHash` | Thin wrappers pass `-SkipContainerHash` |
-| Low-level runner | Honored `-ForceContainerHash` immediately | Requires both `-ForceContainerHash` and `-ConfirmSourceContainerHash` |
-| Thin upload SHA sidecar | Could generate `.sha256.txt` | Not generated by default |
-| Build/download hash display | Could print source ZIP hash during thin workflow | Skipped unless specifically requested |
-
-### Expected V1.6.87 console indicators
-
-Expected:
+Expected new markers:
 
 ```text
-Bootstrap policy: extracting wrapper from ZIP and ignoring stale D:\Downloads sibling scripts.
-Thin/test mode: passing --skip-container-hash.
+aff4_apfs_post_cache_validation_exports_start
+aff4_apfs_post_cache_high_priority_queue_temp_start
+aff4_apfs_post_cache_high_priority_queue_temp_complete
+aff4_apfs_post_cache_high_priority_evidence_compact_export_start
+aff4_apfs_post_cache_high_priority_evidence_compact_export_complete
+aff4_apfs_post_cache_validation_exports_complete
 ```
 
-Must not appear in thin/trial run:
+## Validation completed before packaging
 
-```text
-Source-container SHA256 hashing requested for this run.
-Original container SHA256 hashing started.
-original_container_hash_start
-```
+- Linux CMake build passed.
+- CLI version returned `Vestigant Spotlight v1.6.101`.
+- Self-test passed.
+- No-hash pressure source-probe smoke completed with `HASH_STARTED=0`.
+- Source-probe smoke exercised the post-cache refresh markers with zero-row fake AFF4 input.
+- Static audit passed: exactly five Markdown files and zero oversized raw-string literals.
+- ZIP integrity test passed.
 
-## Required next test after V1.6.87
+Windows/MSVC V1.6.101 build and real AFF4/APFS runtime are not verified until the user runs the workflow and uploads results.
 
-Run the V1.6.87 one-click AFF4 workflow:
+## Expected next run
+
+Run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_87-AfterDownload.ps1
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_101-AfterDownload.ps1
 ```
 
 Required files in `D:\Downloads`:
 
 ```text
-D:\Downloads\VestigantSpotlightInv_V1_6_87.zip
-D:\Downloads\Run-V1_6_87-AfterDownload.ps1
+D:\Downloads\VestigantSpotlightInv_V1_6_101.zip
+D:\Downloads\Run-V1_6_101-AfterDownload.ps1
 ```
 
-Upload after the run:
+Expected upload after run:
 
 ```text
-D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_87.zip
-D:\Downloads\V1_6_87_build.log
-D:\Downloads\V1_6_87_AFF4_WRAPPER_RUN_SUMMARY.txt
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_101.zip
+D:\Downloads\V1_6_101_build.log
+D:\Downloads\V1_6_101_AFF4_WRAPPER_RUN_SUMMARY.txt
 ```
 
-If hashing still appears, also upload:
+A thin `.sha256.txt` sidecar is not expected unless full-validation hashing is explicitly requested.
 
-```text
-VestigantSpotlight.log
-run_progress.tsv
-run_status.txt
-console transcript showing the first 80 lines after executing Run-V1_6_87-AfterDownload.ps1
-```
+## Things to check in the V1.6.101 thin upload
 
-## Other V1.6.86 fixes retained in V1.6.87
+1. Wrapper summary still shows no-hash pressure mode and `RunnerExitCode=0`.
+2. `case_summary.csv` remains near the established baseline counts.
+3. `run_progress.tsv` includes the post-cache validation export markers.
+4. `aff4_apfs_staged_storev2_high_priority_validation_queue.csv` is refreshed after cache text and should move toward the V1.6.100 post-cache sidecar count, around 125 rows on the current AFF4 case.
+5. `aff4_apfs_staged_storev2_points_of_interest_summary.csv` should include cache-text leads after cache incorporation.
+6. The compact validation evidence CSV should remain fast and bounded.
+7. No output language treats points-of-interest or missing candidates as proof.
 
-V1.6.87 retains the V1.6.86 fix for the V1.6.85 APFS active-comparison SQL exception. The next AFF4 result should still be checked for:
+## Roadmap after V1.6.101
 
-- `aff4_apfs_staged_storev2_enrichment_probe_summary.json` status should be `ENRICHMENT_PROBE_COMPLETED`.
-- `case_summary.json` should return toward the V1.6.84 baseline of roughly `artifact_count=101326` and `timeline_event_count=102170`.
-- `run_progress.tsv` should show APFS active comparison completion or tiered progress markers, not the prior `no such column: a.parent_inode_num` failure.
+- Validate post-cache POI/high-priority CSV refresh against the real AFF4 thin upload.
+- Improve GUI workflow for opening/attaching the three-database sidecars.
+- Add controlled parallel Store-V2 parsing only after DB/query/POI layer stabilizes.
+- Continue Store-V2 map decoding review for partially parsed dbStr maps.
 
-## Expected next package if changes are needed
-
-- Next version should be V1.6.88 unless a different narrow hotfix naming convention is required.
-- Keep the no-hash thin policy.
-- Do not reintroduce same-version overwrites for wrapper fixes.
-- Update `ai_context.md` first/throughout and `docs/START_CONTINUATION_CHAT.md` last.
-
-## V1.6.87 validation completed before packaging
-
-- Linux CMake build completed.
-- `VestigantSpotlightCli --version` returned `Vestigant Spotlight v1.6.87`.
-- `VestigantSpotlightTests` passed.
-- Hash-path line review audit passed.
-- Static audit passed.
-- No-hash CLI smoke test against a small fake `.aff4` produced `original_container_hash_deferred_default` and did not produce `original_container_hash_start`.
-- ZIP integrity test was performed after packaging.
-
-## V1.6.87 validation not completed
-
-- Windows/MSVC build is unverified until the user runs the provided PowerShell command and uploads `V1_6_87_build.log`.
-- AFF4/APFS runtime parsing/enrichment is unverified until the user uploads the V1.6.87 thin output bundle.
-- GUI runtime is unverified until the user uploads a GUI `VestigantSpotlight.log` and any relevant screenshots.
+_Last package document updated after all other Markdown: V1.6.101._

@@ -2299,6 +2299,32 @@ SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,dis
 FROM vw_object_usage_summary
 ORDER BY COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_used_date_utc,''), NULLIF(usage_earliest_utc,''), artifact_id) DESC
 )SQL", log);
+    exportQuery(db, exportDir / "artifact_time_summary.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,logical_size_bytes,physical_size_bytes,content_type,first_date_utc,last_date_utc,created_earliest_utc,created_latest_utc,modified_earliest_utc,modified_latest_utc,downloaded_earliest_utc,downloaded_latest_utc,usage_earliest_utc,usage_latest_utc,interesting_or_index_earliest_utc,interesting_or_index_latest_utc,total_date_count,created_date_count,modified_date_count,downloaded_date_count,usage_date_count,interesting_or_index_date_count,metadata_seen_or_index_updated_count,other_date_count,likely_snapshot_or_index_date_count,available_date_fields,interpreted_date_types,snapshot_warning_reasons,date_association_status,date_association_confidence,interpretation_note
+FROM vw_artifact_time_summary
+ORDER BY COALESCE(NULLIF(last_date_utc,''), artifact_id) DESC
+)SQL", log);
+    exportQuery(db, exportDir / "investigator_points_of_interest_summary.csv", R"SQL(
+SELECT poi_priority,poi_category,COUNT(*) AS lead_count,MAX(poi_score) AS max_score,ROUND(AVG(poi_score),1) AS avg_score,SUM(CASE WHEN missing_candidate_rows>0 THEN 1 ELSE 0 END) AS missing_leads,SUM(CASE WHEN usage_date_count>0 THEN 1 ELSE 0 END) AS usage_leads,SUM(CASE WHEN cache_text_rows>0 THEN 1 ELSE 0 END) AS cache_text_leads,SUM(CASE WHEN COALESCE(NULLIF(where_froms,''),'')<>'' OR downloaded_date_count>0 THEN 1 ELSE 0 END) AS where_from_leads,SUM(CASE WHEN external_volume_rows>0 THEN 1 ELSE 0 END) AS external_volume_leads,'UNVALIDATED_INVESTIGATIVE_LEAD' AS validation_status
+FROM vw_investigator_points_of_interest
+GROUP BY poi_priority, poi_category
+ORDER BY max_score DESC, lead_count DESC, poi_category
+)SQL", log);
+    exportQuery(db, exportDir / "investigator_points_of_interest.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,content_type,logical_size_bytes,physical_size_bytes,existence_status,deleted_or_orphaned_candidate,matched_filesystem_path,poi_score,poi_priority,poi_category,usage_earliest_utc,usage_latest_utc,usage_date_count,total_date_count,first_date_utc,last_date_utc,downloaded_date_count,missing_candidate_rows,missing_statuses,missing_reasons,cache_text_rows,max_cache_text_length,cache_path_sample,external_volume_rows,mounted_volume_names,where_froms,available_date_fields,snapshot_warning_reasons,evidence_text_sample,validation_evidence_tables,validation_workflow,validation_status,interpretation_note
+FROM vw_investigator_points_of_interest
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC
+)SQL", log);
+    exportQuery(db, exportDir / "investigator_high_priority_validation_queue.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,existence_status,poi_score,poi_priority,poi_category,usage_latest_utc,usage_date_count,missing_candidate_rows,cache_text_rows,evidence_text_sample,validation_queue_status,validation_queue_instruction,validation_evidence_tables,validation_workflow,validation_status,interpretation_note
+FROM vw_investigator_high_priority_validation_queue
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC
+)SQL", log);
+    exportQuery(db, exportDir / "investigator_high_priority_validation_evidence_packet.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,best_path,poi_score,poi_priority,poi_category,evidence_table,evidence_id,evidence_field,evidence_value,evidence_utc,evidence_category,validation_locator,validation_status
+FROM vw_high_priority_validation_evidence_packet
+ORDER BY poi_score DESC, artifact_id, evidence_table, evidence_id
+)SQL", log);
     exportQuery(db, exportDir / "usage_evidence.csv", R"SQL(
 SELECT u.usage_id,u.artifact_id,u.source_id,u.store_guid,u.inode_num,a.file_name,a.best_path,u.field_name,u.field_value,u.parsed_utc,a.existence_status,a.deleted_or_orphaned_candidate
 FROM usage_evidence u LEFT JOIN artifacts a ON a.artifact_id=u.artifact_id ORDER BY u.store_guid, CAST(u.inode_num AS INTEGER), u.field_name
@@ -2384,7 +2410,7 @@ SELECT t.event_timestamp_utc AS event_utc,
        END AS confidence,
        t.existence_status,
        t.deleted_or_orphaned_candidate,
-       '' AS notes
+       'Grouped time-summary row; raw_date_candidates contains per-date drilldown/provenance.' AS notes
 FROM timeline_events t
 LEFT JOIN artifacts a ON a.artifact_id=t.artifact_id
 WHERE COALESCE(NULLIF(t.event_timestamp_utc,''),'')<>''
@@ -2856,6 +2882,46 @@ ORDER BY COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_used_date_utc,''), NU
 LIMIT 5000
 )SQL", log);
     manifest << "object_usage_summary_focus.csv,vw_object_usage_summary," << tableRowCount(db, "artifacts") << "," << FocusSampleLimit << ",object-centric usage rows with filename/path and fused usage metadata\n";
+    exportQuery(db, sampleDir / "artifact_time_summary_focus.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,path_source,path_status,content_type,first_date_utc,last_date_utc,total_date_count,usage_earliest_utc,usage_latest_utc,usage_date_count,modified_latest_utc,created_latest_utc,downloaded_latest_utc,available_date_fields,interpreted_date_types,snapshot_warning_reasons,date_association_status,date_association_confidence,interpretation_note
+FROM vw_artifact_time_summary
+ORDER BY COALESCE(NULLIF(last_date_utc,''), artifact_id) DESC
+LIMIT 5000
+)SQL", log);
+    manifest << "artifact_time_summary_focus.csv,vw_artifact_time_summary," << tableRowCount(db, "artifact_date_summary") << "," << FocusSampleLimit << ",one row per artifact/file/folder/inode time summary; raw_date_candidates is the drilldown/provenance table\n";
+
+    exportQuery(db, sampleDir / "investigator_points_of_interest_summary_focus.csv", R"SQL(
+SELECT poi_priority,poi_category,COUNT(*) AS lead_count,MAX(poi_score) AS max_score,ROUND(AVG(poi_score),1) AS avg_score,SUM(CASE WHEN missing_candidate_rows>0 THEN 1 ELSE 0 END) AS missing_leads,SUM(CASE WHEN usage_date_count>0 THEN 1 ELSE 0 END) AS usage_leads,SUM(CASE WHEN cache_text_rows>0 THEN 1 ELSE 0 END) AS cache_text_leads,'UNVALIDATED_INVESTIGATIVE_LEAD' AS validation_status
+FROM vw_investigator_points_of_interest
+GROUP BY poi_priority, poi_category
+ORDER BY max_score DESC, lead_count DESC, poi_category
+LIMIT 5000
+)SQL", log);
+    manifest << "investigator_points_of_interest_summary_focus.csv,vw_investigator_points_of_interest," << tableRowCount(db, "vw_investigator_points_of_interest") << "," << FocusSampleLimit << ",POI summary by priority/category; all rows are validation leads\n";
+
+    exportQuery(db, sampleDir / "investigator_points_of_interest_focus.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,existence_status,poi_score,poi_priority,poi_category,usage_latest_utc,usage_date_count,missing_candidate_rows,cache_text_rows,max_cache_text_length,where_froms,evidence_text_sample,validation_evidence_tables,validation_workflow,validation_status,interpretation_note
+FROM vw_investigator_points_of_interest
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC
+LIMIT 5000
+)SQL", log);
+    manifest << "investigator_points_of_interest_focus.csv,vw_investigator_points_of_interest," << tableRowCount(db, "vw_investigator_points_of_interest") << "," << FocusSampleLimit << ",triaged points of interest; unvalidated lead rows intended for independent validation\n";
+
+    exportQuery(db, sampleDir / "investigator_high_priority_validation_queue_focus.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,existence_status,poi_score,poi_priority,poi_category,usage_latest_utc,usage_date_count,missing_candidate_rows,cache_text_rows,evidence_text_sample,validation_queue_status,validation_queue_instruction,validation_evidence_tables,validation_workflow,validation_status,interpretation_note
+FROM vw_investigator_high_priority_validation_queue
+ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC
+LIMIT 5000
+)SQL", log);
+    manifest << "investigator_high_priority_validation_queue_focus.csv,vw_investigator_high_priority_validation_queue," << tableRowCount(db, "vw_investigator_high_priority_validation_queue") << "," << FocusSampleLimit << ",high-priority POI queue intended for independent application validation\n";
+
+    exportQuery(db, sampleDir / "investigator_high_priority_validation_evidence_packet_focus.csv", R"SQL(
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,best_path,poi_score,poi_priority,poi_category,evidence_table,evidence_id,evidence_field,evidence_value,evidence_utc,evidence_category,validation_locator,validation_status
+FROM vw_high_priority_validation_evidence_packet
+ORDER BY poi_score DESC, artifact_id, evidence_table, evidence_id
+LIMIT 10000
+)SQL", log);
+    manifest << "investigator_high_priority_validation_evidence_packet_focus.csv,vw_high_priority_validation_evidence_packet," << tableRowCount(db, "vw_high_priority_validation_evidence_packet") << ",10000,raw validation evidence packet for high-priority POI leads\n";
 
     exportQuery(db, sampleDir / "artifacts_wherefrom_focus.csv", R"SQL(
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,where_froms,downloaded_date_utc,last_updated_utc,existence_status,deleted_or_orphaned_candidate,confidence

@@ -621,6 +621,79 @@ WHERE (existing_path<>'' AND instr(existing_path,'/')>0)
 )SQL");
         appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_seed_ready", "source_id=" + source.sourceId + " seed_rows=" + std::to_string(parentChainSeedRows) + " child_absolute_existing_paths_are_not_recursed=1");
 
+        const std::size_t directParentPathContextRows = scalarCount(db, R"SQL(
+SELECT COUNT(*)
+FROM parent_inode_links
+WHERE source_id=?
+  AND COALESCE(reconstructed_path_candidate,'')<>''
+)SQL", source.sourceId);
+        const std::size_t directParentUnresolvedRows = scalarCount(db, R"SQL(
+SELECT COUNT(*)
+FROM parent_inode_links
+WHERE source_id=?
+  AND (COALESCE(reconstructed_path_candidate,'')='' OR COALESCE(reconstructed_path_candidate,'') NOT LIKE '/%')
+)SQL", source.sourceId);
+        const std::size_t parentChainActionableWeakArtifactRows = scalarCount(db, R"SQL(
+SELECT COUNT(DISTINCT a.artifact_id)
+FROM artifacts a
+JOIN parent_inode_links pl
+  ON pl.source_id=a.source_id
+ AND pl.child_artifact_id=a.artifact_id
+WHERE a.source_id=?
+  AND COALESCE(NULLIF(pl.child_file_name,''),'')<>''
+  AND (
+    COALESCE(NULLIF(a.best_path,''),'')=''
+    OR COALESCE(a.best_path,'')=COALESCE(a.file_name,'')
+    OR instr(COALESCE(a.best_path,''),'/')=0
+    OR COALESCE(a.path_status,'') IN ('','RAW_PATH_NO_DIRECTORY_CONTEXT','FILE_NAME_ONLY_PARENT_RECONSTRUCTION_PENDING','FILE_NAME_ONLY_NO_PARENT_CONTEXT','NO_USABLE_PATH')
+  )
+)SQL", source.sourceId);
+        appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_fast_path_evaluation",
+            "source_id=" + source.sourceId +
+            " direct_path_context_rows=" + std::to_string(directParentPathContextRows) +
+            " unresolved_or_relative_links=" + std::to_string(directParentUnresolvedRows) +
+            " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
+
+        // V1.6.101: skip the expensive recursive parent-inode chain when it cannot
+        // improve investigator-facing artifact paths.  V1.6.97 proved that this
+        // AFF4/APFS case spent ~14.5 minutes in the recursive review query, then
+        // parent-inode path apply updated zero artifacts.  Direct parent-inode links
+        // remain preserved for validation; raw Store-V2/APFS evidence remains the
+        // authority.  The recursive query now runs only when weak/missing artifact
+        // paths are numerous enough to justify recursion or when direct parent context is too sparse to support the
+        // fast path. A small number of weak targets is deferred to validation exports instead of spending minutes in recursion.
+        const bool noWeakArtifactPathTargets = (parentChainActionableWeakArtifactRows == 0);
+        const bool negligibleWeakArtifactPathTargets = (parentChainActionableWeakArtifactRows <= 25 && directParentPathContextRows >= 50000);
+        const bool directContextCoversMostLinks = (directParentPathContextRows >= 50000 && directParentUnresolvedRows <= 25000);
+        const bool useFastParentChain = noWeakArtifactPathTargets || negligibleWeakArtifactPathTargets || directContextCoversMostLinks;
+        const std::string fastPathReason = noWeakArtifactPathTargets ? "no_weak_artifact_path_targets" :
+            (negligibleWeakArtifactPathTargets ? "negligible_weak_artifact_path_targets" : "direct_parent_context_fast_path");
+        if (useFastParentChain) {
+            db.exec(R"SQL(
+DROP TABLE IF EXISTS temp_parent_inode_path_candidates;
+DROP TABLE IF EXISTS temp_best_parent_inode_path;
+CREATE TEMP TABLE temp_parent_inode_path_candidates(
+  artifact_id INTEGER,source_id TEXT,store_guid TEXT,inode_num INTEGER,parent_inode_num INTEGER,
+  candidate_path TEXT,method TEXT,confidence TEXT,quality INTEGER,depth INTEGER,candidate_len INTEGER
+);
+CREATE TEMP TABLE temp_best_parent_inode_path AS
+SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,candidate_path,method,confidence,quality,depth
+FROM temp_parent_inode_path_candidates
+WHERE 0;
+)SQL");
+            appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_candidates_ready",
+                "source_id=" + source.sourceId + " candidate_rows=0 skipped=1 reason=" + fastPathReason +
+                " direct_path_context_rows=" + std::to_string(directParentPathContextRows) +
+                " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
+            appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_complete",
+                "source_id=" + source.sourceId + " skipped=1 reason=" + fastPathReason);
+        } else {
+            appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_recursive_query_start",
+                "source_id=" + source.sourceId + " seed_rows=" + std::to_string(parentChainSeedRows) +
+                " direct_path_context_rows=" + std::to_string(directParentPathContextRows) +
+                " unresolved_or_relative_links=" + std::to_string(directParentUnresolvedRows) +
+                " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
+
         db.exec(R"SQL(
 CREATE TEMP TABLE temp_parent_inode_path_candidates AS
 WITH RECURSIVE path_chain(artifact_id,source_id,store_guid,inode_num,parent_inode_num,inode_key,parent_inode_key,candidate_path,method,confidence,quality,depth,visited) AS (
@@ -786,6 +859,7 @@ WHERE source_id=)SQL" + sid + R"SQL(
 )SQL");
 
         appendEnrichmentRunStatus(db, 80, "enrichment_parent_inode_chain_complete", "source_id=" + source.sourceId);
+        }
 
         const std::size_t parentLinkRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=?", source.sourceId);
         const std::size_t pathContextRows = scalarCount(db, "SELECT COUNT(*) FROM parent_inode_links WHERE source_id=? AND COALESCE(reconstructed_path_candidate,'')<>''", source.sourceId);
@@ -1167,81 +1241,31 @@ WHERE a.source_id=)SQL" + sid + R"SQL(
     WHERE e.artifact_id=a.artifact_id AND e.detection_source_field=p.field_name AND e.detection_source_value=p.candidate_path
   );
 )SQL");
-        log.info("Building timeline_events with artifact_id-first set-based SQLite insert.");
-        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_start", "source_id=" + source.sourceId + " raw_date_candidates=" + std::to_string(dateCount));
+        log.info("Building grouped timeline_events from artifact_date_summary; raw_date_candidates remains the date-by-date provenance table.");
+        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_summary_insert_start", "source_id=" + source.sourceId + " artifact_date_summary_rows=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifact_date_summary WHERE source_id=?", source.sourceId)) + " raw_date_candidates=" + std::to_string(dateCount));
         appendEnrichmentRunStatus(db, 90, "enrichment_timeline_disk_space_preflight", sqliteDiskSpaceSummary(db));
-        db.exec("DROP TABLE IF EXISTS temp_timeline_date_candidates;");
-        db.exec(R"SQL(
-CREATE TEMP TABLE temp_timeline_date_candidates AS
-SELECT raw_date_id, artifact_id, source_id, store_guid, inode_num, parsed_utc, field_name
-FROM raw_date_candidates
-WHERE source_id=)SQL" + sid + R"SQL(
-  AND COALESCE(NULLIF(parsed_utc,''),'') <> '';
-CREATE INDEX IF NOT EXISTS idx_temp_timeline_date_candidates_artifact ON temp_timeline_date_candidates(artifact_id);
-CREATE INDEX IF NOT EXISTS idx_temp_timeline_date_candidates_fallback ON temp_timeline_date_candidates(source_id, store_guid, inode_num);
-)SQL");
-        const std::size_t timelineCandidateRows = scalarCount(db, "SELECT COUNT(*) FROM temp_timeline_date_candidates");
-        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_candidate_cache_complete", "rows=" + std::to_string(timelineCandidateRows));
         db.exec(R"SQL(
 INSERT INTO timeline_events(artifact_id,source_id,store_guid,inode_num,event_timestamp_utc,event_type,event_source_field,file_name,path,existence_status,deleted_or_orphaned_candidate)
 SELECT a.artifact_id,
-       d.source_id,
-       d.store_guid,
-       d.inode_num,
-       d.parsed_utc,
-       CASE
-         WHEN lower(d.field_name) LIKE '%used%' THEN 'USAGE'
-         WHEN lower(d.field_name) LIKE '%download%' THEN 'DOWNLOADED'
-         WHEN lower(d.field_name) LIKE '%creation%' OR lower(d.field_name) LIKE '%created%' THEN 'CREATED'
-         WHEN lower(d.field_name) LIKE '%modification%' OR lower(d.field_name) LIKE '%modified%' THEN 'MODIFIED'
-         WHEN lower(d.field_name) LIKE '%updated%' THEN 'UPDATED'
-         ELSE 'DATE_FIELD'
-       END,
-       d.field_name,
+       a.source_id,
+       a.store_guid,
+       a.inode_num,
+       COALESCE(NULLIF(s.last_date_utc,''), NULLIF(s.usage_latest_utc,''), NULLIF(s.modified_latest_utc,''), NULLIF(s.created_latest_utc,''), NULLIF(a.last_updated_utc,''), '') AS event_timestamp_utc,
+       'TIME_SUMMARY' AS event_type,
+       'GROUPED_BY_ARTIFACT_INODE; total_dates=' || COALESCE(CAST(s.total_date_count AS TEXT),'0') ||
+       '; usage_dates=' || COALESCE(CAST(s.usage_date_count AS TEXT),'0') ||
+       '; fields=' || substr(COALESCE(s.available_date_fields,''),1,650) AS event_source_field,
        a.file_name,
        a.best_path,
        'NOT_CHECKED',
        0
-FROM temp_timeline_date_candidates d
-LEFT JOIN artifacts a ON a.artifact_id=d.artifact_id
-WHERE d.artifact_id IS NOT NULL;
+FROM artifact_date_summary s
+JOIN artifacts a ON a.artifact_id=s.artifact_id
+WHERE s.source_id=)SQL" + sid + R"SQL(
+  AND COALESCE(s.total_date_count,0) > 0;
 )SQL");
-        const std::size_t timelineFastRows = scalarCount(db, "SELECT COUNT(*) FROM timeline_events WHERE source_id=?", source.sourceId);
-        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_artifact_id_complete", "rows=" + std::to_string(timelineFastRows));
-        const std::size_t timelineFallbackCandidates = scalarCount(db, "SELECT COUNT(*) FROM temp_timeline_date_candidates WHERE artifact_id IS NULL");
-        if (timelineFallbackCandidates > 0) {
-            appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_fallback_start", "artifact_id_null_candidates=" + std::to_string(timelineFallbackCandidates));
-            db.exec(R"SQL(
-INSERT INTO timeline_events(artifact_id,source_id,store_guid,inode_num,event_timestamp_utc,event_type,event_source_field,file_name,path,existence_status,deleted_or_orphaned_candidate)
-SELECT a.artifact_id,
-       d.source_id,
-       d.store_guid,
-       d.inode_num,
-       d.parsed_utc,
-       CASE
-         WHEN lower(d.field_name) LIKE '%used%' THEN 'USAGE'
-         WHEN lower(d.field_name) LIKE '%download%' THEN 'DOWNLOADED'
-         WHEN lower(d.field_name) LIKE '%creation%' OR lower(d.field_name) LIKE '%created%' THEN 'CREATED'
-         WHEN lower(d.field_name) LIKE '%modification%' OR lower(d.field_name) LIKE '%modified%' THEN 'MODIFIED'
-         WHEN lower(d.field_name) LIKE '%updated%' THEN 'UPDATED'
-         ELSE 'DATE_FIELD'
-       END,
-       d.field_name,
-       a.file_name,
-       a.best_path,
-       'NOT_CHECKED',
-       0
-FROM temp_timeline_date_candidates d
-LEFT JOIN artifacts a ON a.source_id=d.source_id AND a.store_guid=d.store_guid AND a.inode_num=d.inode_num
-WHERE d.artifact_id IS NULL;
-)SQL");
-            appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_fallback_complete", "artifact_id_null_candidates=" + std::to_string(timelineFallbackCandidates));
-        } else {
-            appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_fallback_skipped", "artifact_id_null_candidates=0");
-        }
-        db.exec("DROP TABLE IF EXISTS temp_timeline_date_candidates;");
         const std::size_t timelineRowsAfterInsert = scalarCount(db, "SELECT COUNT(*) FROM timeline_events WHERE source_id=?", source.sourceId);
-        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_insert_complete", "timeline_rows=" + std::to_string(timelineRowsAfterInsert));
+        appendEnrichmentRunStatus(db, 90, "enrichment_timeline_summary_insert_complete", "timeline_summary_rows=" + std::to_string(timelineRowsAfterInsert) + " grouped_by=artifact_id_inode raw_date_candidates_preserved=" + std::to_string(dateCount));
 
         insertMetric(db, source.sourceId, "raw_records", std::to_string(rawRecordCount));
         insertMetric(db, source.sourceId, "raw_key_values", std::to_string(kvCount));
@@ -1347,6 +1371,7 @@ FROM image_file_inventory
 WHERE source_id=)SQL" + sid + R"SQL(
   AND (COALESCE(NULLIF(full_path,''),'')<>'' OR COALESCE(NULLIF(inode_num,''), NULLIF(filesystem_object_id,''), '')<>'');
 )SQL");
+            db.exec("CREATE INDEX IF NOT EXISTS idx_temp_apfs_active_inventory_image_id ON temp_apfs_active_inventory(image_file_id);");
             db.exec("CREATE INDEX IF NOT EXISTS idx_temp_apfs_active_inventory_inode ON temp_apfs_active_inventory(source_id, inode_num, parent_inode_num);");
             db.exec("CREATE INDEX IF NOT EXISTS idx_temp_apfs_active_inventory_path ON temp_apfs_active_inventory(source_id, normalized_path);");
             db.exec("CREATE INDEX IF NOT EXISTS idx_temp_apfs_active_inventory_name ON temp_apfs_active_inventory(source_id, lower_file_name);");
@@ -1381,7 +1406,7 @@ CREATE TEMP TABLE temp_apfs_active_matches(
 );
 )SQL");
 
-            // V1.6.87 used correlated scalar subqueries with an ORDER BY expression that
+            // Earlier APFS comparison code used correlated scalar subqueries with an ORDER BY expression that
             // referenced the outer artifact alias. SQLite accepted the correlation in
             // WHERE but failed in the ORDER BY on the Windows test run with
             // "no such column: a.parent_inode_num".  Keep the same priority model, but
@@ -1462,6 +1487,23 @@ GROUP BY a.artifact_id;
             const std::size_t imageMatchedRows = scalarCount(db, "SELECT COUNT(*) FROM temp_apfs_active_matches WHERE image_file_id IS NOT NULL");
             appendEnrichmentRunStatus(db, 95, "active_comparison_image_matches_complete", "matched_artifacts=" + std::to_string(imageMatchedRows));
 
+            appendEnrichmentRunStatus(db, 95, "active_comparison_image_present_materialize_start", "matched_artifacts=" + std::to_string(imageMatchedRows));
+            db.exec("DROP TABLE IF EXISTS temp_apfs_active_present;");
+            db.exec(R"SQL(
+CREATE TEMP TABLE temp_apfs_active_present AS
+SELECT m.artifact_id,
+       m.image_file_id,
+       COALESCE(f.full_path,'') AS matched_filesystem_path,
+       COALESCE(m.match_basis,'') AS match_basis
+FROM temp_apfs_active_matches m
+LEFT JOIN temp_apfs_active_inventory f ON f.image_file_id=m.image_file_id
+WHERE m.image_file_id IS NOT NULL;
+)SQL");
+            db.exec("CREATE INDEX IF NOT EXISTS idx_temp_apfs_active_present_artifact ON temp_apfs_active_present(artifact_id);");
+            const std::size_t presentMaterializedRows = scalarCount(db, "SELECT COUNT(*) FROM temp_apfs_active_present");
+            appendEnrichmentRunStatus(db, 95, "active_comparison_image_present_materialize_complete", "rows=" + std::to_string(presentMaterializedRows));
+
+            appendEnrichmentRunStatus(db, 96, "active_comparison_image_baseline_update_start", "artifacts=" + std::to_string(artifactRows));
             db.exec(R"SQL(
 UPDATE artifacts
 SET filesystem_lookup_path = COALESCE((SELECT normalized_path FROM temp_apfs_active_artifacts a WHERE a.artifact_id=artifacts.artifact_id),''),
@@ -1475,19 +1517,21 @@ SET filesystem_lookup_path = COALESCE((SELECT normalized_path FROM temp_apfs_act
 WHERE source_id=)SQL" + sid + ";");
             appendEnrichmentRunStatus(db, 96, "active_comparison_image_baseline_update_complete", "artifacts_updated=" + std::to_string(lastSqlChangeCount(db)));
 
+            appendEnrichmentRunStatus(db, 96, "active_comparison_image_present_update_start", "present_candidates=" + std::to_string(presentMaterializedRows));
             db.exec(R"SQL(
 UPDATE artifacts
 SET existence_status='PRESENT_IN_APFS_IMAGE_INVENTORY',
-    matched_filesystem_path=COALESCE((SELECT f.full_path FROM temp_apfs_active_matches m JOIN temp_apfs_active_inventory f ON f.image_file_id=m.image_file_id WHERE m.artifact_id=artifacts.artifact_id LIMIT 1),''),
+    matched_filesystem_path=COALESCE((SELECT p.matched_filesystem_path FROM temp_apfs_active_present p WHERE p.artifact_id=artifacts.artifact_id),''),
     deleted_or_orphaned_candidate=0,
     orphan_reason='',
-    confidence='HIGH_APFS_IMAGE_INVENTORY_MATCH:' || COALESCE((SELECT match_basis FROM temp_apfs_active_matches m WHERE m.artifact_id=artifacts.artifact_id),'')
+    confidence='HIGH_APFS_IMAGE_INVENTORY_MATCH:' || COALESCE((SELECT p.match_basis FROM temp_apfs_active_present p WHERE p.artifact_id=artifacts.artifact_id),'')
 WHERE source_id=)SQL" + sid + R"SQL(
-  AND EXISTS (SELECT 1 FROM temp_apfs_active_matches m WHERE m.artifact_id=artifacts.artifact_id AND m.image_file_id IS NOT NULL);
+  AND EXISTS (SELECT 1 FROM temp_apfs_active_present p WHERE p.artifact_id=artifacts.artifact_id);
 )SQL");
             const long long presentRows = lastSqlChangeCount(db);
             appendEnrichmentRunStatus(db, 96, "active_comparison_image_present_update_complete", "artifacts_updated=" + std::to_string(presentRows));
 
+            appendEnrichmentRunStatus(db, 97, "active_comparison_image_missing_update_start", "comparable_rows=" + std::to_string(comparableRows));
             db.exec(R"SQL(
 UPDATE artifacts
 SET existence_status='MISSING_FROM_APFS_IMAGE_INVENTORY_CANDIDATE',
@@ -1502,6 +1546,7 @@ WHERE source_id=)SQL" + sid + R"SQL(
             const long long missingRows = lastSqlChangeCount(db);
             appendEnrichmentRunStatus(db, 97, "active_comparison_image_missing_update_complete", "artifacts_updated=" + std::to_string(missingRows));
 
+            appendEnrichmentRunStatus(db, 98, "active_comparison_image_candidate_insert_start", "missing_candidates=" + std::to_string(missingRows));
             db.exec(R"SQL(
 INSERT INTO orphaned_deleted_candidates(source_id,artifact_id,store_guid,inode_num,file_name,best_path,content_type,existence_status,orphan_reason,index_text_snippet)
 SELECT source_id, artifact_id, store_guid, inode_num, file_name, best_path,
@@ -1515,6 +1560,7 @@ WHERE source_id=)SQL" + sid + R"SQL(
             const long long candidateRows = lastSqlChangeCount(db);
             appendEnrichmentRunStatus(db, 98, "active_comparison_image_candidate_insert_complete", "rows_inserted=" + std::to_string(candidateRows));
 
+            appendEnrichmentRunStatus(db, 98, "active_comparison_image_run_summary_insert_start", "recording APFS image comparison summary");
             db.exec(R"SQL(
 INSERT INTO active_file_comparison_runs(source_id,image_inventory_available,spotlight_artifact_count,image_file_count,inode_match_count,path_match_count,missing_candidate_count,not_checked_count,run_status,comparison_basis,notes,created_utc)
 SELECT )SQL" + sid + R"SQL(,
@@ -1533,8 +1579,11 @@ FROM artifacts
 WHERE source_id=)SQL" + sid + ";");
             appendEnrichmentRunStatus(db, 98, "active_comparison_image_run_summary_insert_complete", "rows_inserted=" + std::to_string(lastSqlChangeCount(db)));
 
+            appendEnrichmentRunStatus(db, 99, "active_comparison_image_timeline_update_start", "syncing timeline existence flags");
             db.exec("UPDATE timeline_events SET existence_status=(SELECT existence_status FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id), deleted_or_orphaned_candidate=(SELECT deleted_or_orphaned_candidate FROM artifacts a WHERE a.artifact_id=timeline_events.artifact_id) WHERE source_id=" + sid + ";");
             const long long timelineRows = lastSqlChangeCount(db);
+            appendEnrichmentRunStatus(db, 99, "active_comparison_image_timeline_update_complete", "timeline_updated=" + std::to_string(timelineRows));
+            db.exec("DROP TABLE IF EXISTS temp_apfs_active_present;");
             db.exec("DROP TABLE IF EXISTS temp_apfs_active_matches;");
             db.exec("DROP TABLE IF EXISTS temp_apfs_active_artifacts;");
             db.exec("DROP TABLE IF EXISTS temp_apfs_active_inventory;");
@@ -1562,6 +1611,7 @@ SET existence_status = CASE
     orphan_reason = ''
 WHERE source_id=)SQL" + sid + ";");
             const long long artifactUpdates = lastSqlChangeCount(db);
+            appendEnrichmentRunStatus(db, 98, "active_comparison_image_run_summary_insert_start", "recording APFS image comparison summary");
             db.exec(R"SQL(
 INSERT INTO active_file_comparison_runs(source_id,image_inventory_available,spotlight_artifact_count,image_file_count,inode_match_count,path_match_count,missing_candidate_count,not_checked_count,run_status,comparison_basis,notes,created_utc)
 SELECT )SQL" + sid + R"SQL(,

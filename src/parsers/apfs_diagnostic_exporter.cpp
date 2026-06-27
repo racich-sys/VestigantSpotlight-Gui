@@ -1287,7 +1287,11 @@ std::string storeV2ComponentKind(const std::string& name) {
     if (n == "permstore" || n == "journalexclusion" || n == "journals.migration_secondchance") return "STOREV2_TOPLEVEL_COMPONENT";
     if (n == "cab.created" || n == "cab.modified" || n == "lion.created" || n == "lion.modified" || n == "star.created" || n == "star.modified") return "STOREV2_TOPLEVEL_COMPONENT";
     if (n == "tmp.cab" || n == "tmp.lion" || n == "tmp.star") return "STOREV2_TOPLEVEL_COMPONENT";
-    if (n.size() > 4 && n.substr(n.size() - 4) == ".txt") return "STOREV2_CACHE_FILE";
+    if (n.size() > 4 && n.substr(n.size() - 4) == ".txt") {
+        const std::string stem = n.substr(0, n.size() - 4);
+        const bool numericStem = !stem.empty() && std::all_of(stem.begin(), stem.end(), [](unsigned char ch) { return std::isxdigit(ch) != 0; });
+        return numericStem ? "STOREV2_CACHE_TEXT_FILE" : "STOREV2_TEXT_FILE_REVIEW";
+    }
     return "";
 }
 

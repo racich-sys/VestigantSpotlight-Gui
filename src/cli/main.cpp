@@ -49,9 +49,9 @@ void usage() {
     std::cout << appTitle() << "\n\n"
               << "Usage:\n"
               << "  VestigantSpotlightCli --mode discover --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--full-scan]\n"
-              << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
-              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
-              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
+              << "  VestigantSpotlightCli --mode source-probe --profile macos|ios|auto --input <folder|zip|aff4|img|dd|raw> --out <case-folder> [--full-scan] [--pressure-test] [--skip-container-hash] [--force-container-hash] [--reader-tools <folder>] [--strict-single-aff4] [--enable-aff4-dynamic-probe] [--enable-aff4-stream-inventory]\n"
+              << "  VestigantSpotlightCli --mode diagnostics --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--preserve] [--full-scan] [--pressure-test] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
+              << "  VestigantSpotlightCli --mode run --profile macos|ios|auto --input <raw-spotlight-root> --out <case-folder> [--7z <7z.exe>] [--reuse-ios-cache <completed-case-folder>] [--decode-core-native-values] [--pressure-test] [--force-container-hash] [--skip-container-hash] [--external-source-sha256 <sha256>] [--experimental-full-native-values] [--max-native-records N] [--max-native-blocks N] [--export-profile minimal|investigator|diagnostics|support|full] [--no-csv-exports]\n"
               << "  VestigantSpotlightCli --full-validation --input <raw-spotlight-root-or-zip> --out <case-folder>\n"
               << "Workflow:\n"
               << "  identify Spotlight store.db/.store.db evidence -> preserve static case copy -> native C++ decode into SQLite -> enrich -> review/export.\n\n"
@@ -123,6 +123,17 @@ int main(int argc, char** argv) {
             else if (a == "--no-csv-exports") { opt.suppressCsvExports = true; opt.exportProfile = "none"; }
             else if (a == "--diagnostic-full-native-exports") { opt.exportProfile = "diagnostics"; }
             else if (a == "--full-scan") opt.fullScan = true;
+            else if (a == "--pressure-test" || a == "--triage-mode") {
+                opt.pressureTestMode = true;
+                opt.preserveEvidence = false;
+                opt.preserveEvidenceExplicit = true;
+                opt.skipContainerHash = true;
+                opt.forceContainerHash = false;
+                opt.maxNativeRecords = 0;
+                opt.maxNativeRecordsExplicit = true;
+                opt.maxNativeBlocks = 0;
+                opt.dbSizeGuardrailBytes = 0;
+            }
             else if (a == "--skip-container-hash") opt.skipContainerHash = true;
             else if (a == "--force-container-hash" || a == "--hash-container") opt.forceContainerHash = true;
             else if (a == "--external-source-sha256" || a == "--source-sha256") opt.externalSourceSha256 = need(a);
@@ -138,6 +149,16 @@ int main(int argc, char** argv) {
                 throw std::runtime_error(a + " is no longer used. This version decodes raw Spotlight stores natively in C++.");
             }
             else throw std::runtime_error("Unknown argument: " + a);
+        }
+        if (opt.pressureTestMode) {
+            opt.preserveEvidence = false;
+            opt.preserveEvidenceExplicit = true;
+            opt.skipContainerHash = true;
+            opt.forceContainerHash = false;
+            opt.maxNativeRecords = 0;
+            opt.maxNativeRecordsExplicit = true;
+            opt.maxNativeBlocks = 0;
+            opt.dbSizeGuardrailBytes = 0;
         }
         std::string error;
         if (!validateRunOptions(opt, error)) {

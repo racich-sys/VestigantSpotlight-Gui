@@ -8,6 +8,7 @@ param(
     [ValidateSet("diagnostics","run")][string]$RunMode = "diagnostics",
     [ValidateSet("minimal","investigator","diagnostics","support","full")][string]$ExportProfile = "",
     [switch]$ForceContainerHash,
+    [switch]$PressureTestMode,
     [switch]$FullNativeValues,
     [switch]$DiagnosticFullNativeDb,
     [int]$MaxNativeRecords = 0,
@@ -168,6 +169,7 @@ Write-Host "iOS run mode: $RunMode"
 Write-Host "iOS export profile: $EffectiveExportProfile (FullDiagnostics=$($FullDiagnostics.IsPresent))"
 Write-Host "iOS full native metadata values: $($FullNativeValues.IsPresent)"
 Write-Host "iOS diagnostic full native DB persistence: $($DiagnosticFullNativeDb.IsPresent)"
+Write-Host "iOS Pressure Test / Triage mode: $($PressureTestMode.IsPresent)"
 if ($MaxNativeRecords -gt 0) { Write-Host "iOS max native records override: $MaxNativeRecords" }
 if ($MaxNativeBlocks -gt 0) { Write-Host "iOS max native blocks override: $MaxNativeBlocks" }
 if (![string]::IsNullOrWhiteSpace($ExternalSourceSha256)) { Write-Host "External source SHA256 supplied; CLI will record or compare it according to hash mode." }
@@ -183,7 +185,8 @@ $cliArgs = @(
   "--export-profile", $EffectiveExportProfile,
   "--verbose"
 )
-if ($ForceContainerHash) { $cliArgs += "--force-container-hash" }
+if ($PressureTestMode) { $cliArgs += "--pressure-test" }
+if ($ForceContainerHash -and -not $PressureTestMode) { $cliArgs += "--force-container-hash" } else { $cliArgs += "--skip-container-hash" }
 if ($FullNativeValues) { $cliArgs += "--experimental-full-native-values" }
 if ($DiagnosticFullNativeDb) { $cliArgs += "--diagnostic-full-native-db" }
 if ($MaxNativeRecords -gt 0) { $cliArgs += @("--max-native-records", [string]$MaxNativeRecords) }
@@ -217,7 +220,7 @@ try {
   -IncludeLogsTailOnly
 
 Get-Item $ZipPath | Select-Object FullName,Length
-Get-FileHash $ZipPath -Algorithm SHA256
+if ($PressureTestMode) { Write-Host "Pressure Test / Triage mode: upload ZIP hashing skipped for thin test." } else { Get-FileHash $ZipPath -Algorithm SHA256 }
 
 # V1.6.17 iOS validation fix: fail fast if the focused thin ZIP omits bounded row-level upload samples.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -258,7 +261,7 @@ try {
           "status=incomplete_run_diagnostic_bundle",
           "cli_exit_code=$cliExit",
           "missing_required_upload_samples=$($missingRequiredUploadSamples -join ';')",
-          "note=V1.6.87 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
+          "note=V1.6.101 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
         ) -Encoding UTF8
       } catch {}
     } else {

@@ -798,7 +798,15 @@ DbStrMapLoadResult makeDbStrResult(const fs::path& folder, int mapId) {
     return r;
 }
 
-DbStrMapLoadResult parseDbStrProperties(const fs::path& folder, int mapId, std::map<int, PropertyDef>& properties) {
+struct DbStrStringMapVariant {
+    const char* name = "current";
+    bool entrySizeIncludesVarint = true;
+};
+
+DbStrMapLoadResult parseDbStrPropertiesVariant(const fs::path& folder,
+                                                int mapId,
+                                                std::map<int, PropertyDef>& properties,
+                                                const DbStrStringMapVariant& variant) {
     auto result = makeDbStrResult(folder, mapId);
     if (result.status == "MISSING_COMPONENT") return result;
     try {
@@ -806,27 +814,97 @@ DbStrMapLoadResult parseDbStrProperties(const fs::path& folder, int mapId, std::
         const auto offsetsData = readWholeFileBounded(result.offsetsPath);
         (void)readWholeFileBounded(result.headerPath, 1024ull * 1024ull);
         const auto offsets = parseDbStrOffsets(offsetsData, result);
+        std::map<int, PropertyDef> parsed;
         for (const auto& [index, off] : offsets) {
             try {
                 if (off >= data.size()) { ++result.skippedEntries; continue; }
                 std::size_t moved = 0;
                 const auto entrySize = readVarSizeNum(data, off, moved);
                 if (entrySize == 0 || entrySize > MaxDecodedFieldBytes) { ++result.skippedEntries; continue; }
-                const auto entryEnd64 = static_cast<std::uint64_t>(off) + entrySize;
+                const auto entryEnd64 = static_cast<std::uint64_t>(off) +
+                    (variant.entrySizeIncludesVarint ? 0ull : static_cast<std::uint64_t>(moved)) + entrySize;
                 if (entryEnd64 > data.size() || moved + 2 > entrySize) { ++result.skippedEntries; continue; }
                 const std::size_t valueTypePos = static_cast<std::size_t>(off) + moved;
+                if (valueTypePos + 2 > static_cast<std::size_t>(entryEnd64)) { ++result.skippedEntries; continue; }
                 const auto valueType = data[valueTypePos];
                 const auto propType = data[valueTypePos + 1];
                 const auto nameBegin = valueTypePos + 2;
                 const auto nameEnd = static_cast<std::size_t>(entryEnd64);
                 auto name = dbStrUtf8(data, nameBegin, nameEnd);
                 if (name.empty()) { ++result.skippedEntries; continue; }
-                properties[index] = PropertyDef{name, propType, valueType};
+                parsed[index] = PropertyDef{name, propType, valueType};
                 ++result.parsedEntries;
             } catch (...) { ++result.skippedEntries; }
         }
+        properties = std::move(parsed);
         result.status = "PARSED";
-        result.message = "dbStr property map parsed";
+        result.message = std::string("dbStr property map parsed variant=") + variant.name;
+    } catch (const std::exception& ex) {
+        result.status = "FAILED";
+        result.message = ex.what();
+    }
+    return result;
+}
+
+DbStrMapLoadResult parseDbStrProperties(const fs::path& folder, int mapId, std::map<int, PropertyDef>& properties) {
+    const DbStrStringMapVariant variants[] = {
+        {"current", true},
+        {"external_payload_len", false},
+    };
+    DbStrMapLoadResult best;
+    std::map<int, PropertyDef> bestProperties;
+    bool haveBest = false;
+    for (const auto& variant : variants) {
+        std::map<int, PropertyDef> candidateProperties;
+        auto candidate = parseDbStrPropertiesVariant(folder, mapId, candidateProperties, variant);
+        if (candidate.status == "MISSING_COMPONENT") return candidate;
+        if (!haveBest || candidate.parsedEntries > best.parsedEntries) {
+            best = std::move(candidate);
+            bestProperties = std::move(candidateProperties);
+            haveBest = true;
+        }
+    }
+    if (haveBest) {
+        properties = std::move(bestProperties);
+        if (best.status == "PARSED") best.message += "; selected_best_of_string_map_variants";
+        return best;
+    }
+    auto failed = makeDbStrResult(folder, mapId);
+    failed.status = "FAILED";
+    failed.message = "no dbStr property variants attempted";
+    return failed;
+}
+
+DbStrMapLoadResult parseDbStrCategoriesVariant(const fs::path& folder,
+                                                int mapId,
+                                                std::map<int, std::string>& categories,
+                                                const DbStrStringMapVariant& variant) {
+    auto result = makeDbStrResult(folder, mapId);
+    if (result.status == "MISSING_COMPONENT") return result;
+    try {
+        const auto data = readWholeFileBounded(result.dataPath);
+        const auto offsetsData = readWholeFileBounded(result.offsetsPath);
+        (void)readWholeFileBounded(result.headerPath, 1024ull * 1024ull);
+        const auto offsets = parseDbStrOffsets(offsetsData, result);
+        std::map<int, std::string> parsed;
+        for (const auto& [index, off] : offsets) {
+            try {
+                if (off >= data.size()) { ++result.skippedEntries; continue; }
+                std::size_t moved = 0;
+                const auto entrySize = readVarSizeNum(data, off, moved);
+                if (entrySize == 0 || entrySize > MaxDecodedFieldBytes) { ++result.skippedEntries; continue; }
+                const auto entryEnd64 = static_cast<std::uint64_t>(off) +
+                    (variant.entrySizeIncludesVarint ? 0ull : static_cast<std::uint64_t>(moved)) + entrySize;
+                if (entryEnd64 > data.size() || moved > entrySize) { ++result.skippedEntries; continue; }
+                auto name = dbStrUtf8(data, static_cast<std::size_t>(off) + moved, static_cast<std::size_t>(entryEnd64));
+                if (name.empty()) { ++result.skippedEntries; continue; }
+                parsed[index] = name;
+                ++result.parsedEntries;
+            } catch (...) { ++result.skippedEntries; }
+        }
+        categories = std::move(parsed);
+        result.status = "PARSED";
+        result.message = std::string("dbStr category map parsed variant=") + variant.name;
     } catch (const std::exception& ex) {
         result.status = "FAILED";
         result.message = ex.what();
@@ -835,39 +913,56 @@ DbStrMapLoadResult parseDbStrProperties(const fs::path& folder, int mapId, std::
 }
 
 DbStrMapLoadResult parseDbStrCategories(const fs::path& folder, int mapId, std::map<int, std::string>& categories) {
-    auto result = makeDbStrResult(folder, mapId);
-    if (result.status == "MISSING_COMPONENT") return result;
-    try {
-        const auto data = readWholeFileBounded(result.dataPath);
-        const auto offsetsData = readWholeFileBounded(result.offsetsPath);
-        (void)readWholeFileBounded(result.headerPath, 1024ull * 1024ull);
-        const auto offsets = parseDbStrOffsets(offsetsData, result);
-        for (const auto& [index, off] : offsets) {
-            try {
-                if (off >= data.size()) { ++result.skippedEntries; continue; }
-                std::size_t moved = 0;
-                const auto entrySize = readVarSizeNum(data, off, moved);
-                if (entrySize == 0 || entrySize > MaxDecodedFieldBytes) { ++result.skippedEntries; continue; }
-                const auto entryEnd64 = static_cast<std::uint64_t>(off) + entrySize;
-                if (entryEnd64 > data.size() || moved > entrySize) { ++result.skippedEntries; continue; }
-                auto name = dbStrUtf8(data, static_cast<std::size_t>(off) + moved, static_cast<std::size_t>(entryEnd64));
-                if (name.empty()) { ++result.skippedEntries; continue; }
-                categories[index] = name;
-                ++result.parsedEntries;
-            } catch (...) { ++result.skippedEntries; }
+    const DbStrStringMapVariant variants[] = {
+        {"current", true},
+        {"external_payload_len", false},
+    };
+    DbStrMapLoadResult best;
+    std::map<int, std::string> bestCategories;
+    bool haveBest = false;
+    for (const auto& variant : variants) {
+        std::map<int, std::string> candidateCategories;
+        auto candidate = parseDbStrCategoriesVariant(folder, mapId, candidateCategories, variant);
+        if (candidate.status == "MISSING_COMPONENT") return candidate;
+        if (!haveBest || candidate.parsedEntries > best.parsedEntries) {
+            best = std::move(candidate);
+            bestCategories = std::move(candidateCategories);
+            haveBest = true;
         }
-        result.status = "PARSED";
-        result.message = "dbStr category map parsed";
-    } catch (const std::exception& ex) {
-        result.status = "FAILED";
-        result.message = ex.what();
     }
-    return result;
+    if (haveBest) {
+        categories = std::move(bestCategories);
+        if (best.status == "PARSED") best.message += "; selected_best_of_string_map_variants";
+        return best;
+    }
+    auto failed = makeDbStrResult(folder, mapId);
+    failed.status = "FAILED";
+    failed.message = "no dbStr category variants attempted";
+    return failed;
 }
 
-DbStrMapLoadResult parseDbStrIndexes(const fs::path& folder, int mapId, std::map<int, std::vector<int>>& indexes, bool hasExtraByte) {
-    auto result = makeDbStrResult(folder, mapId);
-    if (result.status == "MISSING_COMPONENT") return result;
+struct DbStrIndexDecodeVariant {
+    const char* name = "current";
+    bool entrySizeIncludesVarint = true;
+    bool hasExtraByte = false;
+    bool alignByRawIndexRemainder = false;
+};
+
+struct DbStrIndexDecodeStats {
+    DbStrMapLoadResult result;
+    std::map<int, std::vector<int>> values;
+    std::size_t totalRefs = 0;
+    std::size_t validCategoryRefs = 0;
+};
+
+DbStrIndexDecodeStats parseDbStrIndexesVariant(const fs::path& folder,
+                                               int mapId,
+                                               const std::map<int, std::string>& categories,
+                                               const DbStrIndexDecodeVariant& variant) {
+    DbStrIndexDecodeStats stats;
+    auto& result = stats.result;
+    result = makeDbStrResult(folder, mapId);
+    if (result.status == "MISSING_COMPONENT") return stats;
     try {
         const auto data = readWholeFileBounded(result.dataPath);
         const auto offsetsData = readWholeFileBounded(result.offsetsPath);
@@ -883,25 +978,86 @@ DbStrMapLoadResult parseDbStrIndexes(const fs::path& folder, int mapId, std::map
                 std::size_t movedIndex = 0;
                 const auto rawIndexSize = readVarSizeNum(data, pos, movedIndex);
                 pos += movedIndex;
-                if (hasExtraByte) ++pos;
-                const auto entryEnd64 = static_cast<std::uint64_t>(off) + entrySize;
+                if (variant.alignByRawIndexRemainder) pos += static_cast<std::size_t>(rawIndexSize % 4u);
+                if (variant.hasExtraByte) ++pos;
+                const auto entryEnd64 = static_cast<std::uint64_t>(off) +
+                    (variant.entrySizeIncludesVarint ? 0ull : static_cast<std::uint64_t>(movedEntry)) + entrySize;
                 if (entrySize == 0 || entrySize > MaxDecodedFieldBytes || entryEnd64 > data.size()) { ++result.skippedEntries; continue; }
                 const std::size_t byteCount = static_cast<std::size_t>((rawIndexSize / 4u) * 4u);
+                if (byteCount == 0) { ++result.skippedEntries; continue; }
                 if (pos + byteCount > static_cast<std::size_t>(entryEnd64) || pos + byteCount > data.size()) { ++result.skippedEntries; continue; }
-                std::vector<int> values;
-                values.reserve(byteCount / 4);
-                for (std::size_t i = 0; i + 4 <= byteCount; i += 4) values.push_back(readI32(data, pos + i));
-                indexes[index] = std::move(values);
-                ++result.parsedEntries;
+                std::vector<int> decoded;
+                decoded.reserve(byteCount / 4);
+                std::size_t validRefs = 0;
+                for (std::size_t i = 0; i + 4 <= byteCount; i += 4) {
+                    const int ref = readI32(data, pos + i);
+                    decoded.push_back(ref);
+                    ++stats.totalRefs;
+                    if (categories.find(ref) != categories.end()) {
+                        ++validRefs;
+                        ++stats.validCategoryRefs;
+                    }
+                }
+                // Index maps are category-reference maps. Keep entries only when the decoded references
+                // are semantically plausible against dbStr-2; this prevents a fallback layout from
+                // silently accepting random int32 byte windows.
+                if (!decoded.empty() && (categories.empty() || validRefs == decoded.size())) {
+                    stats.values[index] = std::move(decoded);
+                    ++result.parsedEntries;
+                } else {
+                    ++result.skippedEntries;
+                }
             } catch (...) { ++result.skippedEntries; }
         }
         result.status = "PARSED";
-        result.message = "dbStr index map parsed";
+        result.message = std::string("dbStr index map parsed variant=") + variant.name +
+                         " valid_category_refs=" + std::to_string(stats.validCategoryRefs) +
+                         "/" + std::to_string(stats.totalRefs);
     } catch (const std::exception& ex) {
         result.status = "FAILED";
         result.message = ex.what();
     }
-    return result;
+    return stats;
+}
+
+DbStrMapLoadResult parseDbStrIndexes(const fs::path& folder,
+                                     int mapId,
+                                     std::map<int, std::vector<int>>& indexes,
+                                     bool hasExtraByte,
+                                     const std::map<int, std::string>& categories) {
+    const DbStrIndexDecodeVariant variants[] = {
+        {"current", true, hasExtraByte, false},
+        {"external_payload_len_no_extra", false, false, false},
+        {"external_payload_len_align_no_extra", false, false, true},
+        {"external_payload_len_with_extra", false, true, false},
+        {"external_payload_len_align_with_extra", false, true, true},
+        {"current_flip_extra", true, !hasExtraByte, false},
+    };
+
+    DbStrIndexDecodeStats best;
+    bool haveBest = false;
+    for (const auto& variant : variants) {
+        auto candidate = parseDbStrIndexesVariant(folder, mapId, categories, variant);
+        if (candidate.result.status == "MISSING_COMPONENT") return candidate.result;
+        if (!haveBest ||
+            candidate.result.parsedEntries > best.result.parsedEntries ||
+            (candidate.result.parsedEntries == best.result.parsedEntries && candidate.validCategoryRefs > best.validCategoryRefs)) {
+            best = std::move(candidate);
+            haveBest = true;
+        }
+    }
+
+    if (haveBest) {
+        indexes = std::move(best.values);
+        if (best.result.status == "PARSED") {
+            best.result.message += "; selected_best_of_fallback_variants";
+        }
+        return best.result;
+    }
+    auto failed = makeDbStrResult(folder, mapId);
+    failed.status = "FAILED";
+    failed.message = "no dbStr index variants attempted";
+    return failed;
 }
 
 bool hasExternalDbStrMapComponents(const fs::path& folder) {
@@ -931,8 +1087,8 @@ std::vector<DbStrMapLoadResult> loadExternalDbStrMapsForStore(const fs::path& fo
     std::vector<DbStrMapLoadResult> results;
     results.push_back(parseDbStrProperties(folder, 1, properties));
     results.push_back(parseDbStrCategories(folder, 2, categories));
-    results.push_back(parseDbStrIndexes(folder, 4, indexes1, false));
-    results.push_back(parseDbStrIndexes(folder, 5, indexes2, true));
+    results.push_back(parseDbStrIndexes(folder, 4, indexes1, false, categories));
+    results.push_back(parseDbStrIndexes(folder, 5, indexes2, true, categories));
     return results;
 }
 

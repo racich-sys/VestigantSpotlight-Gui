@@ -111,7 +111,10 @@ try {
   "exports\date_field_attribution.csv",
             "exports\date_field_inventory.csv",
             "exports\snapshot_date_warnings.csv",
-            "exports\usage_evidence.csv"
+            "exports\usage_evidence.csv",
+            "exports\investigator_points_of_interest.csv",
+            "exports\investigator_high_priority_validation_queue.csv",
+            "exports\investigator_high_priority_validation_evidence_packet.csv"
         )
         foreach ($rel in $focusedFiles) { Copy-CaseFile $rel }
         Copy-CaseDirectory "exports\upload_samples"
