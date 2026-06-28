@@ -1,0 +1,11 @@
+V1.6.102 iOS CoreSpotlight production wrapper
+
+Use this after the V1.6.102 thin run and Windows build pass. It requests source-container hashing, full native metadata decoding, and investigator exports.
+
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_102\scripts\Run-V1_6_102-iOS-Production-AndZip.ps1 -CleanOut
+
+Optional bounded support/correlation mode:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_102\scripts\Run-V1_6_102-iOS-Production-AndZip.ps1 -CleanOut -MaterializeIosSupportDb
+
+Expected upload:
+D:\Downloads\Upload_Production_iOS_CoreSpotlight_V1_6_102.zip

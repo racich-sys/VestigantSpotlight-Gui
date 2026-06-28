@@ -361,12 +361,21 @@ std::uint64_t readBplistObjectCount(const std::vector<unsigned char>& bplist, st
     return count;
 }
 
+constexpr std::size_t BplistJsonStringLimit = 16384U;
+
 struct BplistDecodeContext {
     std::size_t callCount = 0;
+    std::size_t stringBudget = BplistJsonStringLimit;
     std::set<std::uint64_t> expandingComplexUids;
 };
 
-constexpr std::size_t BplistJsonStringLimit = 16384U;
+bool appendBplistJsonBudgeted(std::string& out, const std::string& value, BplistDecodeContext& ctx) {
+    if (ctx.stringBudget == 0) return false;
+    const std::size_t take = (std::min)(value.size(), ctx.stringBudget);
+    out.append(value.data(), take);
+    ctx.stringBudget -= take;
+    return take == value.size();
+}
 
 std::string resolveUid(std::uint64_t uid,
                        int depth,
@@ -423,17 +432,16 @@ std::string resolveUid(std::uint64_t uid,
         }
         std::string json = "[";
         const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
-        for (std::uint64_t i = 0; i < displayCount; ++i) {
-            if (json.size() > BplistJsonStringLimit) {
-                if (i > 0) json += ", ";
-                json += "\"<truncation_size_limit_reached>\"";
-                break;
-            }
+        for (std::uint64_t i = 0; i < displayCount && ctx.stringBudget > 0; ++i) {
             const std::uint64_t childUid = readBplistUintBe(bplist, cursor + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
-            if (i > 0) json += ", ";
-            json += resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            if (i > 0 && !appendBplistJsonBudgeted(json, ", ", ctx)) break;
+            const std::string childJson = resolveUid(childUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            if (!appendBplistJsonBudgeted(json, childJson, ctx)) break;
         }
-        if (count > displayCount && json.size() <= BplistJsonStringLimit) json += ", \"<array_truncated>\"";
+        if (count > displayCount || ctx.stringBudget == 0 || json.size() > BplistJsonStringLimit) {
+            if (json.size() > 1) json += ", ";
+            json += "\"<array_truncated>\"";
+        }
         ctx.expandingComplexUids.erase(uid);
         return json + "]";
     }
@@ -454,18 +462,20 @@ std::string resolveUid(std::uint64_t uid,
         }
         std::string json = "{";
         const std::uint64_t displayCount = std::min<std::uint64_t>(count, 256U);
-        for (std::uint64_t i = 0; i < displayCount; ++i) {
-            if (json.size() > BplistJsonStringLimit) {
-                if (i > 0) json += ", ";
-                json += "\"<truncation_size_limit_reached>\": true";
-                break;
-            }
+        for (std::uint64_t i = 0; i < displayCount && ctx.stringBudget > 0; ++i) {
             const std::uint64_t keyUid = readBplistUintBe(bplist, keyBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
             const std::uint64_t valUid = readBplistUintBe(bplist, valBase + static_cast<std::size_t>(i) * objectRefSize, objectRefSize);
-            if (i > 0) json += ", ";
-            json += resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize, ctx) + ": " + resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            if (i > 0 && !appendBplistJsonBudgeted(json, ", ", ctx)) break;
+            const std::string keyJson = resolveUid(keyUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            const std::string valJson = resolveUid(valUid, depth + 1, objOffsets, bplist, objectRefSize, ctx);
+            if (!appendBplistJsonBudgeted(json, keyJson, ctx)) break;
+            if (!appendBplistJsonBudgeted(json, ": ", ctx)) break;
+            if (!appendBplistJsonBudgeted(json, valJson, ctx)) break;
         }
-        if (count > displayCount && json.size() <= BplistJsonStringLimit) json += ", \"<dictionary_truncated>\": true";
+        if (count > displayCount || ctx.stringBudget == 0 || json.size() > BplistJsonStringLimit) {
+            if (json.size() > 1) json += ", ";
+            json += "\"<dictionary_truncated>\": true";
+        }
         ctx.expandingComplexUids.erase(uid);
         return json + "}";
     }
@@ -668,7 +678,11 @@ namespace {
 
 std::string sqliteColumnText(sqlite3_stmt* st, int index) {
     const unsigned char* txt = sqlite3_column_text(st, index);
-    return txt ? reinterpret_cast<const char*>(txt) : std::string();
+    if (!txt) return std::string();
+    const int bytes = sqlite3_column_bytes(st, index);
+    if (bytes <= 0) return std::string();
+    // Preserve embedded NUL bytes in binary plist / NSKeyedArchiver payloads.
+    return std::string(reinterpret_cast<const char*>(txt), static_cast<std::size_t>(bytes));
 }
 
 std::string formatUnixSecondsUtc(long long seconds) {
@@ -1379,10 +1393,12 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
                                    SqlStatement& parsedIns) {
     if (!iosAppDbIsTargetRecordCategory(recordCategory)) return 0;
     constexpr int MaxRowsPerPage = 50000;
-    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT ? OFFSET ?";
+    bool usesRowIdKeyset = true;
+    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " WHERE rowid > ? ORDER BY rowid ASC LIMIT ?";
     sqlite3_stmt* st = nullptr;
     int rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
     if (rc != SQLITE_OK) {
+        usesRowIdKeyset = false;
         sql = "SELECT * FROM " + sqlIdentLocal(table) + " LIMIT ? OFFSET ?";
         rc = sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr);
     }
@@ -1403,13 +1419,20 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
     const int textCol = findColumnIndex(cols, {"text", "body", "message", "snippet", "preview", "comment", "notes", "ztext", "zbody", "zcontent", "zsummary", "data", "payload"}, true);
     std::size_t rows = 0;
     sqlite3_int64 offset = 0;
+    sqlite3_int64 lastRowId = -1;
     for (;;) {
         sqlite3_reset(st);
         sqlite3_clear_bindings(st);
-        sqlite3_bind_int(st, 1, MaxRowsPerPage);
-        sqlite3_bind_int64(st, 2, offset);
+        if (usesRowIdKeyset) {
+            sqlite3_bind_int64(st, 1, lastRowId);
+            sqlite3_bind_int(st, 2, MaxRowsPerPage);
+        } else {
+            sqlite3_bind_int(st, 1, MaxRowsPerPage);
+            sqlite3_bind_int64(st, 2, offset);
+        }
         std::size_t pageRows = 0;
         while (sqlite3_step(st) == SQLITE_ROW) {
+            if (usesRowIdKeyset) lastRowId = sqlite3_column_int64(st, 0);
         const std::string dateRaw = columnValue(st, dateCol, 128);
         const char* dateNamePtr = dateCol >= 0 ? sqlite3_column_name(st, dateCol) : "";
         const auto ts = normalizeIosAppTimestamp(dateRaw, dateNamePtr ? std::string(dateNamePtr) : std::string());
@@ -1521,7 +1544,7 @@ std::size_t parseIosAppDbTableRows(const std::string& sourceId,
             ++pageRows;
         }
         if (pageRows < static_cast<std::size_t>(MaxRowsPerPage)) break;
-        offset += static_cast<sqlite3_int64>(pageRows);
+        if (!usesRowIdKeyset) offset += static_cast<sqlite3_int64>(pageRows);
     }
     sqlite3_finalize(st);
     return rows;

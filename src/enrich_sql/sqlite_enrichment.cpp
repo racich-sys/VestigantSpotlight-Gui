@@ -654,7 +654,7 @@ WHERE a.source_id=?
             " unresolved_or_relative_links=" + std::to_string(directParentUnresolvedRows) +
             " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
 
-        // V1.6.101: skip the expensive recursive parent-inode chain when it cannot
+        // V1.6.102: skip the expensive recursive parent-inode chain when it cannot
         // improve investigator-facing artifact paths.  V1.6.97 proved that this
         // AFF4/APFS case spent ~14.5 minutes in the recursive review query, then
         // parent-inode path apply updated zero artifacts.  Direct parent-inode links

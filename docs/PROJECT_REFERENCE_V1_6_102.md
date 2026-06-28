@@ -1,4 +1,4 @@
-# AI Context - Vestigant Spotlight V1.6.102
+# Vestigant Spotlight V1.6.102 Project Reference
 
 This file must be reviewed first before every build, package, script, documentation, or code-change cycle. Do not rely on chat memory for project-critical state; if something needs to be remembered, put it in this file and in `docs/START_CONTINUATION_CHAT.md` before packaging.
 
@@ -159,27 +159,15 @@ D:\Downloads\V1_6_102_AFF4_WRAPPER_RUN_SUMMARY.txt
 
 A thin `.sha256.txt` sidecar is not expected unless a full-validation hash workflow is explicitly requested.
 
-## V1.6.102 post-cache validation export rule
+## V1.6.102 update
 
-V1.6.100 completed successfully and reduced observed run time to about 583 seconds, but review of the thin upload showed the POI/high-priority CSVs were written before Spotlight Cache text incorporation. The early thin high-priority queue had 34 rows, while the later comparison sidecar high-priority queue had 125 rows after cache text was available. This means any future POI/high-priority validation CSVs must be refreshed after cache-text processing, not only immediately after Store-V2 enrichment.
+V1.6.102 refreshes POI/high-priority validation CSV outputs after Spotlight Cache text incorporation. V1.6.100 wrote the fast compact high-priority CSV before cache text rows were available, so the thin high-priority queue showed 34 rows while the later comparison sidecar showed 125 rows. V1.6.102 keeps the compact bounded CSV design but overwrites the relevant POI/high-priority CSVs after cache processing so the upload bundle reflects post-cache validation leads.
 
-V1.6.102 adds a post-cache validation export refresh. After `aff4_apfs_spotlight_cache_text_complete`, the app rebuilds the high-priority validation queue and overwrites the bounded POI/high-priority CSVs with post-cache values. The thin CSV evidence packet remains compact and bounded; full row-level validation evidence remains in `comparison.sqlite.high_priority_validation_evidence_packet`.
-
-Expected post-cache markers:
-
-```text
-aff4_apfs_post_cache_validation_exports_start
-aff4_apfs_post_cache_high_priority_queue_temp_start
-aff4_apfs_post_cache_high_priority_queue_temp_complete
-aff4_apfs_post_cache_high_priority_evidence_compact_export_start
-aff4_apfs_post_cache_high_priority_evidence_compact_export_complete
-aff4_apfs_post_cache_validation_exports_complete
-```
-
-For the current AFF4 test case, the V1.6.102 high-priority queue CSV should increase from the pre-cache 34-row value toward the post-cache sidecar count observed in V1.6.100, around 125 rows, without reintroducing the two-hour full evidence packet CSV export.
-
-## V1.6.102 pre-release notes
-- V1.6.102 thin upload completed successfully with RunnerExitCode=0 and preserved expected counts: raw_records=102170, raw_key_values=4225419, raw_date_candidates=815736, artifacts=101326, usage=1092, timeline=101326.
-- V1.6.102 implements verified non-stale review findings: preserve embedded-NUL SQLite text/bplist payloads in iOS parser, make GUI ReadOnlyDb strictly read-only, move GUI writes to explicit WritableGuiDb, modernize folder picker with IFileOpenDialog, keep export threads joinable until shutdown, add iOS rowid keyset pagination fallback, add shared NSKeyedArchiver/bplist JSON expansion budget, and set new-case inode/parent inode schema affinity to INTEGER where appropriate.
-- The suggestions that native high-value probe strings still clamp to ASCII and APFS scanned-inode correlation is still O(NxM) were stale for V1.6.102; both were already fixed.
-- Existing case DBs are not retroactively migrated from TEXT to INTEGER inode affinity; this schema change affects new cases.
+## V1.6.102 changes
+- Fixed iOS SQLite text extraction to preserve embedded NUL bytes using sqlite3_column_bytes().
+- GUI ReadOnlyDb now opens SQLITE_OPEN_READONLY only; explicit GUI writes use WritableGuiDb.
+- Folder selection uses IFileOpenDialog instead of SHBrowseForFolderW/MAX_PATH buffer.
+- Export workers remain tracked and are joined at application shutdown to avoid truncated CSV exports.
+- iOS generic app DB table parsing now uses rowid keyset pagination with LIMIT/OFFSET fallback for WITHOUT ROWID tables.
+- Bplist/NSKeyedArchiver JSON expansion now has a shared string budget across recursive branches.
+- New-case inode/parent-inode table definitions use INTEGER affinity for the primary Spotlight tables.

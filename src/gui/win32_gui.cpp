@@ -20,6 +20,7 @@
 #endif
 #include <richedit.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <commdlg.h>
 #include <string>
 #include <vector>
@@ -245,21 +246,27 @@ void postClearProcessLog() { if (gLog) PostMessageW(GetParent(gLog), WM_CLEAR_PR
 void postStatus(const std::wstring& s) { if (gIngestStatus) PostMessageW(GetParent(gIngestStatus), WM_SET_INGEST_STATUS, 0, reinterpret_cast<LPARAM>(new std::wstring(s))); }
 void postProgress(int percent) { if (gIngestProgress) PostMessageW(GetParent(gIngestProgress), WM_SET_INGEST_PROGRESS, static_cast<WPARAM>(percent), 0); }
 std::wstring browseFolder(HWND owner) {
-    BROWSEINFOW bi{}; bi.hwndOwner = owner; bi.lpszTitle = L"Select folder"; bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (!pidl) return L"";
-    wchar_t path[MAX_PATH]{};
-    const BOOL ok = SHGetPathFromIDListW(pidl, path);
-    CoTaskMemFree(pidl);
-    if (!ok || path[0] == L'\0') {
-        MessageBoxW(owner, L"The selected folder path could not be resolved by the legacy Windows folder picker. Choose a shorter local path or map the network location closer to a drive root.", L"Folder path unavailable", MB_OK | MB_ICONWARNING);
-        return L"";
+    IFileOpenDialog* dialog = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    if (FAILED(hr) || !dialog) return L"";
+    DWORD options = 0;
+    if (SUCCEEDED(dialog->GetOptions(&options))) {
+        dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
     }
-    if (wcslen(path) >= MAX_PATH - 1) {
-        MessageBoxW(owner, L"The selected folder path is at the Windows MAX_PATH boundary. Move the case closer to a drive root or use a shorter mapped path to avoid truncation.", L"Folder path too long", MB_OK | MB_ICONWARNING);
-        return L"";
+    std::wstring result;
+    if (SUCCEEDED(dialog->Show(owner))) {
+        IShellItem* item = nullptr;
+        if (SUCCEEDED(dialog->GetResult(&item)) && item) {
+            PWSTR rawPath = nullptr;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &rawPath)) && rawPath) {
+                result.assign(rawPath);
+                CoTaskMemFree(rawPath);
+            }
+            item->Release();
+        }
     }
-    return path;
+    dialog->Release();
+    return result;
 }
 std::wstring browseExe(HWND owner) {
     wchar_t file[MAX_PATH]{};
@@ -379,34 +386,13 @@ public:
         }
 
         sqlite3* newDb = nullptr;
-        bool openedReadWrite = false;
         const std::string p = narrow(path);
-        if (sqlite3_open_v2(p.c_str(), &newDb, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK) {
-            openedReadWrite = true;
-        } else {
-            std::string writeMsg = newDb ? sqlite3_errmsg(newDb) : "unknown";
-            if (newDb) {
-                sqlite3_close_v2(newDb);
-                newDb = nullptr;
-            }
-            if (sqlite3_open_v2(p.c_str(), &newDb, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
-                std::string msg = newDb ? sqlite3_errmsg(newDb) : writeMsg;
-                if (newDb) sqlite3_close_v2(newDb);
-                throw std::runtime_error("Unable to open case database: " + msg);
-            }
+        if (sqlite3_open_v2(p.c_str(), &newDb, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            std::string msg = newDb ? sqlite3_errmsg(newDb) : "unknown";
+            if (newDb) sqlite3_close_v2(newDb);
+            throw std::runtime_error("Unable to open case database read-only: " + msg);
         }
-
         configureGuiSqliteConnection(newDb);
-        if (openedReadWrite) {
-            bool shouldEnsure = false;
-            {
-                std::lock_guard<std::mutex> lock(poolMutex_);
-                shouldEnsure = schemaEnsuredPaths_.find(path) == schemaEnsuredPaths_.end();
-            }
-            if (shouldEnsure) {
-                ensureInvestigatorUiSchemaNoThrow(newDb);
-            }
-        }
 
         std::lock_guard<std::mutex> lock(poolMutex_);
         auto it = pool_.find(path);
@@ -416,7 +402,6 @@ public:
             return;
         }
         pool_[path] = newDb;
-        if (openedReadWrite) schemaEnsuredPaths_.insert(path);
         db_ = newDb;
     }
     ~ReadOnlyDb() = default;
@@ -427,13 +412,29 @@ public:
             if (kv.second) sqlite3_close_v2(kv.second);
         }
         pool_.clear();
-        schemaEnsuredPaths_.clear();
     }
 private:
     sqlite3* db_ = nullptr;
     static inline std::map<std::wstring, sqlite3*> pool_;
-    static inline std::set<std::wstring> schemaEnsuredPaths_;
     static inline std::mutex poolMutex_;
+};
+
+class WritableGuiDb {
+public:
+    explicit WritableGuiDb(const std::wstring& path) {
+        const std::string p = narrow(path);
+        if (sqlite3_open_v2(p.c_str(), &db_, SQLITE_OPEN_READWRITE, nullptr) != SQLITE_OK) {
+            std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown";
+            if (db_) { sqlite3_close_v2(db_); db_ = nullptr; }
+            throw std::runtime_error("Unable to open case database read/write: " + msg);
+        }
+        configureGuiSqliteConnection(db_);
+        ensureInvestigatorUiSchemaNoThrow(db_);
+    }
+    ~WritableGuiDb() { if (db_) sqlite3_close_v2(db_); }
+    sqlite3* get() const { return db_; }
+private:
+    sqlite3* db_ = nullptr;
 };
 
 void closeReadOnlyDbPoolNoThrow() {
@@ -861,7 +862,6 @@ std::string currentReviewPlatformKey() {
 std::vector<std::wstring> loadCustomViewSetNoThrow(sqlite3* db) {
     std::vector<std::wstring> names;
     if (!db) return names;
-    ensureInvestigatorUiSchemaNoThrow(db);
     sqlite3_stmt* st = nullptr;
     const char* sql = "SELECT view_name FROM review_view_preferences WHERE platform=? AND preset_name='Custom' AND is_visible=1 ORDER BY display_order, lower(view_name)";
     if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) return names;
@@ -878,8 +878,7 @@ std::vector<std::wstring> loadCustomViewSetNoThrow(sqlite3* db) {
 bool saveCustomViewSetNoThrow(const std::vector<size_t>& orderedViews) {
     if (gOpenedCaseDb.empty()) return false;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
-        ensureInvestigatorUiSchemaNoThrow(db.get());
+        WritableGuiDb db(gOpenedCaseDb);
         char* err = nullptr;
         if (sqlite3_exec(db.get(), "BEGIN IMMEDIATE", nullptr, nullptr, &err) != SQLITE_OK) {
             if (err) sqlite3_free(err);
@@ -922,8 +921,7 @@ bool saveCustomViewSetNoThrow(const std::vector<size_t>& orderedViews) {
 bool resetCustomViewSetNoThrow() {
     if (gOpenedCaseDb.empty()) return false;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
-        ensureInvestigatorUiSchemaNoThrow(db.get());
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         if (sqlite3_prepare_v2(db.get(), "DELETE FROM review_view_preferences WHERE platform=? AND preset_name='Custom'", -1, &st, nullptr) != SQLITE_OK) return false;
         const std::string platform = currentReviewPlatformKey();
@@ -1420,7 +1418,7 @@ std::map<std::string, std::wstring> tagsForArtifacts(sqlite3* db, const std::vec
 void persistCheckedArtifactNoThrow(long long artifactId, bool checked) {
     if (gOpenedCaseDb.empty() || artifactId <= 0) return;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         const char* sql = checked
             ? "INSERT OR REPLACE INTO gui_checked_artifacts(artifact_id,checked_utc,notes) VALUES(?,datetime('now'),COALESCE((SELECT notes FROM gui_checked_artifacts WHERE artifact_id=?),''))"
@@ -1436,7 +1434,7 @@ void persistCheckedArtifactNoThrow(long long artifactId, bool checked) {
 void persistCheckedArtifactListNoThrow(const std::vector<long long>& artifactIds, bool checked) {
     if (gOpenedCaseDb.empty() || artifactIds.empty()) return;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         char* err = nullptr;
         sqlite3_exec(db.get(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr);
         sqlite3_stmt* st = nullptr;
@@ -1464,7 +1462,7 @@ void persistCheckedArtifactListNoThrow(const std::vector<long long>& artifactIds
 void clearPersistedCheckedArtifactsNoThrow() {
     if (gOpenedCaseDb.empty()) return;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_exec(db.get(), "DELETE FROM gui_checked_artifacts", nullptr, nullptr, nullptr);
     } catch (...) {
     }
@@ -1618,7 +1616,7 @@ std::vector<AvailableTag> availableTagsForContextMenu() {
     std::vector<AvailableTag> tags;
     if (gOpenedCaseDb.empty()) return tags;
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         const char* sql = "SELECT tag_id, tag_name FROM investigator_tags ORDER BY lower(tag_name) LIMIT 500";
         if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) return tags;
@@ -1834,7 +1832,7 @@ void saveCaseInformationCore(bool autosave) {
         return;
     }
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         const char* sql = "INSERT OR REPLACE INTO case_info(key,value) VALUES(?,?)";
         if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
@@ -1877,8 +1875,11 @@ void scheduleCaseInfoAutosave(HWND hwnd) {
 
 void registerExportThread(std::thread worker) {
     try {
-        if (worker.joinable()) worker.detach();
+        if (!worker.joinable()) return;
+        std::lock_guard<std::mutex> lock(gExportThreadsMutex);
+        gExportThreads.emplace_back(std::move(worker));
     } catch (...) {
+        try { if (worker.joinable()) worker.detach(); } catch (...) {}
     }
 }
 
@@ -2811,7 +2812,7 @@ void addTagAction() {
     const std::wstring tagNameW = getText(gTagName);
     if (tagNameW.empty()) { setTagSummary(L"Enter a tag name first."); return; }
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         const char* sql = "INSERT OR IGNORE INTO investigator_tags(tag_name,created_utc,notes) VALUES(?,datetime('now'), '')";
         if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
@@ -2826,7 +2827,7 @@ void deleteTagAction() {
     long long tagId = selectedTagId();
     if (tagId < 0) { setTagSummary(L"Select a tag to delete."); return; }
     try {
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         char* err = nullptr;
         std::string sql = "DELETE FROM artifact_tags WHERE tag_id=" + std::to_string(tagId) + "; DELETE FROM investigator_tags WHERE tag_id=" + std::to_string(tagId) + ";";
         if (sqlite3_exec(db.get(), sql.c_str(), nullptr, nullptr, &err) != SQLITE_OK) { std::string msg = err ? err : sqlite3_errmsg(db.get()); sqlite3_free(err); throw std::runtime_error(msg); }
@@ -2836,7 +2837,7 @@ void deleteTagAction() {
 void applyTagToArtifacts(long long tagId, const std::vector<std::string>& artifactIds, bool reloadVisible) {
     if (tagId < 0) throw std::runtime_error("Select a tag first.");
     if (artifactIds.empty()) throw std::runtime_error("No artifact-backed rows were selected or checked.");
-    ReadOnlyDb db(gOpenedCaseDb);
+    WritableGuiDb db(gOpenedCaseDb);
     sqlite3_stmt* st = nullptr;
     const char* sql = "INSERT OR IGNORE INTO artifact_tags(artifact_id,tag_id,created_utc) VALUES(?,?,datetime('now'))";
     if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
@@ -2855,7 +2856,7 @@ void applyTagToArtifacts(long long tagId, const std::vector<std::string>& artifa
 void removeTagFromArtifacts(long long tagId, const std::vector<std::string>& artifactIds, bool reloadVisible) {
     if (tagId < 0) throw std::runtime_error("Select a tag first.");
     if (artifactIds.empty()) throw std::runtime_error("No artifact-backed rows were selected or checked.");
-    ReadOnlyDb db(gOpenedCaseDb);
+    WritableGuiDb db(gOpenedCaseDb);
     sqlite3_stmt* st = nullptr;
     const char* sql = "DELETE FROM artifact_tags WHERE artifact_id=? AND tag_id=?";
     if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
@@ -2884,7 +2885,7 @@ void saveNoteAction() {
         std::vector<std::string> artifactIds = selectedArtifactIdsFromReview(true);
         const std::string note = narrow(getText(gTagNote));
         if (note.empty()) { setTagSummary(L"Enter note text first."); return; }
-        ReadOnlyDb db(gOpenedCaseDb);
+        WritableGuiDb db(gOpenedCaseDb);
         sqlite3_stmt* st = nullptr;
         const char* sql = "INSERT INTO investigator_notes(target_type,target_id,note_text,created_utc,updated_utc) VALUES('artifact',?,?,datetime('now'),datetime('now'))";
         if (sqlite3_prepare_v2(db.get(), sql, -1, &st, nullptr) != SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db.get()));
@@ -3684,6 +3685,7 @@ void openCaseFromPath() {
         if (getText(gOut).empty()) setText(gOut, gCrashCaseDir);
     }
     gCurrentPage = 0;
+    closeReadOnlyDbPoolNoThrow();
     // Opening an older completed case should make newly-added GUI review views
     // available without requiring a re-ingest. This runs schema/view upgrades only;
     // it does not alter parsed evidence rows.

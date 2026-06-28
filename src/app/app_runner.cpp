@@ -4453,7 +4453,7 @@ void writeThreeDatabaseLayoutReadiness(const fs::path& caseDir,
     try {
         std::ofstream out(caseDir / "three_database_layout_readiness.csv", std::ios::binary);
         out << "component,path,status,row_count,source_id,notes\n";
-        out << "spotlight_primary," << csvEscape(pathString(spotlightDb)) << ",PRIMARY_CASE_DB," << "" << "," << csvEscape(sourceId) << "," << csvEscape("V1.6.101 keeps the current primary case SQLite as the Spotlight evidence database to avoid duplicating the multi-GB raw key/value corpus in thin pressure runs.") << "\n";
+        out << "spotlight_primary," << csvEscape(pathString(spotlightDb)) << ",PRIMARY_CASE_DB," << "" << "," << csvEscape(sourceId) << "," << csvEscape("V1.6.102 keeps the current primary case SQLite as the Spotlight evidence database to avoid duplicating the multi-GB raw key/value corpus in thin pressure runs.") << "\n";
         out << "filesystem_inventory," << csvEscape(pathString(filesystemDb)) << "," << csvEscape(status) << "," << imageRows << "," << csvEscape(sourceId) << "," << csvEscape("Sidecar SQLite contains image_inventory_sources and APFS-derived image_file_inventory rows for this source.") << "\n";
         out << "comparison," << csvEscape(pathString(comparisonDb)) << "," << csvEscape(status) << "," << comparisonRows << "," << csvEscape(sourceId) << "," << csvEscape("Sidecar SQLite contains active_file_comparison_runs, artifact comparison rows, and orphan/missing-candidate lead rows.") << "\n";
         out << "comparison_missing_candidates," << csvEscape(pathString(comparisonDb)) << "," << csvEscape(status) << "," << missingRows << "," << csvEscape(sourceId) << "," << csvEscape("Missing candidates are investigative leads only, not deletion proof.") << "\n";
