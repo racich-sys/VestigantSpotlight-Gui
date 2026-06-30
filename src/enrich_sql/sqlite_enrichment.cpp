@@ -196,6 +196,12 @@ SqliteEnrichmentCounts SqliteEnrichment::run(CaseDatabase& db, const EvidenceSou
         db.exec("DELETE FROM timeline_events WHERE source_id=" + sid + ";");
         db.exec("DELETE FROM orphaned_deleted_candidates WHERE source_id=" + sid + ";");
         db.exec("DELETE FROM external_volume_candidates WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_path_hits WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_raw_value_hits WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_cache_text_hits WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_dictionary_hits WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_volfs_hits WHERE source_id=" + sid + ";");
+        db.exec("DELETE FROM spotlight_external_volume_candidate_summary WHERE source_id=" + sid + ";");
 
         // Support deep recursive path reconstruction after artifacts are materialized.
         // These indexes are cheap when the tables are small and prevent recursive
@@ -654,7 +660,7 @@ WHERE a.source_id=?
             " unresolved_or_relative_links=" + std::to_string(directParentUnresolvedRows) +
             " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
 
-        // V1.6.102: skip the expensive recursive parent-inode chain when it cannot
+        // V1.6.115: skip the expensive recursive parent-inode chain when it cannot
         // improve investigator-facing artifact paths.  V1.6.97 proved that this
         // AFF4/APFS case spent ~14.5 minutes in the recursive review query, then
         // parent-inode path apply updated zero artifacts.  Direct parent-inode links
@@ -1241,6 +1247,158 @@ WHERE a.source_id=)SQL" + sid + R"SQL(
     WHERE e.artifact_id=a.artifact_id AND e.detection_source_field=p.field_name AND e.detection_source_value=p.candidate_path
   );
 )SQL");
+        log.info("Building Spotlight-only external-volume evidence review tables.");
+        appendEnrichmentRunStatus(db, 90, "spotlight_external_volume_review_start", "source_id=" + source.sourceId + " source_scope=Spotlight-derived-tables-only");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_path_hits(source_id,artifact_id,store_guid,inode_num,source_table,source_field,evidence_type,volume_name_or_token,path_or_value,first_date_utc,last_date_utc,confidence,reason,validation_note,created_utc)
+WITH artifact_values AS (
+  SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts' AS source_table,'best_path' AS source_field,COALESCE(a.best_path,'') AS value,a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts','v7_full_path_raw',COALESCE(a.v7_full_path_raw,''),a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts','spotlight_display_path',COALESCE(a.spotlight_display_path,''),a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts','normalized_mac_path',COALESCE(a.normalized_mac_path,''),a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts','filesystem_lookup_path',COALESCE(a.filesystem_lookup_path,''),a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT a.source_id,a.artifact_id,a.store_guid,a.inode_num,'artifacts','where_froms',COALESCE(a.where_froms,''),a.first_used_candidate_utc,a.last_used_date_utc FROM artifacts a WHERE a.source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT t.source_id,t.artifact_id,t.store_guid,t.inode_num,'timeline_events','path',COALESCE(t.path,''),t.event_timestamp_utc,t.event_timestamp_utc FROM timeline_events t WHERE t.source_id=)SQL" + sid + R"SQL(
+), hits AS (
+  SELECT *, lower(value) AS lvalue FROM artifact_values WHERE COALESCE(value,'')<>''
+)
+SELECT source_id,artifact_id,store_guid,inode_num,source_table,source_field,
+       CASE WHEN lvalue LIKE '%/.vol/%' OR lvalue LIKE '%file:///.vol/%' THEN 'VOLFS_OR_DOT_VOL_REFERENCE'
+            WHEN lvalue LIKE '%file:///volumes/%' THEN 'FILE_URL_VOLUMES_PATH'
+            ELSE 'VOLUMES_PATH' END AS evidence_type,
+       CASE
+         WHEN value LIKE '/System/Volumes/Data/Volumes/%' THEN substr(substr(value, length('/System/Volumes/Data/Volumes/') + 1), 1, CASE WHEN instr(substr(value, length('/System/Volumes/Data/Volumes/') + 1), '/')>0 THEN instr(substr(value, length('/System/Volumes/Data/Volumes/') + 1), '/')-1 ELSE length(substr(value, length('/System/Volumes/Data/Volumes/') + 1)) END)
+         WHEN value LIKE '/Volumes/%' THEN substr(substr(value, length('/Volumes/') + 1), 1, CASE WHEN instr(substr(value, length('/Volumes/') + 1), '/')>0 THEN instr(substr(value, length('/Volumes/') + 1), '/')-1 ELSE length(substr(value, length('/Volumes/') + 1)) END)
+         WHEN lower(value) LIKE 'file:///volumes/%' THEN substr(substr(value, length('file:///Volumes/') + 1), 1, CASE WHEN instr(substr(value, length('file:///Volumes/') + 1), '/')>0 THEN instr(substr(value, length('file:///Volumes/') + 1), '/')-1 ELSE length(substr(value, length('file:///Volumes/') + 1)) END)
+         WHEN lvalue LIKE '%/.vol/%' OR lvalue LIKE '%file:///.vol/%' THEN '.vol'
+         ELSE 'UNKNOWN_VOLUME_TOKEN'
+       END AS volume_name_or_token,
+       substr(value,1,1200) AS path_or_value,
+       first_used_candidate_utc,last_used_date_utc,
+       CASE WHEN lvalue LIKE '%/volumes/%' OR lvalue LIKE '%file:///volumes/%' THEN 'HIGH_SPOTLIGHT_PATH_INDICATOR' ELSE 'LOW_VOLFS_TOKEN_REVIEW_REQUIRED' END AS confidence,
+       'Spotlight-derived explicit mounted-volume path/token; excludes known internal APFS system volume paths where possible.' AS reason,
+       'Spotlight-only investigative lead; not proof of external media use without independent validation.' AS validation_note,
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM hits
+WHERE (lvalue LIKE '%/volumes/%' OR lvalue LIKE '%file:///volumes/%' OR lvalue LIKE '%/.vol/%' OR lvalue LIKE '%file:///.vol/%')
+  AND NOT (lvalue LIKE '/system/volumes/data/%' AND lvalue NOT LIKE '/system/volumes/data/volumes/%')
+  AND NOT (lvalue LIKE '%/system/volumes/data/%' AND lvalue NOT LIKE '%/system/volumes/data/volumes/%')
+  AND lvalue NOT LIKE '/system/volumes/preboot%'
+  AND lvalue NOT LIKE '/system/volumes/vm%'
+  AND lvalue NOT LIKE '/system/volumes/update%'
+  AND lvalue NOT LIKE '/system/volumes/recovery%';
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_raw_value_hits(source_id,raw_kv_id,artifact_id,store_guid,source_db,inode_num,store_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc)
+SELECT kv.source_id,kv.raw_kv_id,a.artifact_id,kv.store_guid,kv.source_db,kv.inode_num,kv.store_id,kv.field_name,
+       CASE WHEN lower(kv.field_value) LIKE '%/.vol/%' OR lower(kv.field_value) LIKE '%file:///.vol/%' THEN 'VOLFS_OR_DOT_VOL_REFERENCE'
+            WHEN lower(kv.field_value) LIKE '%file:///volumes/%' THEN 'FILE_URL_VOLUMES_PATH'
+            WHEN lower(kv.field_value) LIKE '%/volumes/%' THEN 'RAW_VALUE_VOLUMES_PATH'
+            WHEN lower(kv.field_value) LIKE '%removable%' OR lower(kv.field_value) LIKE '%external%' OR lower(kv.field_value) LIKE '%mount%' OR lower(kv.field_value) LIKE '%usb%' THEN 'RAW_VALUE_VOLUME_RELATED_TOKEN'
+            ELSE 'RAW_VALUE_VOLUME_REVIEW_TOKEN' END,
+       CASE
+         WHEN kv.field_value LIKE '/System/Volumes/Data/Volumes/%' THEN substr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), 1, CASE WHEN instr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), '/')>0 THEN instr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), '/')-1 ELSE length(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1)) END)
+         WHEN kv.field_value LIKE '/Volumes/%' THEN substr(substr(kv.field_value, length('/Volumes/') + 1), 1, CASE WHEN instr(substr(kv.field_value, length('/Volumes/') + 1), '/')>0 THEN instr(substr(kv.field_value, length('/Volumes/') + 1), '/')-1 ELSE length(substr(kv.field_value, length('/Volumes/') + 1)) END)
+         WHEN lower(kv.field_value) LIKE 'file:///volumes/%' THEN substr(substr(kv.field_value, length('file:///Volumes/') + 1), 1, CASE WHEN instr(substr(kv.field_value, length('file:///Volumes/') + 1), '/')>0 THEN instr(substr(kv.field_value, length('file:///Volumes/') + 1), '/')-1 ELSE length(substr(kv.field_value, length('file:///Volumes/') + 1)) END)
+         WHEN lower(kv.field_value) LIKE '%/.vol/%' OR lower(kv.field_value) LIKE '%file:///.vol/%' THEN '.vol'
+         ELSE substr(kv.field_name,1,120)
+       END,
+       substr(kv.field_value,1,1200),
+       CASE WHEN lower(kv.field_value) LIKE '%/volumes/%' OR lower(kv.field_value) LIKE '%file:///volumes/%' THEN 'MEDIUM_RAW_SPOTLIGHT_VALUE_PATH_INDICATOR' ELSE 'LOW_RAW_SPOTLIGHT_VALUE_TOKEN_REVIEW_REQUIRED' END,
+       'Raw decoded Store-V2 key/value contains Spotlight-only external-volume path or volume-related token.',
+       'Spotlight-only investigative lead; verify against artifact/path/date context before interpretation.',
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM raw_key_values kv
+LEFT JOIN artifacts a ON a.source_id=kv.source_id AND a.store_guid=kv.store_guid AND a.inode_num=kv.inode_num
+WHERE kv.source_id=)SQL" + sid + R"SQL(
+  AND (lower(kv.field_value) LIKE '%/volumes/%'
+       OR lower(kv.field_value) LIKE '%file:///volumes/%'
+       OR lower(kv.field_value) LIKE '%/.vol/%'
+       OR lower(kv.field_value) LIKE '%file:///.vol/%'
+       OR lower(kv.field_name) LIKE '%volume%'
+       OR lower(kv.field_name) LIKE '%mount%'
+       OR ((lower(kv.field_name) LIKE '%path%' OR lower(kv.field_name) LIKE '%url%' OR lower(kv.field_name) LIKE '%where%' OR lower(kv.field_name) LIKE '%volume%' OR lower(kv.field_name) LIKE '%mount%' OR lower(kv.field_name) LIKE '%device%' OR lower(kv.field_name) LIKE '%disk%')
+           AND (lower(kv.field_value) LIKE '%removable%' OR lower(kv.field_value) LIKE '%external%' OR lower(kv.field_value) LIKE '%mount%' OR lower(kv.field_value) LIKE '%usb%')))
+  AND NOT (lower(kv.field_value) LIKE '/system/volumes/data/%' AND lower(kv.field_value) NOT LIKE '/system/volumes/data/volumes/%')
+  AND NOT (lower(kv.field_value) LIKE '%/system/volumes/data/%' AND lower(kv.field_value) NOT LIKE '%/system/volumes/data/volumes/%')
+  AND lower(kv.field_value) NOT LIKE '/system/volumes/preboot%'
+  AND lower(kv.field_value) NOT LIKE '/system/volumes/vm%'
+  AND lower(kv.field_value) NOT LIKE '/system/volumes/update%'
+  AND lower(kv.field_value) NOT LIKE '/system/volumes/recovery%'
+LIMIT 50000;
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_cache_text_hits(source_id,cache_text_id,artifact_id,store_guid,cache_numeric_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc)
+SELECT c.source_id,c.cache_text_id,c.linked_artifact_id,c.store_guid,c.cache_numeric_id,'decoded_text',
+       CASE WHEN lower(c.decoded_text) LIKE '%file:///volumes/%' THEN 'CACHE_TEXT_FILE_URL_VOLUMES_PATH'
+            WHEN lower(c.decoded_text) LIKE '%/volumes/%' THEN 'CACHE_TEXT_VOLUMES_PATH'
+            WHEN lower(c.decoded_text) LIKE '%/.vol/%' THEN 'CACHE_TEXT_VOLFS_REFERENCE'
+            ELSE 'CACHE_TEXT_VOLUME_RELATED_TOKEN' END,
+       CASE WHEN lower(c.decoded_text) LIKE '%/.vol/%' THEN '.vol' ELSE 'CACHE_TEXT_VOLUME_TOKEN' END,
+       substr(c.decoded_text,1,1200),
+       CASE WHEN lower(c.decoded_text) LIKE '%/volumes/%' OR lower(c.decoded_text) LIKE '%file:///volumes/%' THEN 'MEDIUM_CACHE_TEXT_PATH_INDICATOR' ELSE 'LOW_CACHE_TEXT_TOKEN_REVIEW_REQUIRED' END,
+       'Spotlight Cache text contains mounted-volume path or volume-related token.',
+       'Spotlight-only investigative lead; cache text may be content text rather than filesystem proof.',
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM spotlight_cache_text c
+WHERE c.source_id=)SQL" + sid + R"SQL(
+  AND (lower(c.decoded_text) LIKE '%/volumes/%'
+       OR lower(c.decoded_text) LIKE '%file:///volumes/%'
+       OR lower(c.decoded_text) LIKE '%/.vol/%')
+  AND NOT (lower(c.decoded_text) LIKE '%/system/volumes/data/%' AND lower(c.decoded_text) NOT LIKE '%/system/volumes/data/volumes/%')
+LIMIT 50000;
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_dictionary_hits(source_id,store_guid,source_db,dictionary_table,dictionary_field,dictionary_value,evidence_type,confidence,reason,validation_note,created_utc)
+SELECT source_id,store_guid,source_db,'native_property_dictionary','property_name',property_name,'SPOTLIGHT_PROPERTY_VOLUME_RELATED_NAME','LOW_DICTIONARY_TOKEN_REVIEW_REQUIRED','Store-V2 property dictionary contains volume/mount/path/device/search token that may indicate unmapped external-volume fields.','Dictionary hit only; inspect raw_key_values for populated values before interpretation.',strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM native_property_dictionary
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND (lower(property_name) LIKE '%volume%' OR lower(property_name) LIKE '%mount%' OR lower(property_name) LIKE '%removable%' OR lower(property_name) LIKE '%device%' OR lower(property_name) LIKE '%disk%' OR lower(property_name) LIKE '%usb%')
+UNION ALL
+SELECT source_id,NULL,NULL,'field_inventory','field_name',field_name,'SPOTLIGHT_FIELD_VOLUME_RELATED_NAME','LOW_FIELD_NAME_TOKEN_REVIEW_REQUIRED','Decoded field inventory contains volume/mount/device token.','Use as parser roadmap; field name alone is not external-media proof.',strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM field_inventory
+WHERE source_id=)SQL" + sid + R"SQL(
+  AND (lower(field_name) LIKE '%volume%' OR lower(field_name) LIKE '%mount%' OR lower(field_name) LIKE '%removable%' OR lower(field_name) LIKE '%device%' OR lower(field_name) LIKE '%disk%' OR lower(field_name) LIKE '%usb%');
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_volfs_hits(source_id,artifact_id,raw_kv_id,store_guid,source_db,inode_num,source_table,source_field,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc)
+SELECT kv.source_id,a.artifact_id,kv.raw_kv_id,kv.store_guid,kv.source_db,kv.inode_num,'raw_key_values',kv.field_name,'.vol',substr(kv.field_value,1,1200),'LOW_VOLFS_TOKEN_REVIEW_REQUIRED','Raw Store-V2 value contains .vol/volfs token without direct volume-name proof.','Spotlight-only low-confidence lead; requires correlation.',strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM raw_key_values kv
+LEFT JOIN artifacts a ON a.source_id=kv.source_id AND a.store_guid=kv.store_guid AND a.inode_num=kv.inode_num
+WHERE kv.source_id=)SQL" + sid + R"SQL(
+  AND (lower(kv.field_value) LIKE '%/.vol/%' OR lower(kv.field_value) LIKE '%file:///.vol/%' OR lower(kv.field_value) LIKE '%volfs%')
+LIMIT 50000;
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_candidate_summary(source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note,created_utc)
+WITH all_hits AS (
+  SELECT source_id,volume_name_or_token,confidence,path_or_value,first_date_utc,last_date_utc,'path' AS family FROM spotlight_external_volume_path_hits WHERE source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'raw' FROM spotlight_external_volume_raw_value_hits WHERE source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'cache' FROM spotlight_external_volume_cache_text_hits WHERE source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT source_id,dictionary_value,confidence,dictionary_value,NULL,NULL,'dictionary' FROM spotlight_external_volume_dictionary_hits WHERE source_id=)SQL" + sid + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'volfs' FROM spotlight_external_volume_volfs_hits WHERE source_id=)SQL" + sid + R"SQL(
+)
+SELECT source_id,COALESCE(NULLIF(volume_name_or_token,''),'UNKNOWN_VOLUME_TOKEN'),
+       SUM(CASE WHEN confidence LIKE 'HIGH%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN confidence LIKE 'LOW%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='path' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='raw' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='cache' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='dictionary' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='volfs' THEN 1 ELSE 0 END),
+       MIN(first_date_utc),MAX(last_date_utc),substr(MAX(path_or_value),1,1200),
+       'SPOTLIGHT_ONLY_INVESTIGATIVE_LEAD',
+       'Summary uses only Spotlight-derived tables. It is not proof of external-media use without validation/correlation.',
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM all_hits
+GROUP BY source_id,COALESCE(NULLIF(volume_name_or_token,''),'UNKNOWN_VOLUME_TOKEN');
+)SQL");
+        insertMetric(db, source.sourceId, "spotlight_external_volume_path_hits", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_path_hits WHERE source_id=?", source.sourceId)));
+        insertMetric(db, source.sourceId, "spotlight_external_volume_raw_value_hits", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_raw_value_hits WHERE source_id=?", source.sourceId)));
+        insertMetric(db, source.sourceId, "spotlight_external_volume_candidate_summary_rows", std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_candidate_summary WHERE source_id=?", source.sourceId)));
+        appendEnrichmentRunStatus(db, 90, "spotlight_external_volume_review_complete", "path_hits=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_path_hits WHERE source_id=?", source.sourceId)) + " raw_value_hits=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_raw_value_hits WHERE source_id=?", source.sourceId)) + " cache_text_hits=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_cache_text_hits WHERE source_id=?", source.sourceId)) + " summary_rows=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM spotlight_external_volume_candidate_summary WHERE source_id=?", source.sourceId)));
+
         log.info("Building grouped timeline_events from artifact_date_summary; raw_date_candidates remains the date-by-date provenance table.");
         appendEnrichmentRunStatus(db, 90, "enrichment_timeline_summary_insert_start", "source_id=" + source.sourceId + " artifact_date_summary_rows=" + std::to_string(scalarCount(db, "SELECT COUNT(*) FROM artifact_date_summary WHERE source_id=?", source.sourceId)) + " raw_date_candidates=" + std::to_string(dateCount));
         appendEnrichmentRunStatus(db, 90, "enrichment_timeline_disk_space_preflight", sqliteDiskSpaceSummary(db));

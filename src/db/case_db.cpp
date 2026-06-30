@@ -206,9 +206,9 @@ CREATE TABLE IF NOT EXISTS raw_records (
   store_guid TEXT,
   store_path TEXT,
   source_db TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   store_id TEXT,
-  parent_inode_num INTEGER,
+  parent_inode_num TEXT,
   flags TEXT,
   last_updated_raw TEXT,
   last_updated_utc TEXT,
@@ -228,9 +228,9 @@ CREATE TABLE IF NOT EXISTS raw_key_values (
   store_guid TEXT,
   store_path TEXT,
   source_db TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   store_id TEXT,
-  parent_inode_num INTEGER,
+  parent_inode_num TEXT,
   full_path TEXT,
   record_state TEXT,
   field_name TEXT,
@@ -242,14 +242,14 @@ CREATE TABLE IF NOT EXISTS raw_date_candidates (
   store_guid TEXT,
   store_path TEXT,
   source_db TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   store_id TEXT,
   field_name TEXT,
   field_value TEXT,
   parsed_utc TEXT,
   parse_method TEXT,
   artifact_id INTEGER,
-)SQL" R"SQL(  parent_inode_num INTEGER,
+)SQL" R"SQL(  parent_inode_num TEXT,
   file_name TEXT,
   best_path TEXT,
   date_type TEXT,
@@ -260,8 +260,8 @@ CREATE TABLE IF NOT EXISTS artifact_date_summary (
   artifact_id INTEGER PRIMARY KEY,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
-  parent_inode_num INTEGER,
+  inode_num TEXT,
+  parent_inode_num TEXT,
   file_name TEXT,
   display_name TEXT,
   best_path TEXT,
@@ -322,8 +322,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   artifact_id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
-  parent_inode_num INTEGER,
+  inode_num TEXT,
+  parent_inode_num TEXT,
   file_name TEXT,
   display_name TEXT,
   best_path TEXT,
@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS spotlight_cache_text (
   source_id TEXT,
   store_guid TEXT,
   cache_relative_path TEXT,
-  cache_numeric_id INTEGER,
+  cache_numeric_id TEXT,
   cache_bucket_hex TEXT,
   bucket_matches_numeric_id INTEGER DEFAULT 0,
   cache_file_inode_num TEXT,
@@ -391,7 +391,7 @@ CREATE TABLE IF NOT EXISTS usage_evidence (
   artifact_id INTEGER,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   field_name TEXT,
   field_value TEXT,
   parsed_utc TEXT
@@ -401,7 +401,7 @@ CREATE TABLE IF NOT EXISTS timeline_events (
   artifact_id INTEGER,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   event_timestamp_utc TEXT,
   event_type TEXT,
   event_source_field TEXT,
@@ -415,7 +415,7 @@ CREATE TABLE IF NOT EXISTS orphaned_deleted_candidates (
   artifact_id INTEGER,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   file_name TEXT,
   best_path TEXT,
   content_type TEXT,
@@ -429,7 +429,7 @@ CREATE TABLE IF NOT EXISTS orphaned_deleted_candidates (
   artifact_id INTEGER,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   file_name TEXT,
   best_path TEXT,
   mounted_volume_name TEXT,
@@ -438,13 +438,117 @@ CREATE TABLE IF NOT EXISTS orphaned_deleted_candidates (
   detection_source_field TEXT,
   detection_source_value TEXT
 );
-CREATE TABLE IF NOT EXISTS artifact_source_instances (
+
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_path_hits (
+  hit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  artifact_id INTEGER,
+  store_guid TEXT,
+  inode_num TEXT,
+  source_table TEXT,
+  source_field TEXT,
+  evidence_type TEXT,
+  volume_name_or_token TEXT,
+  path_or_value TEXT,
+  first_date_utc TEXT,
+  last_date_utc TEXT,
+  confidence TEXT,
+  reason TEXT,
+  validation_note TEXT,
+  created_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_raw_value_hits (
+  hit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  raw_kv_id INTEGER,
+  artifact_id INTEGER,
+  store_guid TEXT,
+  source_db TEXT,
+  inode_num TEXT,
+  store_id TEXT,
+  source_field TEXT,
+  evidence_type TEXT,
+  volume_name_or_token TEXT,
+  path_or_value TEXT,
+  confidence TEXT,
+  reason TEXT,
+  validation_note TEXT,
+  created_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_cache_text_hits (
+  hit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  cache_text_id INTEGER,
+  artifact_id INTEGER,
+  store_guid TEXT,
+  cache_numeric_id TEXT,
+  source_field TEXT,
+  evidence_type TEXT,
+  volume_name_or_token TEXT,
+  path_or_value TEXT,
+  confidence TEXT,
+  reason TEXT,
+  validation_note TEXT,
+  created_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_dictionary_hits (
+  hit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  store_guid TEXT,
+  source_db TEXT,
+  dictionary_table TEXT,
+  dictionary_field TEXT,
+  dictionary_value TEXT,
+  evidence_type TEXT,
+  confidence TEXT,
+  reason TEXT,
+  validation_note TEXT,
+  created_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_volfs_hits (
+  hit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  artifact_id INTEGER,
+  raw_kv_id INTEGER,
+  store_guid TEXT,
+  source_db TEXT,
+  inode_num TEXT,
+  source_table TEXT,
+  source_field TEXT,
+  volume_name_or_token TEXT,
+  path_or_value TEXT,
+  confidence TEXT,
+  reason TEXT,
+  validation_note TEXT,
+  created_utc TEXT
+);
+CREATE TABLE IF NOT EXISTS spotlight_external_volume_candidate_summary (
+  summary_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  volume_name_or_token TEXT,
+  high_confidence_hits INTEGER DEFAULT 0,
+  medium_confidence_hits INTEGER DEFAULT 0,
+  low_confidence_hits INTEGER DEFAULT 0,
+  path_hit_count INTEGER DEFAULT 0,
+  raw_value_hit_count INTEGER DEFAULT 0,
+  cache_text_hit_count INTEGER DEFAULT 0,
+  dictionary_hit_count INTEGER DEFAULT 0,
+  volfs_hit_count INTEGER DEFAULT 0,
+  first_date_utc TEXT,
+  last_date_utc TEXT,
+  sample_path_or_value TEXT,
+  validation_status TEXT,
+  interpretation_note TEXT,
+  created_utc TEXT
+);
+)SQL");
+    exec(R"SQL(CREATE TABLE IF NOT EXISTS artifact_source_instances (
   instance_id INTEGER PRIMARY KEY AUTOINCREMENT,
   artifact_id INTEGER,
   raw_record_id INTEGER,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   source_db TEXT,
   source_db_role TEXT,
   last_updated_utc TEXT,
@@ -455,7 +559,7 @@ CREATE TABLE IF NOT EXISTS source_copy_comparison (
   comparison_id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
+  inode_num TEXT,
   source_instance_count INTEGER,
   has_store_db INTEGER,
   has_dotstore_db INTEGER,
@@ -467,12 +571,12 @@ CREATE TABLE IF NOT EXISTS parent_inode_links (
   source_id TEXT,
   store_guid TEXT,
   child_artifact_id INTEGER,
-  child_inode_num INTEGER,
-  child_parent_inode_num INTEGER,
+  child_inode_num TEXT,
+  child_parent_inode_num TEXT,
   child_file_name TEXT,
   child_best_path TEXT,
   parent_artifact_id INTEGER,
-  parent_inode_num INTEGER,
+  parent_inode_num TEXT,
   parent_file_name TEXT,
   parent_best_path TEXT,
   sibling_group_key TEXT,
@@ -698,8 +802,8 @@ CREATE TABLE IF NOT EXISTS image_file_inventory (
   apfs_volume_name TEXT,
   filesystem_object_id TEXT,
   parent_filesystem_object_id TEXT,
-  inode_num INTEGER,
-  parent_inode_num INTEGER,
+  inode_num TEXT,
+  parent_inode_num TEXT,
   full_path TEXT,
   file_name TEXT,
   is_directory INTEGER,
@@ -906,6 +1010,12 @@ CREATE INDEX IF NOT EXISTS idx_timeline_artifact_time ON timeline_events(artifac
 CREATE INDEX IF NOT EXISTS idx_timeline_source_field_time ON timeline_events(event_source_field, event_timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_orphan_status ON orphaned_deleted_candidates(existence_status);
 CREATE INDEX IF NOT EXISTS idx_external_volume_source ON external_volume_candidates(source_id, mounted_volume_name);
+CREATE INDEX IF NOT EXISTS idx_spotlight_ext_path_source ON spotlight_external_volume_path_hits(source_id, volume_name_or_token, confidence);
+CREATE INDEX IF NOT EXISTS idx_spotlight_ext_raw_source ON spotlight_external_volume_raw_value_hits(source_id, volume_name_or_token, confidence);
+CREATE INDEX IF NOT EXISTS idx_spotlight_ext_cache_source ON spotlight_external_volume_cache_text_hits(source_id, volume_name_or_token, confidence);
+CREATE INDEX IF NOT EXISTS idx_spotlight_ext_dict_source ON spotlight_external_volume_dictionary_hits(source_id, dictionary_value, confidence);
+CREATE INDEX IF NOT EXISTS idx_spotlight_ext_summary_source ON spotlight_external_volume_candidate_summary(source_id, volume_name_or_token);
+
 )SQL" R"SQL(CREATE INDEX IF NOT EXISTS idx_artifact_instances_artifact ON artifact_source_instances(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_artifact_instances_raw ON artifact_source_instances(raw_record_id);
 CREATE INDEX IF NOT EXISTS idx_source_copy_status ON source_copy_comparison(source_id, comparison_status);
@@ -1572,6 +1682,42 @@ WHERE COALESCE(ts.tag_count,0)>0 OR COALESCE(ns.note_count,0)>0;
     // Persistent investigator-facing SQL views used by the GUI review layer.
     // These keep the UI database-backed and pageable instead of loading large CSVs.
     exec(R"SQL(
+
+DROP VIEW IF EXISTS vw_spotlight_external_volume_evidence_review;
+CREATE VIEW vw_spotlight_external_volume_evidence_review AS
+SELECT 'PATH' AS evidence_family, hit_id, source_id, artifact_id, store_guid, inode_num, NULL AS source_db,
+       source_table, source_field, evidence_type, volume_name_or_token, path_or_value, first_date_utc, last_date_utc,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_path_hits
+UNION ALL
+SELECT 'RAW_VALUE', hit_id, source_id, artifact_id, store_guid, inode_num, source_db,
+       'raw_key_values', source_field, evidence_type, volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_raw_value_hits
+UNION ALL
+SELECT 'CACHE_TEXT', hit_id, source_id, artifact_id, store_guid, cache_numeric_id, NULL,
+       'spotlight_cache_text', source_field, evidence_type, volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_cache_text_hits
+UNION ALL
+SELECT 'DICTIONARY', hit_id, source_id, NULL, store_guid, NULL, source_db,
+       dictionary_table, dictionary_field, evidence_type, dictionary_value, dictionary_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_dictionary_hits
+UNION ALL
+SELECT 'VOLFS', hit_id, source_id, artifact_id, store_guid, inode_num, source_db,
+       source_table, source_field, 'VOLFS_OR_DOT_VOL_REFERENCE', volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_volfs_hits;
+
+DROP VIEW IF EXISTS vw_spotlight_external_volume_candidate_summary;
+CREATE VIEW vw_spotlight_external_volume_candidate_summary AS
+SELECT summary_id,source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,
+       path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,
+       first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note,created_utc
+FROM spotlight_external_volume_candidate_summary
+ORDER BY high_confidence_hits DESC, medium_confidence_hits DESC, low_confidence_hits DESC, volume_name_or_token;
+
 DROP VIEW IF EXISTS vw_usage_artifacts;
 CREATE VIEW vw_usage_artifacts AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,where_froms,
@@ -2020,6 +2166,90 @@ SELECT ios_file_id,source_id,normalized_path,original_zip_entry,file_name,extens
 FROM ios_ffs_file_inventory
 ORDER BY normalized_path;
 
+
+DROP VIEW IF EXISTS vw_ios_app_db_spotlight_schema_hits;
+CREATE VIEW vw_ios_app_db_spotlight_schema_hits AS
+SELECT ios_record_inventory_id AS hit_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, sample_columns, 'TABLE_OR_COLUMN_SCHEMA' AS hit_type,
+       CASE
+         WHEN lower(table_name) LIKE '%spotlight%' OR lower(sample_columns) LIKE '%spotlight%' THEN 'SPOTLIGHT_NAME'
+         WHEN lower(table_name) LIKE '%searchable%' OR lower(sample_columns) LIKE '%searchable%' THEN 'SEARCHABLE_NAME'
+         WHEN lower(table_name) LIKE '%corespotlight%' OR lower(sample_columns) LIKE '%corespotlight%' THEN 'CORESPOTLIGHT_NAME'
+         WHEN lower(sample_columns) LIKE '%uniqueidentifier%' OR lower(sample_columns) LIKE '%domainidentifier%' THEN 'CORESPOTLIGHT_IDENTIFIER_NAME'
+         WHEN lower(table_name) LIKE '%search%' OR lower(sample_columns) LIKE '%search%' OR lower(table_name) LIKE '%index%' OR lower(sample_columns) LIKE '%index%' THEN 'SEARCH_OR_INDEX_NAME'
+         ELSE 'SPOTLIGHT_RELATED_SCHEMA_TOKEN'
+       END AS hit_reason,
+       CASE
+         WHEN lower(table_name) LIKE '%spotlight%' OR lower(sample_columns) LIKE '%spotlight%' OR lower(table_name) LIKE '%corespotlight%' OR lower(sample_columns) LIKE '%corespotlight%' THEN 'MEDIUM_SCHEMA_INDICATOR_NOT_PROOF_OF_INDEXING'
+         ELSE 'LOW_SCHEMA_INDICATOR_REVIEW_REQUIRED'
+       END AS confidence,
+       'App-maintained schema/column indicator. Correlate to CoreSpotlight items before treating as actually indexed.' AS interpretation_note
+FROM ios_app_database_record_inventory
+WHERE lower(table_name) LIKE '%spotlight%'
+   OR lower(table_name) LIKE '%corespotlight%'
+   OR lower(table_name) LIKE '%searchable%'
+   OR lower(table_name) LIKE '%search%'
+   OR lower(table_name) LIKE '%index%'
+   OR lower(sample_columns) LIKE '%spotlight%'
+   OR lower(sample_columns) LIKE '%corespotlight%'
+   OR lower(sample_columns) LIKE '%searchable%'
+   OR lower(sample_columns) LIKE '%search%'
+   OR lower(sample_columns) LIKE '%index%'
+   OR lower(sample_columns) LIKE '%uniqueidentifier%'
+   OR lower(sample_columns) LIKE '%domainidentifier%'
+   OR lower(sample_columns) LIKE '%css searchable%';
+)VSQLFIX",
+R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_row_candidates;
+CREATE VIEW vw_ios_app_db_spotlight_row_candidates AS
+SELECT ios_app_record_id AS candidate_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, record_category, source_primary_key,
+       item_identifier AS candidate_identifier,
+       url, title, file_path, record_timestamp_utc,
+       substr(COALESCE(text_snippet,''),1,700) AS candidate_text_preview,
+       CASE
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%spotlight%' OR lower(COALESCE(url,'')) LIKE '%spotlight%' OR lower(COALESCE(text_snippet,'')) LIKE '%spotlight%' THEN 'SPOTLIGHT_TOKEN_IN_PARSED_ROW'
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%search%' OR lower(COALESCE(url,'')) LIKE '%search%' OR lower(COALESCE(text_snippet,'')) LIKE '%search%' THEN 'SEARCH_TOKEN_IN_PARSED_ROW'
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%index%' OR lower(COALESCE(url,'')) LIKE '%index%' OR lower(COALESCE(text_snippet,'')) LIKE '%index%' THEN 'INDEX_TOKEN_IN_PARSED_ROW'
+         ELSE 'POTENTIAL_APP_SEARCHABLE_RECORD'
+       END AS hit_reason,
+       'LOW_ROW_TEXT_INDICATOR_REVIEW_REQUIRED' AS confidence,
+       'Parsed app DB row contains Spotlight/search/index tokens. This is not proof the row was actually in CoreSpotlight unless correlated.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE lower(COALESCE(item_identifier,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(url,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(title,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%corespotlight%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%corespotlight%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%searchable%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%searchable%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%uniqueidentifier%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%domainidentifier%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%indexed%';
+)VSQLFIX",
+R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_enabled_summary;
+CREATE VIEW vw_ios_app_db_spotlight_enabled_summary AS
+SELECT d.source_id,d.ios_db_id,d.normalized_path AS database_normalized_path,d.database_name,d.database_category,d.app_hint,
+       COUNT(DISTINCT s.hit_id) AS schema_hit_count,
+       COUNT(DISTINCT r.candidate_id) AS row_candidate_count,
+       COALESCE(MIN(s.confidence),'NO_SCHEMA_INDICATOR') AS schema_confidence_sample,
+       COALESCE(MIN(s.hit_reason),'NO_SCHEMA_INDICATOR') AS schema_reason_sample,
+       CASE
+         WHEN COUNT(DISTINCT s.hit_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SCHEMA_AND_ROW_SEARCH_INDICATORS_PRESENT'
+         WHEN COUNT(DISTINCT s.hit_id)>0 THEN 'APP_DB_SCHEMA_SEARCH_INDICATORS_PRESENT'
+         WHEN COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_ROW_SEARCH_INDICATORS_PRESENT'
+         ELSE 'NO_APP_DB_SPOTLIGHT_INDICATOR_DETECTED'
+       END AS review_status,
+       'App DB indicator only. Use as a roadmap to app-specific parsing/CoreSpotlight correlation, not as proof that iOS Spotlight indexed the row.' AS interpretation_note
+FROM ios_app_database_inventory d
+LEFT JOIN vw_ios_app_db_spotlight_schema_hits s ON s.ios_db_id=d.ios_db_id AND s.source_id=d.source_id
+LEFT JOIN vw_ios_app_db_spotlight_row_candidates r ON r.ios_db_id=d.ios_db_id AND r.source_id=d.source_id
+GROUP BY d.source_id,d.ios_db_id,d.normalized_path,d.database_name,d.database_category,d.app_hint
+HAVING schema_hit_count>0 OR row_candidate_count>0
+ORDER BY schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
+
 DROP VIEW IF EXISTS vw_ios_database_artifact_inventory;
 CREATE VIEW vw_ios_database_artifact_inventory AS
 SELECT ios_db_id,source_id,normalized_path,original_zip_entry,database_name,database_category,app_hint,
@@ -2033,8 +2263,8 @@ SELECT ios_record_inventory_id,source_id,ios_db_id,database_normalized_path,data
        table_name,row_count,sample_columns,record_category,parse_status,notes,created_utc
 FROM ios_app_database_record_inventory
 ORDER BY database_category,database_name,table_name;
-
-DROP VIEW IF EXISTS vw_ios_app_database_record_summary;
+)VSQLFIX",
+R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_app_database_record_summary;
 CREATE VIEW vw_ios_app_database_record_summary AS
 SELECT database_category,app_hint,record_category,parse_status,COUNT(*) AS table_count,
        SUM(COALESCE(row_count,0)) AS total_rows,MIN(database_name) AS first_database,MAX(database_name) AS last_database
@@ -2061,8 +2291,8 @@ SELECT database_category,app_hint,record_category,parse_status,COUNT(*) AS parse
 FROM ios_app_parsed_records
 GROUP BY database_category,app_hint,record_category,parse_status
 ORDER BY database_category,record_category;
-
-DROP VIEW IF EXISTS vw_ios_apple_messages_parsed_records;
+)VSQLFIX",
+R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_apple_messages_parsed_records;
 CREATE VIEW vw_ios_apple_messages_parsed_records AS
 SELECT ios_app_record_id,source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,
        table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,
@@ -6965,8 +7195,8 @@ CREATE TABLE IF NOT EXISTS artifact_date_summary (
   artifact_id INTEGER PRIMARY KEY,
   source_id TEXT,
   store_guid TEXT,
-  inode_num INTEGER,
-  parent_inode_num INTEGER,
+  inode_num TEXT,
+  parent_inode_num TEXT,
   file_name TEXT,
   display_name TEXT,
   best_path TEXT,
@@ -7013,6 +7243,42 @@ CREATE INDEX IF NOT EXISTS idx_artifact_date_summary_last_date ON artifact_date_
 )SQL");
 
     execGuiSql(R"SQL(
+
+DROP VIEW IF EXISTS vw_spotlight_external_volume_evidence_review;
+CREATE VIEW vw_spotlight_external_volume_evidence_review AS
+SELECT 'PATH' AS evidence_family, hit_id, source_id, artifact_id, store_guid, inode_num, NULL AS source_db,
+       source_table, source_field, evidence_type, volume_name_or_token, path_or_value, first_date_utc, last_date_utc,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_path_hits
+UNION ALL
+SELECT 'RAW_VALUE', hit_id, source_id, artifact_id, store_guid, inode_num, source_db,
+       'raw_key_values', source_field, evidence_type, volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_raw_value_hits
+UNION ALL
+SELECT 'CACHE_TEXT', hit_id, source_id, artifact_id, store_guid, cache_numeric_id, NULL,
+       'spotlight_cache_text', source_field, evidence_type, volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_cache_text_hits
+UNION ALL
+SELECT 'DICTIONARY', hit_id, source_id, NULL, store_guid, NULL, source_db,
+       dictionary_table, dictionary_field, evidence_type, dictionary_value, dictionary_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_dictionary_hits
+UNION ALL
+SELECT 'VOLFS', hit_id, source_id, artifact_id, store_guid, inode_num, source_db,
+       source_table, source_field, 'VOLFS_OR_DOT_VOL_REFERENCE', volume_name_or_token, path_or_value, NULL, NULL,
+       confidence, reason, validation_note
+FROM spotlight_external_volume_volfs_hits;
+
+DROP VIEW IF EXISTS vw_spotlight_external_volume_candidate_summary;
+CREATE VIEW vw_spotlight_external_volume_candidate_summary AS
+SELECT summary_id,source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,
+       path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,
+       first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note,created_utc
+FROM spotlight_external_volume_candidate_summary
+ORDER BY high_confidence_hits DESC, medium_confidence_hits DESC, low_confidence_hits DESC, volume_name_or_token;
+
 DROP VIEW IF EXISTS vw_usage_artifacts;
 CREATE VIEW vw_usage_artifacts AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,where_froms,
@@ -7547,20 +7813,104 @@ LEFT JOIN dc ON dc.source_id=r.source_id
             AND dc.inode_num=r.inode_num
             AND COALESCE(dc.store_id,'')=COALESCE(r.store_id,'')
 WHERE r.store_guid LIKE 'ios_%' OR r.source_db LIKE '%CoreSpotlight%' OR r.store_path LIKE '%CoreSpotlight%';
-
-DROP VIEW IF EXISTS vw_ios_artifacts;
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_artifacts;
 CREATE VIEW vw_ios_artifacts AS
 SELECT artifact_id,source_id,store_guid,inode_num,parent_inode_num,file_name,display_name,best_path,content_type,last_updated_utc,confidence
 FROM artifacts
 WHERE store_guid LIKE 'ios_%' OR source_id IN (SELECT source_id FROM raw_records WHERE source_db LIKE '%CoreSpotlight%' OR store_path LIKE '%CoreSpotlight%');
 
-
-DROP VIEW IF EXISTS vw_ios_ffs_file_inventory;
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_ffs_file_inventory;
 CREATE VIEW vw_ios_ffs_file_inventory AS
 SELECT ios_file_id,source_id,normalized_path,original_zip_entry,file_name,extension,size_bytes,zip_modified_utc,
        protection_class_hint,app_container_hint,domain_hint,is_directory,sha256_status,inventory_notes,created_utc
 FROM ios_ffs_file_inventory
 ORDER BY normalized_path;
+
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_schema_hits;
+CREATE VIEW vw_ios_app_db_spotlight_schema_hits AS
+SELECT ios_record_inventory_id AS hit_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, sample_columns, 'TABLE_OR_COLUMN_SCHEMA' AS hit_type,
+       CASE
+         WHEN lower(table_name) LIKE '%spotlight%' OR lower(sample_columns) LIKE '%spotlight%' THEN 'SPOTLIGHT_NAME'
+         WHEN lower(table_name) LIKE '%searchable%' OR lower(sample_columns) LIKE '%searchable%' THEN 'SEARCHABLE_NAME'
+         WHEN lower(table_name) LIKE '%corespotlight%' OR lower(sample_columns) LIKE '%corespotlight%' THEN 'CORESPOTLIGHT_NAME'
+         WHEN lower(sample_columns) LIKE '%uniqueidentifier%' OR lower(sample_columns) LIKE '%domainidentifier%' THEN 'CORESPOTLIGHT_IDENTIFIER_NAME'
+         WHEN lower(table_name) LIKE '%search%' OR lower(sample_columns) LIKE '%search%' OR lower(table_name) LIKE '%index%' OR lower(sample_columns) LIKE '%index%' THEN 'SEARCH_OR_INDEX_NAME'
+         ELSE 'SPOTLIGHT_RELATED_SCHEMA_TOKEN'
+       END AS hit_reason,
+       CASE
+         WHEN lower(table_name) LIKE '%spotlight%' OR lower(sample_columns) LIKE '%spotlight%' OR lower(table_name) LIKE '%corespotlight%' OR lower(sample_columns) LIKE '%corespotlight%' THEN 'MEDIUM_SCHEMA_INDICATOR_NOT_PROOF_OF_INDEXING'
+         ELSE 'LOW_SCHEMA_INDICATOR_REVIEW_REQUIRED'
+       END AS confidence,
+       'App-maintained schema/column indicator. Correlate to CoreSpotlight items before treating as actually indexed.' AS interpretation_note
+FROM ios_app_database_record_inventory
+WHERE lower(table_name) LIKE '%spotlight%'
+   OR lower(table_name) LIKE '%corespotlight%'
+   OR lower(table_name) LIKE '%searchable%'
+   OR lower(table_name) LIKE '%search%'
+   OR lower(table_name) LIKE '%index%'
+   OR lower(sample_columns) LIKE '%spotlight%'
+   OR lower(sample_columns) LIKE '%corespotlight%'
+   OR lower(sample_columns) LIKE '%searchable%'
+   OR lower(sample_columns) LIKE '%search%'
+   OR lower(sample_columns) LIKE '%index%'
+   OR lower(sample_columns) LIKE '%uniqueidentifier%'
+   OR lower(sample_columns) LIKE '%domainidentifier%'
+   OR lower(sample_columns) LIKE '%css searchable%';
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_row_candidates;
+CREATE VIEW vw_ios_app_db_spotlight_row_candidates AS
+SELECT ios_app_record_id AS candidate_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, record_category, source_primary_key,
+       item_identifier AS candidate_identifier,
+       url, title, file_path, record_timestamp_utc,
+       substr(COALESCE(text_snippet,''),1,700) AS candidate_text_preview,
+       CASE
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%spotlight%' OR lower(COALESCE(url,'')) LIKE '%spotlight%' OR lower(COALESCE(text_snippet,'')) LIKE '%spotlight%' THEN 'SPOTLIGHT_TOKEN_IN_PARSED_ROW'
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%search%' OR lower(COALESCE(url,'')) LIKE '%search%' OR lower(COALESCE(text_snippet,'')) LIKE '%search%' THEN 'SEARCH_TOKEN_IN_PARSED_ROW'
+         WHEN lower(COALESCE(item_identifier,'')) LIKE '%index%' OR lower(COALESCE(url,'')) LIKE '%index%' OR lower(COALESCE(text_snippet,'')) LIKE '%index%' THEN 'INDEX_TOKEN_IN_PARSED_ROW'
+         ELSE 'POTENTIAL_APP_SEARCHABLE_RECORD'
+       END AS hit_reason,
+       'LOW_ROW_TEXT_INDICATOR_REVIEW_REQUIRED' AS confidence,
+       'Parsed app DB row contains Spotlight/search/index tokens. This is not proof the row was actually in CoreSpotlight unless correlated.' AS interpretation_note
+FROM ios_app_parsed_records
+WHERE lower(COALESCE(item_identifier,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(url,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(title,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%spotlight%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%corespotlight%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%corespotlight%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%searchable%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%searchable%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%uniqueidentifier%'
+   OR lower(COALESCE(item_identifier,'')) LIKE '%domainidentifier%'
+   OR lower(COALESCE(text_snippet,'')) LIKE '%indexed%';
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_enabled_summary;
+CREATE VIEW vw_ios_app_db_spotlight_enabled_summary AS
+SELECT d.source_id,d.ios_db_id,d.normalized_path AS database_normalized_path,d.database_name,d.database_category,d.app_hint,
+       COUNT(DISTINCT s.hit_id) AS schema_hit_count,
+       COUNT(DISTINCT r.candidate_id) AS row_candidate_count,
+       COALESCE(MIN(s.confidence),'NO_SCHEMA_INDICATOR') AS schema_confidence_sample,
+       COALESCE(MIN(s.hit_reason),'NO_SCHEMA_INDICATOR') AS schema_reason_sample,
+       CASE
+         WHEN COUNT(DISTINCT s.hit_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SCHEMA_AND_ROW_SEARCH_INDICATORS_PRESENT'
+         WHEN COUNT(DISTINCT s.hit_id)>0 THEN 'APP_DB_SCHEMA_SEARCH_INDICATORS_PRESENT'
+         WHEN COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_ROW_SEARCH_INDICATORS_PRESENT'
+         ELSE 'NO_APP_DB_SPOTLIGHT_INDICATOR_DETECTED'
+       END AS review_status,
+       'App DB indicator only. Use as a roadmap to app-specific parsing/CoreSpotlight correlation, not as proof that iOS Spotlight indexed the row.' AS interpretation_note
+FROM ios_app_database_inventory d
+LEFT JOIN vw_ios_app_db_spotlight_schema_hits s ON s.ios_db_id=d.ios_db_id AND s.source_id=d.source_id
+LEFT JOIN vw_ios_app_db_spotlight_row_candidates r ON r.ios_db_id=d.ios_db_id AND r.source_id=d.source_id
+GROUP BY d.source_id,d.ios_db_id,d.normalized_path,d.database_name,d.database_category,d.app_hint
+HAVING schema_hit_count>0 OR row_candidate_count>0
+ORDER BY schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
 
 DROP VIEW IF EXISTS vw_ios_database_artifact_inventory;
 CREATE VIEW vw_ios_database_artifact_inventory AS
@@ -7568,8 +7918,8 @@ SELECT ios_db_id,source_id,normalized_path,original_zip_entry,database_name,data
 )VSGUI" R"VSGUI(       protection_class_hint,size_bytes,zip_modified_utc,parse_status,record_inventory_status,notes,extracted_path,created_utc
 FROM ios_app_database_inventory
 ORDER BY database_category,app_hint,normalized_path;
-
-DROP VIEW IF EXISTS vw_ios_app_database_record_inventory;
+)VSGUI",
+        R"VSGUI(DROP VIEW IF EXISTS vw_ios_app_database_record_inventory;
 CREATE VIEW vw_ios_app_database_record_inventory AS
 SELECT ios_record_inventory_id,source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,
        table_name,row_count,sample_columns,record_category,parse_status,notes,created_utc

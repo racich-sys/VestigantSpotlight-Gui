@@ -1,0 +1,12 @@
+Bundled reader tools copied from uploaded VestigantReaderTools.zip.
+
+This package includes the AFF4 runtime files needed by Vestigant Spotlight's portable release staging script: libaff4.dll, zlib1.dll, snappy.dll, and raptor2.dll, plus aff4-c.h/libaff4.lib and compatibility DLLs supplied in the upload.
+
+Redistribution/license status has not been independently verified in this chat. Treat as an internal/test bundle unless licensing is reviewed before external distribution.
+
+V1.6.115 update: user-supplied Microsoft VC++ runtime DLLs are bundled for portable internal testing:
+- MSVCP140.dll
+- VCRUNTIME140.dll
+- VCRUNTIME140_1.dll
+
+These runtime files are now staged with reader_tools into build-msvc\Release\resources\reader_tools and are required by the portable runtime check. Redistribution/licensing for external distribution must be reviewed separately.

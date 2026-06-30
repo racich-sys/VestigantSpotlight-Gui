@@ -875,7 +875,7 @@ void createUploadBundle(const fs::path& caseDir) {
         const std::vector<fs::path> rootFiles = {
             "CASE_REVIEW_SUMMARY.txt", "investigator_dashboard.html", "INVESTIGATOR_UI_GUIDE.md", "IOS_CORESPOTLIGHT_PLAN.md", "UPLOAD_README.txt", "TARGETED_EXPORT_README.txt", "Export-SpotlightTargetedData.ps1", "Create-UploadZip.ps1",
             "case_info.json", "case_summary.json", "case_summary.csv", "three_database_layout_readiness.csv",
-            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json", "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv", "aff4_apfs_directory_record_name_index_sample.csv", "aff4_apfs_directory_record_name_index_summary.json", "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md", "aff4_apfs_spotlight_cache_text_sample.csv", "aff4_apfs_spotlight_cache_text_summary.json", "AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md",
+            "SOURCE_INTAKE_PLAN.md", "AFF4_APFS_READER_PLAN.md", "AFF4_APFS_V1_DIAGNOSTIC_RERUN_PLAN.md", "aff4_apfs_v1_diagnostic_checklist.csv", "aff4_apfs_v1_diagnostic_plan_summary.json", "AFF4_STREAM_SELECTION_PLAN.md", "AFF4_CPP_LITE_RANDOM_ACCESS_PLAN.md", "aff4_cpp_lite_reader_readiness.csv", "aff4_cpp_lite_integration_readiness.csv", "aff4_cpp_lite_dynamic_load_probe.csv", "aff4_virtual_apfs_probe.csv", "aff4_virtual_apfs_probe_summary.json", "AFF4_VIRTUAL_APFS_PROBE.md", "aff4_apfs_container_superblock.csv", "aff4_apfs_container_superblock_summary.json", "aff4_apfs_checkpoint_descriptor_scan.csv", "AFF4_APFS_CONTAINER_VIEW.md", "aff4_apfs_checkpoint_map.csv", "aff4_apfs_checkpoint_mapped_object_probe.csv", "aff4_apfs_checkpoint_map_summary.json", "AFF4_APFS_CHECKPOINT_MAP_PROBE.md", "aff4_apfs_object_id_probe.csv", "aff4_apfs_btree_node_probe.csv", "aff4_apfs_omap_phys_probe.csv", "aff4_apfs_omap_btree_root_probe.csv", "aff4_apfs_omap_lookup_probe.csv", "aff4_apfs_omap_btree_toc_probe.csv", "aff4_apfs_omap_leaf_kv_decode.csv", "aff4_apfs_omap_leaf_lookup_results.csv", "aff4_apfs_resolved_volume_superblocks.csv", "aff4_apfs_resolved_volume_superblocks_summary.json", "AFF4_APFS_RESOLVED_VOLUME_SUPERBLOCKS.md", "aff4_apfs_volume_omap_probe.csv", "AFF4_APFS_VOLUME_OMAP_PROBE.md", "aff4_apfs_volume_root_tree_lookup.csv", "aff4_apfs_volume_root_tree_lookup_summary.json", "AFF4_APFS_VOLUME_ROOT_TREE_LOOKUP.md", "aff4_apfs_root_tree_node_probe.csv", "aff4_apfs_root_tree_record_sample.csv", "aff4_apfs_spotlight_target_scan.csv", "aff4_apfs_spotlight_name_scan_sample.csv", "aff4_apfs_spotlight_copy_attempt.csv", "aff4_apfs_logical_directory_walk.csv", "aff4_apfs_logical_directory_walk_summary.json", "aff4_apfs_spotlight_xattr_probe.csv", "aff4_apfs_spotlight_xattr_probe_summary.json", "AFF4_APFS_SPOTLIGHT_XATTR_PROBE.md", "aff4_apfs_spotlight_file_extent_probe.csv", "aff4_apfs_spotlight_file_extent_probe_summary.json", "AFF4_APFS_SPOTLIGHT_FILE_EXTENT_PROBE.md", "aff4_apfs_spotlight_inode_probe.csv", "aff4_apfs_spotlight_inode_probe_summary.json", "AFF4_APFS_SPOTLIGHT_INODE_PROBE.md", "aff4_apfs_spotlight_target_scan_summary.json", "AFF4_APFS_SPOTLIGHT_TARGET_SCAN.md", "aff4_apfs_root_tree_node_probe_summary.json", "AFF4_APFS_ROOT_TREE_NODE_PROBE.md", "aff4_apfs_omap_probe_summary.json", "AFF4_APFS_OMAP_TOC_PROBE.md", "AFF4_APFS_OMAP_PROBE.md", "aff4_apfs_object_resolution_probe_summary.json", "AFF4_APFS_OBJECT_RESOLUTION_PROBE.md", "AFF4_CPP_LITE_DYNAMIC_LOAD_PROBE.md", "aff4_stream_inventory.csv", "aff4_zip_probe_summary.json", "aff4_zip_central_directory.csv", "AFF4_ZIP_SINGLE_FILE_PROBE.md", "aff4_apfs_exact_file_signature_scan.csv", "aff4_apfs_exact_file_signature_scan_summary.json", "AFF4_APFS_EXACT_FILE_SIGNATURE_SCAN.md", "evidence_source_readiness.csv", "reader_tool_readiness.csv", "source_probe_signatures.csv", "source_partition_probe.csv", "source_probe_summary.json", "image_inventory_readiness.csv", "active_file_comparison_readiness.csv", "image_file_inventory.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe.csv", "aff4_apfs_unresolved_spotlight_object_resolution_probe_summary.json", "AFF4_APFS_UNRESOLVED_SPOTLIGHT_OBJECT_RESOLUTION_PROBE.md", "aff4_apfs_staged_storev2_unresolved_after_resolution_sample.csv", "aff4_apfs_directory_record_name_index_sample.csv", "aff4_apfs_directory_record_name_index_summary.json", "AFF4_APFS_DIRECTORY_RECORD_NAME_INDEX.md", "aff4_apfs_spotlight_cache_text_sample.csv", "aff4_apfs_spotlight_cache_text_summary.json", "AFF4_APFS_SPOTLIGHT_CACHE_TEXT.md", "spotlight_external_volume_candidate_summary.csv", "spotlight_external_volume_evidence_review.csv", "spotlight_external_volume_raw_value_hits.csv", "spotlight_external_volume_cache_text_hits.csv", "spotlight_external_volume_dictionary_hits.csv",
             "evidence_sources.csv", "store_inventory.csv", "store_selection.csv", "ios_input_store_entry_inventory.csv", "ios_zip_entry_probe.csv", "ios_ffs_file_inventory.csv", "ios_app_database_inventory.csv", "EXPORT_INDEX.csv"
         };
 
@@ -964,7 +964,7 @@ std::string inputSourceType(const fs::path& p) {
 
 std::string sourceTypeReaderStatus(const std::string& type) {
     if (type == "ZIP_SPOTLIGHT_OR_FILESYSTEM_CONTAINER") return "IMPLEMENTED_ZIP_EXTRACTION";
-    if (type == "AFF4_CONTAINER") return "PLANNED_NOT_IMPLEMENTED_AFF4_READER";
+    if (type == "AFF4_CONTAINER") return "IMPLEMENTED_AFF4_APFS_SPOTLIGHT_READER";
     if (type == "RAW_FLAT_IMAGE") return "IMPLEMENTED_RAW_IMAGE_HEADER_PARTITION_PROBE_ONLY";
     if (type == "FOLDER_OR_EXTRACTED_FILESYSTEM_ROOT") return "NOT_REQUIRED_FOLDER_SOURCE";
     return "NOT_SUPPORTED";
@@ -972,7 +972,7 @@ std::string sourceTypeReaderStatus(const std::string& type) {
 
 std::string sourceTypeFilesystemStatus(const std::string& type) {
     if (type == "ZIP_SPOTLIGHT_OR_FILESYSTEM_CONTAINER") return "ZIP_EXTRACTED_THEN_SPOTLIGHT_DISCOVERY";
-    if (type == "AFF4_CONTAINER") return "PRIORITY_AFF4_STREAM_READER_PLUS_APFS_ENUMERATION_REQUIRED";
+    if (type == "AFF4_CONTAINER") return "IMPLEMENTED_AFF4_APFS_SPOTLIGHT_ENUMERATION";
     if (type == "RAW_FLAT_IMAGE") return "RAW_PARTITION_REPORTING_ONLY_AFF4_APFS_PATH_PRIORITIZED";
     if (type == "FOLDER_OR_EXTRACTED_FILESYSTEM_ROOT") return "DIRECT_FOLDER_SPOTLIGHT_DISCOVERY";
     return "NOT_AVAILABLE";
@@ -1073,6 +1073,39 @@ void appendReaderToolRootCandidates(std::vector<fs::path>& out, const fs::path& 
     appendPathCandidates(out, root / "src", names);
 }
 
+fs::path executableDirectoryNoThrow() {
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768, L'\0');
+    const DWORD n = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (n == 0 || n >= buffer.size()) return {};
+    std::error_code ec;
+    fs::path exePath(buffer.data());
+    fs::path dir = exePath.parent_path();
+    if (dir.empty() || !fs::exists(dir, ec)) return {};
+    return dir;
+#else
+    return {};
+#endif
+}
+
+void appendPortableReleaseResourceCandidates(std::vector<fs::path>& out, const std::vector<std::string>& names) {
+    std::error_code ec;
+    const fs::path exeDir = executableDirectoryNoThrow();
+    if (!exeDir.empty()) {
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "reader_tools", names);
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "aff4_cpp_lite", names);
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "apfs_tools", names);
+        appendReaderToolRootCandidates(out, exeDir / "reader_tools", names);
+    }
+    const fs::path cwd = fs::current_path(ec);
+    if (!ec && !cwd.empty()) {
+        appendReaderToolRootCandidates(out, cwd / "resources" / "reader_tools", names);
+        appendReaderToolRootCandidates(out, cwd / "resources" / "aff4_cpp_lite", names);
+        appendReaderToolRootCandidates(out, cwd / "resources" / "apfs_tools", names);
+        appendReaderToolRootCandidates(out, cwd / "reader_tools", names);
+    }
+}
+
 std::vector<fs::path> splitSearchPath(const std::string& searchPath) {
     std::vector<fs::path> dirs;
     if (searchPath.empty()) return dirs;
@@ -1094,6 +1127,7 @@ fs::path findToolCandidate(const RunOptions& opt, const std::string& envVar, con
     const std::string explicitTool = getenvString(envVar.c_str());
     if (!explicitTool.empty()) candidates.emplace_back(explicitTool);
     appendReaderToolRootCandidates(candidates, opt.readerToolsDir, names);
+    appendPortableReleaseResourceCandidates(candidates, names);
     const std::string readerRoot = getenvString("VESTIGANT_READER_TOOLS");
     if (!readerRoot.empty()) appendReaderToolRootCandidates(candidates, fs::path(readerRoot), names);
     const std::string aff4CppLiteRoot = getenvString("VESTIGANT_AFF4_CPP_LITE_ROOT");
@@ -2238,7 +2272,7 @@ std::string imageContainerTypeForInput(const fs::path& input) {
 }
 
 std::string activeComparisonStatusForInput(const fs::path& input, const PartitionProbeFindings& partitions) {
-    if (isAff4SourcePath(input)) return "WAITING_FOR_AFF4_STREAM_READER_AND_APFS_FILE_INVENTORY";
+    if (isAff4SourcePath(input)) return "AFF4_APFS_FILE_INVENTORY_AND_SPOTLIGHT_COMPARISON_AVAILABLE_WHEN_SOURCE_PROBE_COMPLETES";
     if (isRawImageSourcePath(input)) {
         const std::size_t apfsHints = countPartitionFilesystemHintContains(partitions, "APFS") + countPartitionFilesystemHintContains(partitions, "APPLE_APFS");
         return apfsHints > 0 ? "WAITING_FOR_APFS_FILE_INVENTORY_FROM_RAW_PARTITION" : "WAITING_FOR_FILESYSTEM_READER_AND_IMAGE_FILE_INVENTORY";
@@ -2273,7 +2307,7 @@ void writeImageInventoryReadinessCsv(const fs::path& caseDir,
                 << csvEscape(sourceTypeReaderStatus(inputType)) << ','
                 << csvEscape(partitions.entries.empty() ? "NOT_AVAILABLE_OR_NOT_RAW" : "PARTITION_PROBE_REPORTED") << ','
                 << csvEscape(sourceTypeFilesystemStatus(inputType)) << ','
-                << csvEscape(spotlightHintCount > 0 ? "SPOTLIGHT_HINTS_FOUND_NOT_EXTRACTED_FROM_IMAGE" : "NO_IMAGE_BACKED_SPOTLIGHT_LOCATION_YET") << ','
+                << csvEscape(spotlightHintCount > 0 ? "SPOTLIGHT_HINTS_FOUND_OR_EXTRACTED_FROM_IMAGE" : "NO_IMAGE_BACKED_SPOTLIGHT_LOCATION_REPORTED") << ','
                 << csvEscape(activeStatus) << ','
                 << csvEscape("AFF4->APFS->Spotlight->image_file_inventory->active_file_comparison; raw IMG/DD secondary") << ','
                 << probe.fileSizeBytes << ','
@@ -2299,7 +2333,7 @@ void writeImageInventoryReadinessCsv(const fs::path& caseDir,
                 << csvEscape(activeStatus) << ','
                 << csvEscape("Future comparison joins Spotlight artifacts to image_file_inventory by inode/parent when available, then path/name/size fallback.") << ','
                 << csvEscape(nextAction) << ','
-                << csvEscape("Active file comparison is intentionally not inferred until image_file_inventory contains APFS/HFS filesystem rows from the evidence image.") << "\n";
+                << csvEscape("Active file comparison is reported from image_file_inventory/comparison.sqlite when APFS/HFS filesystem rows are materialized; readiness-only rows remain diagnostic placeholders before source-probe completion.") << "\n";
         }
         const fs::path inventoryCsv = caseDir / "image_file_inventory.csv";
         if (!fs::exists(inventoryCsv)) {
@@ -2340,7 +2374,7 @@ void persistImageInventoryReadiness(CaseDatabase& db,
             inv.bind(i++, sourceTypeReaderStatus(inputType));
             inv.bind(i++, partitions.entries.empty() ? std::string("NOT_AVAILABLE_OR_NOT_RAW") : std::string("PARTITION_PROBE_REPORTED"));
             inv.bind(i++, sourceTypeFilesystemStatus(inputType));
-            inv.bind(i++, spotlightHintCount > 0 ? std::string("SPOTLIGHT_HINTS_FOUND_NOT_EXTRACTED_FROM_IMAGE") : std::string("NO_IMAGE_BACKED_SPOTLIGHT_LOCATION_YET"));
+            inv.bind(i++, spotlightHintCount > 0 ? std::string("SPOTLIGHT_HINTS_FOUND_OR_EXTRACTED_FROM_IMAGE") : std::string("NO_IMAGE_BACKED_SPOTLIGHT_LOCATION_REPORTED"));
             inv.bind(i++, activeStatus);
             inv.bind(i++, std::string("AFF4->APFS->Spotlight->image_file_inventory->active_file_comparison; raw IMG/DD secondary"));
             inv.bind(i++, std::string(""));
@@ -2465,14 +2499,15 @@ void writeSourceIntakeArtifacts(const fs::path& caseDir,
             out << "- Loose folder Store-V2/CoreSpotlight `store.db` discovery and parsing.\n";
             out << "- ZIP source registration, hashing, extraction to controlled staging, and Store-V2/CoreSpotlight discovery from the staged working copy.\n";
             out << "- AFF4-first/APFS-first image inventory readiness reporting without creating a second evidentiary archive.\n";
+            out << "- Guarded AFF4/APFS Spotlight Store-V2 staging, copy-out, parser selection, native parsing, cache-text incorporation, APFS inventory materialization, and active-file comparison for supported APFS images.\n";
             out << "- Bounded source signature probing for ZIP/AFF4 hints, MBR/GPT, APFS NXSB, HFS/HFS+, and Spotlight/CoreSpotlight path strings.\n";
-            out << "- Raw image partition-map readiness reporting for MBR/protective MBR and GPT entries, retained as secondary to AFF4/APFS work.\n- Image-file-inventory and active-file-comparison readiness artifacts for future Spotlight-indexed versus APFS-present/missing comparison.\n";
-            out << "- Clear unsupported-container status for AFF4/raw sources rather than ambiguous zero-artifact cases.\n\n";
-            out << "## Not yet implemented\n\n";
-            out << "- AFF4 container stream enumeration/reading. This is now the prioritized image path because most expected Spotlight-containing images are AFF4/APFS.\n";
+            out << "- Raw image partition-map readiness reporting for MBR/protective MBR and GPT entries, retained as secondary to AFF4/APFS work.\n- Image-file-inventory and active-file-comparison readiness artifacts for Spotlight-indexed versus APFS-present/missing comparison.\n";
+            out << "- Clear status distinction between the implemented guided AFF4/APFS Spotlight path and the broader general-purpose container-reader roadmap.\n\n";
+            out << "## Remaining roadmap items\n\n";
+            out << "- General full-container AFF4 stream enumeration and generic filesystem extraction outside the guided AFF4/APFS Spotlight path.\n";
             out << "- Raw image filesystem extraction from detected partition entries. Partition entries are reported for readiness/provenance only.\n";
-            out << "- APFS filesystem enumeration from AFF4-backed disk streams; HFS/HFS+ remains lower priority.\n";
-            out << "- Extraction of `.Spotlight-V100` / CoreSpotlight folders from image files.\n\n";
+            out << "- HFS/HFS+ image filesystem enumeration remains lower priority than AFF4/APFS validation.\n";
+            out << "- Broader cross-image validation of `.Spotlight-V100` / CoreSpotlight extraction beyond the current AFF4/APFS validation corpus.\n\n";
             out << "## Source probe signatures\n\n";
             if (probe.hits.empty()) {
                 out << "No source signatures were found by the bounded probe. For large raw/AFF4 sources, rerun source-probe with `--full-scan` if a deeper byte scan is needed.\n\n";
@@ -4265,6 +4300,8 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
                                                                             Logger& log) {
     const fs::path stagedRoot = caseDir / "ExtractedSpotlight" / "StagedStoreV2";
     const fs::path csvPath = caseDir / "aff4_apfs_staged_storev2_parser_probe.csv";
+    const fs::path coverageCsvPath = caseDir / "aff4_apfs_staged_storev2_parse_selection_coverage.csv";
+    const fs::path coverageJsonPath = caseDir / "aff4_apfs_staged_storev2_parse_selection_coverage_summary.json";
     const fs::path jsonPath = caseDir / "aff4_apfs_staged_storev2_parser_probe_summary.json";
     const fs::path mdPath = caseDir / "AFF4_APFS_STAGED_STOREV2_PARSER_PROBE.md";
     Aff4ApfsStagedStoreV2ParserProbeResult result;
@@ -4276,7 +4313,12 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
     std::size_t maxRecordsUsed = opt.maxNativeRecordsExplicit ? opt.maxNativeRecords : 25000U;
     std::size_t maxBlocksUsed = opt.maxNativeBlocks;
     const bool fullNativeValuesRequested = opt.experimentalFullNativeValues || opt.diagnosticFullNativeDb || opt.pressureTestMode;
-    const NativeDecodeMode stagedDecodeMode = (fullNativeValuesRequested && !opt.decodeCoreNativeValues) ? NativeDecodeMode::FullValues : NativeDecodeMode::CoreFields;
+    // V1.6.115: pressure/full-native AFF4/APFS source-probe runs must use
+    // FullValues even when GUI also enables core/native metadata. The prior
+    // conditional let GUI runs fall back to CoreFields because GUI sets
+    // decodeCoreNativeValues=true by default, producing far fewer raw key/value
+    // and date-candidate rows than the validated PowerShell thin workflow.
+    const NativeDecodeMode stagedDecodeMode = fullNativeValuesRequested ? NativeDecodeMode::FullValues : NativeDecodeMode::CoreFields;
     result.decodeModeName = (stagedDecodeMode == NativeDecodeMode::FullValues) ? "FullValues" : "CoreFields";
 
     try {
@@ -4348,6 +4390,78 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
     } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_staged_storev2_parser_probe.csv: ") + ex.what()); }
 
     try {
+        std::set<std::string> selectedPaths;
+        for (const auto& st : selected) selectedPaths.insert(pathString(st.storePath));
+        std::map<std::string, std::vector<StoreInfo>> coverageGroups;
+        for (const auto& st : candidates) coverageGroups[storeGroupKey(st)].push_back(st);
+        std::ofstream out(coverageCsvPath, std::ios::binary);
+        out << "source_id,input_path,input_type,group_key,group_label,candidate_count,valid_candidate_count,invalid_candidate_count,selected_candidate_count,coverage_status,selection_policy,selected_relative_paths,valid_alternate_relative_paths,invalid_relative_paths,validation_errors,notes\n";
+        std::size_t groupsWithValid = 0;
+        std::size_t groupsSelected = 0;
+        std::size_t groupsInvalidOnly = 0;
+        for (const auto& kv : coverageGroups) {
+            const std::string& key = kv.first;
+            const auto& group = kv.second;
+            std::size_t validCount = 0;
+            std::size_t invalidCount = 0;
+            std::size_t selectedCount = 0;
+            std::string label;
+            std::string selectedRel;
+            std::string validAltRel;
+            std::string invalidRel;
+            std::string errors;
+            for (const auto& st : group) {
+                if (label.empty()) label = st.storeGuid;
+                const bool isSelected = selectedPaths.find(pathString(st.storePath)) != selectedPaths.end();
+                if (st.isValid) ++validCount; else ++invalidCount;
+                if (isSelected) ++selectedCount;
+                auto appendList = [](std::string& dst, const std::string& value) { if (!dst.empty()) dst += "; "; dst += value; };
+                const std::string rel = st.relativePath.empty() ? pathString(st.storePath.filename()) : st.relativePath;
+                if (isSelected) appendList(selectedRel, rel);
+                else if (st.isValid) appendList(validAltRel, rel);
+                else appendList(invalidRel, rel);
+                if (!st.validationError.empty()) appendList(errors, rel + "=" + st.validationError);
+            }
+            std::string status;
+            std::string notesForRow;
+            if (selectedCount > 0) {
+                ++groupsSelected;
+                if (validCount > selectedCount) status = "PARSED_ONE_PRIMARY_VALID_DATABASE_ALTERNATES_PRESERVED";
+                else status = "PARSED_PRIMARY_VALID_DATABASE";
+                notesForRow = "One canonical valid Store-V2 database was selected for parsing from this logical group to avoid double-counting store.db/.store.db alternates.";
+            } else if (validCount > 0) {
+                status = "VALID_GROUP_NOT_SELECTED_REVIEW_REQUIRED";
+                notesForRow = "A valid Store-V2 candidate existed but no primary database was selected; this should be reviewed.";
+            } else {
+                ++groupsInvalidOnly;
+                status = "NOT_PARSED_NO_VALID_STORE_SIGNATURE";
+                notesForRow = "Candidate files were preserved in staging/inventory, but signature validation did not identify a parseable Store-V2 database.";
+            }
+            if (validCount > 0) ++groupsWithValid;
+            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(source.inputPath)) << ',' << csvEscape(inputSourceType(source.inputPath)) << ','
+                << csvEscape(key) << ',' << csvEscape(label) << ',' << group.size() << ',' << validCount << ',' << invalidCount << ',' << selectedCount << ','
+                << csvEscape(status) << ',' << csvEscape("one_primary_per_logical_store_group_store_db_preferred_dot_store_preserved") << ','
+                << csvEscape(selectedRel) << ',' << csvEscape(validAltRel) << ',' << csvEscape(invalidRel) << ',' << csvEscape(errors) << ',' << csvEscape(notesForRow) << "\n";
+        }
+        if (coverageGroups.empty()) {
+            out << csvEscape(source.sourceId) << ',' << csvEscape(pathString(source.inputPath)) << ',' << csvEscape(inputSourceType(source.inputPath)) << ",,NO_CANDIDATES,0,0,0,0,NO_CANDIDATE_DATABASES,,,,,,No staged Store-V2 database candidates were discovered.\n";
+        }
+        std::ofstream jout(coverageJsonPath, std::ios::binary);
+        jout << "{\n";
+        jout << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
+        jout << "  \"app_version\": \"" << appVersion() << "\",\n";
+        jout << "  \"source_id\": \"" << jsonEscape(source.sourceId) << "\",\n";
+        jout << "  \"candidate_database_groups\": " << coverageGroups.size() << ",\n";
+        jout << "  \"groups_with_valid_database\": " << groupsWithValid << ",\n";
+        jout << "  \"groups_selected_for_parsing\": " << groupsSelected << ",\n";
+        jout << "  \"groups_invalid_only\": " << groupsInvalidOnly << ",\n";
+        jout << "  \"all_valid_groups_selected\": " << ((groupsWithValid == groupsSelected) ? "true" : "false") << ",\n";
+        jout << "  \"selection_policy\": \"one_primary_per_logical_store_group_store_db_preferred_dot_store_preserved\",\n";
+        jout << "  \"notes\": \"All valid staged Store-V2 logical groups should have exactly one selected primary database. Valid alternates are preserved but not parsed to avoid duplicate artifacts. Invalid-only groups are retained in staging diagnostics with signature/error details.\"\n";
+        jout << "}\n";
+    } catch (const std::exception& ex) { log.warn(std::string("Unable to write aff4_apfs_staged_storev2_parse_selection_coverage outputs: ") + ex.what()); }
+
+    try {
         std::ofstream out(jsonPath, std::ios::binary);
         out << "{\n";
         out << "  \"generated_utc\": \"" << nowUtc() << "\",\n";
@@ -4387,6 +4501,7 @@ Aff4ApfsStagedStoreV2ParserProbeResult runAff4ApfsStagedStoreV2ParserProbe(const
         out << "- Status: `" << runStatus << "`\n";
         out << "- Candidate databases: `" << candidates.size() << "`\n";
         out << "- Selected databases: `" << selected.size() << "`\n";
+        out << "- Parse-selection coverage CSV: `" << pathString(coverageCsvPath.filename()) << "`\n";
         out << "- Max records used: `" << maxRecordsUsed << "`\n";
         out << "- Native decode mode: `" << result.decodeModeName << "`\n";
         out << "- Raw records: `" << parseCounts.rawRecords << "`\n";
@@ -4453,7 +4568,7 @@ void writeThreeDatabaseLayoutReadiness(const fs::path& caseDir,
     try {
         std::ofstream out(caseDir / "three_database_layout_readiness.csv", std::ios::binary);
         out << "component,path,status,row_count,source_id,notes\n";
-        out << "spotlight_primary," << csvEscape(pathString(spotlightDb)) << ",PRIMARY_CASE_DB," << "" << "," << csvEscape(sourceId) << "," << csvEscape("V1.6.102 keeps the current primary case SQLite as the Spotlight evidence database to avoid duplicating the multi-GB raw key/value corpus in thin pressure runs.") << "\n";
+        out << "spotlight_primary," << csvEscape(pathString(spotlightDb)) << ",PRIMARY_CASE_DB," << "" << "," << csvEscape(sourceId) << "," << csvEscape("V1.6.115 keeps the current primary case SQLite as the Spotlight evidence database to avoid duplicating the multi-GB raw key/value corpus in thin pressure runs.") << "\n";
         out << "filesystem_inventory," << csvEscape(pathString(filesystemDb)) << "," << csvEscape(status) << "," << imageRows << "," << csvEscape(sourceId) << "," << csvEscape("Sidecar SQLite contains image_inventory_sources and APFS-derived image_file_inventory rows for this source.") << "\n";
         out << "comparison," << csvEscape(pathString(comparisonDb)) << "," << csvEscape(status) << "," << comparisonRows << "," << csvEscape(sourceId) << "," << csvEscape("Sidecar SQLite contains active_file_comparison_runs, artifact comparison rows, and orphan/missing-candidate lead rows.") << "\n";
         out << "comparison_missing_candidates," << csvEscape(pathString(comparisonDb)) << "," << csvEscape(status) << "," << missingRows << "," << csvEscape(sourceId) << "," << csvEscape("Missing candidates are investigative leads only, not deletion proof.") << "\n";
@@ -5847,6 +5962,31 @@ Aff4ApfsStagedStoreV2EnrichmentProbeCounts runAff4ApfsStagedStoreV2EnrichmentPro
             "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,best_path,poi_score,poi_priority,poi_category,validation_evidence_tables,validation_workflow,validation_status,interpretation_note FROM vw_investigator_points_of_interest WHERE source_id=? ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC LIMIT 5000",
             source.sourceId, log);
 
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_candidate_summary.csv",
+            {"source_id","volume_name_or_token","high_confidence_hits","medium_confidence_hits","low_confidence_hits","path_hit_count","raw_value_hit_count","cache_text_hit_count","dictionary_hit_count","volfs_hit_count","first_date_utc","last_date_utc","sample_path_or_value","validation_status","interpretation_note"},
+            "SELECT source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note FROM spotlight_external_volume_candidate_summary WHERE source_id=? ORDER BY high_confidence_hits DESC, medium_confidence_hits DESC, low_confidence_hits DESC, volume_name_or_token LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_evidence_review.csv",
+            {"evidence_family","hit_id","source_id","artifact_id","store_guid","inode_num","source_db","source_table","source_field","evidence_type","volume_name_or_token","path_or_value","first_date_utc","last_date_utc","confidence","reason","validation_note"},
+            "SELECT evidence_family,hit_id,source_id,artifact_id,store_guid,inode_num,source_db,source_table,source_field,evidence_type,volume_name_or_token,path_or_value,first_date_utc,last_date_utc,confidence,reason,validation_note FROM vw_spotlight_external_volume_evidence_review WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, evidence_family, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_raw_value_hits.csv",
+            {"hit_id","source_id","raw_kv_id","artifact_id","store_guid","source_db","inode_num","store_id","source_field","evidence_type","volume_name_or_token","path_or_value","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,raw_kv_id,artifact_id,store_guid,source_db,inode_num,store_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_raw_value_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_cache_text_hits.csv",
+            {"hit_id","source_id","cache_text_id","artifact_id","store_guid","cache_numeric_id","source_field","evidence_type","volume_name_or_token","path_or_value","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,cache_text_id,artifact_id,store_guid,cache_numeric_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_cache_text_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_dictionary_hits.csv",
+            {"hit_id","source_id","store_guid","source_db","dictionary_table","dictionary_field","dictionary_value","evidence_type","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,store_guid,source_db,dictionary_table,dictionary_field,dictionary_value,evidence_type,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_dictionary_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, dictionary_table, dictionary_value, hit_id LIMIT 5000",
+            source.sourceId, log);
+
         exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_high_priority_validation_queue.csv",
             {"artifact_id","store_guid","inode_num","parent_inode_num","file_name","best_path","poi_score","poi_priority","poi_category","usage_latest_utc","usage_date_count","missing_candidate_rows","cache_text_rows","validation_queue_status","validation_queue_instruction","validation_evidence_tables","validation_workflow","validation_status"},
             "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,best_path,poi_score,poi_priority,poi_category,usage_latest_utc,usage_date_count,missing_candidate_rows,cache_text_rows,validation_queue_status,validation_queue_instruction,validation_evidence_tables,validation_workflow,validation_status FROM temp_aff4_high_priority_validation_queue WHERE source_id=? ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC LIMIT 5000",
@@ -6024,6 +6164,58 @@ void refreshAff4ApfsPostCacheValidationExports(const fs::path& caseDir,
                                                Logger& log) {
     try {
         appendRunStatus(caseDir, "aff4_apfs_post_cache_validation_exports_start", "refresh POI/high-priority validation CSVs after Spotlight Cache text incorporation");
+        appendRunStatus(caseDir, "spotlight_external_volume_cache_refresh_start", "refresh Spotlight-only external-volume cache text hits after Spotlight Cache text incorporation");
+        db.exec("DELETE FROM spotlight_external_volume_cache_text_hits WHERE source_id=" + sqliteRunnerLiteral(source.sourceId) + ";");
+        db.exec("DELETE FROM spotlight_external_volume_candidate_summary WHERE source_id=" + sqliteRunnerLiteral(source.sourceId) + ";");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_cache_text_hits(source_id,cache_text_id,artifact_id,store_guid,cache_numeric_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc)
+SELECT c.source_id,c.cache_text_id,c.linked_artifact_id,c.store_guid,c.cache_numeric_id,'decoded_text',
+       CASE WHEN lower(c.decoded_text) LIKE '%file:///volumes/%' THEN 'CACHE_TEXT_FILE_URL_VOLUMES_PATH'
+            WHEN lower(c.decoded_text) LIKE '%/volumes/%' THEN 'CACHE_TEXT_VOLUMES_PATH'
+            WHEN lower(c.decoded_text) LIKE '%/.vol/%' THEN 'CACHE_TEXT_VOLFS_REFERENCE'
+            ELSE 'CACHE_TEXT_VOLUME_RELATED_TOKEN' END,
+       CASE WHEN lower(c.decoded_text) LIKE '%/.vol/%' THEN '.vol' ELSE 'CACHE_TEXT_VOLUME_TOKEN' END,
+       substr(c.decoded_text,1,1200),
+       CASE WHEN lower(c.decoded_text) LIKE '%/volumes/%' OR lower(c.decoded_text) LIKE '%file:///volumes/%' THEN 'MEDIUM_CACHE_TEXT_PATH_INDICATOR' ELSE 'LOW_CACHE_TEXT_TOKEN_REVIEW_REQUIRED' END,
+       'Spotlight Cache text contains mounted-volume path or volume-related token.',
+       'Spotlight-only investigative lead; cache text may be content text rather than filesystem proof.',
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM spotlight_cache_text c
+WHERE c.source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+  AND (lower(c.decoded_text) LIKE '%/volumes/%'
+       OR lower(c.decoded_text) LIKE '%file:///volumes/%'
+       OR lower(c.decoded_text) LIKE '%/.vol/%'
+       OR lower(c.decoded_text) LIKE '%external%'
+       OR lower(c.decoded_text) LIKE '%removable%'
+       OR lower(c.decoded_text) LIKE '%usb%')
+LIMIT 50000;
+)SQL");
+        db.exec(R"SQL(
+INSERT INTO spotlight_external_volume_candidate_summary(source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note,created_utc)
+WITH all_hits AS (
+  SELECT source_id,volume_name_or_token,confidence,path_or_value,first_date_utc,last_date_utc,'path' AS family FROM spotlight_external_volume_path_hits WHERE source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'raw' FROM spotlight_external_volume_raw_value_hits WHERE source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'cache' FROM spotlight_external_volume_cache_text_hits WHERE source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+  UNION ALL SELECT source_id,dictionary_value,confidence,dictionary_value,NULL,NULL,'dictionary' FROM spotlight_external_volume_dictionary_hits WHERE source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+  UNION ALL SELECT source_id,volume_name_or_token,confidence,path_or_value,NULL,NULL,'volfs' FROM spotlight_external_volume_volfs_hits WHERE source_id=)SQL" + sqliteRunnerLiteral(source.sourceId) + R"SQL(
+)
+SELECT source_id,COALESCE(NULLIF(volume_name_or_token,''),'UNKNOWN_VOLUME_TOKEN'),
+       SUM(CASE WHEN confidence LIKE 'HIGH%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN confidence LIKE 'LOW%' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='path' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='raw' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='cache' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='dictionary' THEN 1 ELSE 0 END),
+       SUM(CASE WHEN family='volfs' THEN 1 ELSE 0 END),
+       MIN(first_date_utc),MAX(last_date_utc),substr(MAX(path_or_value),1,1200),
+       'SPOTLIGHT_ONLY_INVESTIGATIVE_LEAD',
+       'Summary uses only Spotlight-derived tables. It is not proof of external-media use without validation/correlation.',
+       strftime('%Y-%m-%dT%H:%M:%SZ','now')
+FROM all_hits
+GROUP BY source_id,COALESCE(NULLIF(volume_name_or_token,''),'UNKNOWN_VOLUME_TOKEN');
+)SQL");
+        appendRunStatus(caseDir, "spotlight_external_volume_cache_refresh_complete", "summary_rows=" + std::to_string(scalarCountForSource(db, "spotlight_external_volume_candidate_summary", source.sourceId)) + " cache_text_hits=" + std::to_string(scalarCountForSource(db, "spotlight_external_volume_cache_text_hits", source.sourceId)));
         appendRunStatus(caseDir, "aff4_apfs_post_cache_high_priority_queue_temp_start", "rebuild high-priority validation queue after cache text rows are available");
         db.exec("DROP TABLE IF EXISTS temp_aff4_high_priority_validation_queue;");
         db.exec("CREATE TEMP TABLE temp_aff4_high_priority_validation_queue AS SELECT * FROM vw_investigator_high_priority_validation_queue WHERE source_id=" + sqliteRunnerLiteral(source.sourceId) + " ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC LIMIT 5000;");
@@ -6045,6 +6237,31 @@ void refreshAff4ApfsPostCacheValidationExports(const fs::path& caseDir,
         exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_points_of_interest_validation_sample.csv",
             {"artifact_id","store_guid","inode_num","parent_inode_num","file_name","best_path","poi_score","poi_priority","poi_category","validation_evidence_tables","validation_workflow","validation_status","interpretation_note"},
             "SELECT artifact_id,store_guid,inode_num,parent_inode_num,file_name,best_path,poi_score,poi_priority,poi_category,validation_evidence_tables,validation_workflow,validation_status,interpretation_note FROM vw_investigator_points_of_interest WHERE source_id=? ORDER BY poi_score DESC, COALESCE(NULLIF(usage_latest_utc,''), NULLIF(last_date_utc,''), artifact_id) DESC LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_candidate_summary.csv",
+            {"source_id","volume_name_or_token","high_confidence_hits","medium_confidence_hits","low_confidence_hits","path_hit_count","raw_value_hit_count","cache_text_hit_count","dictionary_hit_count","volfs_hit_count","first_date_utc","last_date_utc","sample_path_or_value","validation_status","interpretation_note"},
+            "SELECT source_id,volume_name_or_token,high_confidence_hits,medium_confidence_hits,low_confidence_hits,path_hit_count,raw_value_hit_count,cache_text_hit_count,dictionary_hit_count,volfs_hit_count,first_date_utc,last_date_utc,sample_path_or_value,validation_status,interpretation_note FROM spotlight_external_volume_candidate_summary WHERE source_id=? ORDER BY high_confidence_hits DESC, medium_confidence_hits DESC, low_confidence_hits DESC, volume_name_or_token LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_evidence_review.csv",
+            {"evidence_family","hit_id","source_id","artifact_id","store_guid","inode_num","source_db","source_table","source_field","evidence_type","volume_name_or_token","path_or_value","first_date_utc","last_date_utc","confidence","reason","validation_note"},
+            "SELECT evidence_family,hit_id,source_id,artifact_id,store_guid,inode_num,source_db,source_table,source_field,evidence_type,volume_name_or_token,path_or_value,first_date_utc,last_date_utc,confidence,reason,validation_note FROM vw_spotlight_external_volume_evidence_review WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, evidence_family, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_raw_value_hits.csv",
+            {"hit_id","source_id","raw_kv_id","artifact_id","store_guid","source_db","inode_num","store_id","source_field","evidence_type","volume_name_or_token","path_or_value","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,raw_kv_id,artifact_id,store_guid,source_db,inode_num,store_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_raw_value_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_cache_text_hits.csv",
+            {"hit_id","source_id","cache_text_id","artifact_id","store_guid","cache_numeric_id","source_field","evidence_type","volume_name_or_token","path_or_value","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,cache_text_id,artifact_id,store_guid,cache_numeric_id,source_field,evidence_type,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_cache_text_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, volume_name_or_token, hit_id LIMIT 5000",
+            source.sourceId, log);
+
+        exportAff4ApfsLimitedRows(db, caseDir / "spotlight_external_volume_dictionary_hits.csv",
+            {"hit_id","source_id","store_guid","source_db","dictionary_table","dictionary_field","dictionary_value","evidence_type","confidence","reason","validation_note","created_utc"},
+            "SELECT hit_id,source_id,store_guid,source_db,dictionary_table,dictionary_field,dictionary_value,evidence_type,confidence,reason,validation_note,created_utc FROM spotlight_external_volume_dictionary_hits WHERE source_id=? ORDER BY CASE WHEN confidence LIKE 'HIGH%' THEN 0 WHEN confidence LIKE 'MEDIUM%' THEN 1 ELSE 2 END, dictionary_table, dictionary_value, hit_id LIMIT 5000",
             source.sourceId, log);
 
         exportAff4ApfsLimitedRows(db, caseDir / "aff4_apfs_staged_storev2_high_priority_validation_queue.csv",
@@ -7002,7 +7219,7 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             }
         } else if (aff4InputSource) {
             source.sourceKind = "aff4_container_source";
-            source.notes = "Original AFF4 container registered as fixed evidence source; AFF4 stream extraction plus APFS/HFS/HFS+ filesystem extraction is staged for a later container-reader build.";
+            source.notes = "Original AFF4 container registered as fixed evidence source; guarded AFF4/APFS Spotlight Store-V2 staging, parsing, cache-text incorporation, APFS inventory, and active-file comparison are active for supported APFS images; general full-container filesystem extraction outside the guided APFS/Spotlight path remains staged.";
             discoverySource = source;
             if (sourceProbeMode) {
                 log.info("Single AFF4 source-probe: treating --input as the one explicit AFF4 container. No recursive AFF4 discovery/search of the parent drive is performed.");
@@ -7039,11 +7256,11 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
             }
             registerOriginalContainerSource(db, source, opt.input, {}, source.notes, log, deferLargeImageHash, caseDir, opt.externalSourceSha256, opt.externalSourceHashNote);
             const std::string stage = aff4InputSource ? "aff4_apfs_source_registered" : "unsupported_raw_image_source";
-            const std::string message = aff4InputSource ? "AFF4 registered; guarded APFS metadata and Store-V2 staging pipeline active; full native source-discovery handoff still staged" : "raw image registered; partition/filesystem extraction not implemented";
+            const std::string message = aff4InputSource ? "AFF4 registered; guided APFS metadata, Store-V2 staging, native parsing, cache text, inventory, and comparison pipeline is active for supported APFS images; broad generic container-reader expansion remains staged" : "raw image registered; partition/filesystem extraction not implemented";
             const std::string nextAction = aff4InputSource
-                ? "Implement AFF4 stream enumeration, then APFS filesystem inventory, then Spotlight artifact staging and active-file comparison."
+                ? "Review AFF4/APFS Store-V2 parse-selection coverage, parsed artifacts, cache text, APFS inventory, and active-file comparison outputs; use full-container hashing for production validation when required."
                 : "Use V0_8_9 source_partition_probe.csv for partition readiness; raw image extraction remains secondary to AFF4-backed APFS inventory and active-file comparison.";
-            log.warn((aff4InputSource ? "AFF4" : "Raw flat image") + std::string(" source selected and registered. General full-container filesystem extraction is still staged; bounded AFF4/APFS Spotlight Store-V2 copy-out/staging/parsing is available when the guarded validation pipeline is enabled."));
+            log.warn((aff4InputSource ? "AFF4" : "Raw flat image") + std::string(" source selected and registered. Guided AFF4/APFS Spotlight Store-V2 copy-out/staging/parsing is active for supported APFS images; broader generic container-reader expansion remains staged."));
             appendRunStatus(caseDir, stage, message);
             appendRunStatus(caseDir, "source_probe_write", "write source intake readiness and roadmap artifacts");
             writeSourceIntakeArtifacts(caseDir, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
@@ -7080,6 +7297,14 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                 writeActiveFileComparisonReadinessFromDb(db, caseDir, source.sourceId, log);
                 writeImageInventoryReadinessFromDb(db, caseDir, source.sourceId, log);
                 materializeThreeDatabaseSidecars(db, caseDir, source, log);
+                const std::string aff4ParseStatus = stagedParserResult.selected.empty()
+                    ? "AFF4_APFS_STAGED_STOREV2_NO_PARSEABLE_DATABASE_SELECTED"
+                    : "AFF4_APFS_STAGED_STOREV2_PARSE_COMPLETE";
+                const std::string aff4NextAction = stagedParserResult.selected.empty()
+                    ? "Review AFF4/APFS staging and signature diagnostics; no parseable Store-V2 database was selected from the staged candidate groups."
+                    : "Review AFF4/APFS Store-V2 parse-selection coverage, parsed artifacts, cache text, APFS inventory, and active-file comparison outputs; use full-container hashing for production validation when required.";
+                writeSourceIntakeArtifacts(caseDir, source, opt.input, caseDir / "ExtractedSpotlight" / "StagedStoreV2", stagedParserResult.candidates, aff4ParseStatus, aff4NextAction, sourceProbe, partitionProbe, log);
+                persistSourceProbeInventory(db, source, opt.input, caseDir / "ExtractedSpotlight" / "StagedStoreV2", stagedParserResult.candidates, aff4ParseStatus, aff4NextAction, sourceProbe, partitionProbe, log);
                 result.rawRecordCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawRecordsBefore));
                 result.rawKeyValueCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawKeyValuesBefore));
                 result.rawDateCandidateCount = static_cast<std::size_t>(std::max<long long>(0, stagedEnrichmentCounts.rawDateCandidatesBefore));
@@ -7106,7 +7331,9 @@ RunResult runApplication(const RunOptions& opt, const std::atomic_bool* cancelTo
                     });
                 appendRunStatus(caseDir, "aff4_stream_inventory_complete", aff4Inventory.status + " lines=" + std::to_string(aff4Inventory.rawLineCount));
             }
-            persistSourceProbeInventory(db, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
+            if (!aff4InputSource) {
+                persistSourceProbeInventory(db, source, opt.input, {}, {}, "REGISTERED_UNSUPPORTED_CONTAINER", nextAction, sourceProbe, partitionProbe, log);
+            }
             store.writeSummary(result);
             writeUiAndIosPlanningFiles(caseDir);
             createUploadBundle(caseDir);

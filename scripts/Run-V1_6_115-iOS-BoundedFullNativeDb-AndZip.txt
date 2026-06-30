@@ -1,0 +1,12 @@
+V1.6.115 bounded full-native DB validation wrapper
+
+Use this only after the thin and validation-support runs succeed. It enables diagnostic full native key/value persistence with an explicit bounded record count so raw-value expansion can be measured before any unbounded guardrail is removed.
+
+Default command:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_115\scripts\Run-V1_6_115-iOS-BoundedFullNativeDb-AndZip.ps1 -CleanOut
+
+Raise the bound only after reviewing output size, runtime, and parser_limits_and_suppression_summary.csv:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_115\scripts\Run-V1_6_115-iOS-BoundedFullNativeDb-AndZip.ps1 -CleanOut -MaxNativeRecords 50000
+
+Expected upload:
+D:\Downloads\Upload_BoundedFullNative_iOS_CoreSpotlight_V1_6_115.zip

@@ -40,6 +40,7 @@
 #include <initializer_list>
 #include <chrono>
 #include <utility>
+#include <memory>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
@@ -56,7 +57,7 @@ HINSTANCE gInst{};
 HWND gTab{};
 HWND gInput{}, gOut{}, gEvidenceRoot{}, gSevenZip{}, gSourceType{}, gProfile{}, gMode{}, gCaseName{}, gCaseNumber{}, gCompany{}, gInvestigator{}, gLog{}, gRun{}, gCancelIngestButton{}, gIngestStatus{}, gIngestProgress{}, gLogo{}, gBrandTitle{}, gBrandSubtitle{};
 HWND gVerbose{}, gExportProfile{}, gSuppressCsvExports{}, gFullNoGuardrails{}, gPressureTest{};
-HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gSearch{}, gPageSize{}, gRefresh{}, gResetFilters{}, gCancelLoad{}, gReviewBusy{}, gPrev{}, gNext{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gExportDbCsv{}, gCsvChunkRows{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
+HWND gCaseDbPath{}, gBrowseCase{}, gBrowseOut{}, gBrowseInput{}, gBrowseRoot{}, gBrowse7z{}, gOpenCase{}, gSaveCaseInfo{}, gCaseAutosaveStatus{}, gOpenDashboard{}, gOpenReviewIndex{}, gOpenCaseFolder{}, gOpenUploadFolder{}, gOpenLogsFolder{}, gReviewViewProfile{}, gViewSetSave{}, gViewSetReset{}, gViewSetHide{}, gViewSetUp{}, gViewSetDown{}, gManageTags{}, gReviewView{}, gReviewViewSplitter{}, gSearch{}, gPageSize{}, gRefresh{}, gResetFilters{}, gCancelLoad{}, gReviewBusy{}, gFirst{}, gPrev{}, gNext{}, gLast{}, gExportPage{}, gExportFiltered{}, gExportVisible{}, gExportChecked{}, gExportDbCsv{}, gCsvChunkRows{}, gClearChecked{}, gReviewSummary{}, gList{}, gRowDetailsSplitter{}, gRowDetailsLabel{}, gRowDetails{};
 
 // Forward declaration required because custom view-set helpers are defined before the review summary helper.
 void setReviewSummary(const std::wstring& s);
@@ -64,7 +65,11 @@ void setDetailsPaneMessage(const std::wstring& message);
 std::wstring listViewText(HWND list, int row, int col);
 int selectedOrFocusedReviewRow();
 void loadReviewPage();
+int pageSize();
 void worker();
+void startViewCountRefreshNoThrow();
+void applyViewCountsResult(struct ViewCountsResult* result);
+void postIngestCompleteCaseReady(const std::wstring& dbPath);
 HWND gTagList{}, gTagName{}, gTagNote{}, gTaggedList{}, gTagSummary{};
 HWND gIosStatus{}, gIosReadiness{}, gIosPlan{};
 std::vector<HWND> gProcessControls;
@@ -100,8 +105,19 @@ std::atomic_bool gExportCheckedActive{false};
 std::atomic_bool gExportDbCsvActive{false};
 std::atomic_bool gExportTaggedActive{false};
 std::thread gReviewThread;
+std::atomic<unsigned long long> gViewCountRequestSeq{0};
+std::thread gViewCountThread;
 std::mutex gExportThreadsMutex;
-std::vector<std::thread> gExportThreads;
+struct ExportThreadHandle {
+    std::thread worker;
+    std::shared_ptr<std::atomic<bool>> done;
+    ExportThreadHandle(std::thread&& t, std::shared_ptr<std::atomic<bool>> d) : worker(std::move(t)), done(std::move(d)) {}
+    ExportThreadHandle(ExportThreadHandle&&) noexcept = default;
+    ExportThreadHandle& operator=(ExportThreadHandle&&) noexcept = default;
+    ExportThreadHandle(const ExportThreadHandle&) = delete;
+    ExportThreadHandle& operator=(const ExportThreadHandle&) = delete;
+};
+std::vector<ExportThreadHandle> gExportThreads;
 std::mutex gIngestThreadMutex;
 std::thread gIngestThread;
 std::atomic_bool gIngestActive{false};
@@ -117,6 +133,10 @@ bool gRichEditAvailable = false;
 HBITMAP gLogoBitmap{};
 int gReviewViewProfileMode = 0; // 0 Recommended V1, 1 Timeline, 2 Text, 3 App/KnowledgeC, 4 Diagnostics, 5 Show All, 6 Custom
 int gReviewDetailsPaneHeight = 260;
+int gReviewLeftPaneWidth = 220;
+bool gReviewLeftSplitterDragging = false;
+int gReviewLeftSplitterDragStartX = 0;
+int gReviewLeftPaneWidthAtDragStart = 220;
 bool gReviewDetailsSplitterDragging = false;
 int gReviewDetailsSplitterDragStartY = 0;
 int gReviewDetailsPaneHeightAtDragStart = 260;
@@ -144,7 +164,7 @@ void cancelAndJoinReviewThreadNoThrow() {
 }
 
 constexpr int ID_RUN = 1001, ID_CANCEL_INGEST = 1007, ID_BROWSE_INPUT = 1002, ID_BROWSE_OUT = 1003, ID_BROWSE_ROOT = 1004, ID_BROWSE_7Z = 1005, ID_SOURCE_TYPE = 1006, ID_SUPPRESS_CSV_EXPORTS = 1008, ID_FULL_NO_GUARDRAILS = 1009, ID_PRESSURE_TEST = 1010;
-constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124, ID_REVIEW_RESET_FILTERS = 1125, ID_EXPORT_DB_CSV = 1126;
+constexpr int ID_BROWSE_CASE = 1101, ID_OPEN_CASE = 1102, ID_REVIEW_REFRESH = 1103, ID_REVIEW_PREV = 1104, ID_REVIEW_NEXT = 1105, ID_EXPORT_PAGE = 1106, ID_EXPORT_FILTERED = 1113, ID_REVIEW_CANCEL_LOAD = 1114, ID_OPEN_CASE_FOLDER = 1115, ID_OPEN_UPLOAD_FOLDER = 1116, ID_OPEN_LOGS_FOLDER = 1117, ID_EXPORT_VISIBLE_VIEWS = 1124, ID_REVIEW_RESET_FILTERS = 1125, ID_EXPORT_DB_CSV = 1126, ID_REVIEW_FIRST = 1127, ID_REVIEW_LAST = 1128;
 constexpr int ID_OPEN_DASHBOARD = 1107, ID_OPEN_REVIEW_INDEX = 1108, ID_REVIEW_VIEW = 1109, ID_SAVE_CASE_INFO = 1110, ID_EXPORT_CHECKED = 1111, ID_CLEAR_CHECKED = 1112, ID_REVIEW_VIEW_PROFILE = 1118, ID_VIEWSET_SAVE = 1119, ID_VIEWSET_RESET = 1120, ID_VIEWSET_HIDE = 1121, ID_VIEWSET_UP = 1122, ID_VIEWSET_DOWN = 1123;
 constexpr int ID_ADD_TAG = 1301, ID_DELETE_TAG = 1302, ID_APPLY_TAG = 1303, ID_REMOVE_TAG = 1304, ID_SAVE_NOTE = 1305, ID_SHOW_TAGGED = 1306, ID_EXPORT_TAGGED = 1307, ID_REFRESH_TAGS = 1308;
 constexpr int ID_CTX_SORT_ASC = 2101, ID_CTX_SORT_DESC = 2102, ID_CTX_FILTER_SEARCH = 2103, ID_CTX_CLEAR_FILTER = 2104;
@@ -166,9 +186,17 @@ constexpr int WM_EXPORT_CHECKED_RESULT = WM_APP + 8;
 constexpr int WM_EXPORT_TAGGED_RESULT = WM_APP + 9;
 constexpr int WM_EXPORT_VISIBLE_RESULT = WM_APP + 10;
 constexpr int WM_EXPORT_DB_CSV_RESULT = WM_APP + 11;
+constexpr int WM_VIEW_COUNTS_RESULT = WM_APP + 12;
+constexpr int WM_INGEST_CASE_READY = WM_APP + 13;
+constexpr int WM_INGEST_WORKER_DONE_UI = WM_APP + 14;
 constexpr int kReviewDetailsMinHeight = 120;
 constexpr int kReviewDetailsDefaultHeight = 260;
 constexpr int kReviewDetailsSplitterHeight = 8;
+constexpr int kReviewLeftPaneDefaultWidth = 220;
+constexpr int kReviewLeftPaneMinWidth = 190;
+constexpr int kReviewLeftPaneMaxWidth = 520;
+constexpr int kReviewLeftSplitterWidth = 8;
+constexpr int kReviewLeftPaneGap = 12;
 
 struct ReviewPageResult {
     unsigned long long requestId = 0;
@@ -183,6 +211,17 @@ struct ReviewPageResult {
     std::vector<std::string> artifactIds;
     std::vector<std::vector<std::string>> rows;
     std::map<std::string, std::wstring> visibleTags;
+};
+
+struct ViewCountsResult {
+    unsigned long long requestId = 0;
+    std::vector<size_t> viewIndices;
+    std::vector<long long> counts;
+};
+
+struct ViewCountCancelContext {
+    unsigned long long requestId = 0;
+    ULONGLONG deadlineMs = 0;
 };
 
 std::wstring widen(const std::string& s) {
@@ -245,6 +284,11 @@ void postLog(const std::wstring& s) { if (gLog) PostMessageW(GetParent(gLog), WM
 void postClearProcessLog() { if (gLog) PostMessageW(GetParent(gLog), WM_CLEAR_PROCESS_LOG, 0, 0); }
 void postStatus(const std::wstring& s) { if (gIngestStatus) PostMessageW(GetParent(gIngestStatus), WM_SET_INGEST_STATUS, 0, reinterpret_cast<LPARAM>(new std::wstring(s))); }
 void postProgress(int percent) { if (gIngestProgress) PostMessageW(GetParent(gIngestProgress), WM_SET_INGEST_PROGRESS, static_cast<WPARAM>(percent), 0); }
+void postIngestCompleteCaseReady(const std::wstring& dbPath) {
+    HWND owner = gLog ? GetParent(gLog) : (gTab ? GetParent(gTab) : nullptr);
+    if (!owner || !IsWindow(owner)) return;
+    PostMessageW(owner, WM_INGEST_CASE_READY, 0, reinterpret_cast<LPARAM>(new std::wstring(dbPath)));
+}
 std::wstring browseFolder(HWND owner) {
     IFileOpenDialog* dialog = nullptr;
     HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
@@ -694,6 +738,23 @@ std::wstring moduleDirectory() {
     return p.substr(0, slash);
 }
 
+
+std::filesystem::path bundledReaderToolsDirectory() {
+    const std::wstring dir = moduleDirectory();
+    if (dir.empty()) return {};
+    const std::filesystem::path base(dir);
+    const std::filesystem::path candidates[] = {
+        base / L"resources" / L"reader_tools",
+        base / L"resources" / L"aff4_cpp_lite",
+        base / L"reader_tools"
+    };
+    for (const auto& c : candidates) {
+        std::error_code ec;
+        if (std::filesystem::is_directory(c, ec)) return c;
+    }
+    return {};
+}
+
 std::wstring logoBitmapPath() {
     std::wstring dir = moduleDirectory();
     if (!dir.empty()) {
@@ -939,6 +1000,42 @@ bool viewVisibleForCurrentInvestigationTab(const ViewSpec& v) {
     return v.platform == ViewPlatform::MacOS || v.platform == ViewPlatform::Shared;
 }
 
+int sqliteViewCountProgressCancel(void* userData) {
+    auto* ctx = reinterpret_cast<ViewCountCancelContext*>(userData);
+    if (!ctx) return 0;
+    if (gShuttingDown.load() || ctx->requestId != gViewCountRequestSeq.load()) return 1;
+    if (ctx->deadlineMs > 0 && GetTickCount64() > ctx->deadlineMs) return 1;
+    return 0;
+}
+
+long long countRowsForViewBoundedNoThrow(sqlite3* db, const ViewSpec& v, unsigned long long requestId, DWORD timeoutMs = 400) {
+    if (!db || !v.tableName || std::strlen(v.tableName) == 0) return -1;
+    sqlite3_stmt* st = nullptr;
+    ViewCountCancelContext ctx{requestId, GetTickCount64() + timeoutMs};
+    try {
+        const std::string sql = "SELECT COUNT(*) FROM " + std::string(v.tableName);
+        sqlite3_progress_handler(db, 1000, sqliteViewCountProgressCancel, &ctx);
+        long long count = -1;
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &st, nullptr) == SQLITE_OK) {
+            if (sqlite3_step(st) == SQLITE_ROW) count = sqlite3_column_int64(st, 0);
+        }
+        if (st) sqlite3_finalize(st);
+        sqlite3_progress_handler(db, 0, nullptr, nullptr);
+        return count;
+    } catch (...) {
+        if (st) sqlite3_finalize(st);
+        sqlite3_progress_handler(db, 0, nullptr, nullptr);
+        return -1;
+    }
+}
+
+std::wstring displayNameWithCountState(const ViewSpec& v, long long n, bool countRequested) {
+    std::wstring label = v.displayName ? std::wstring(v.displayName) : L"";
+    if (n >= 0) label += L"  (" + std::to_wstring(n) + L")";
+    else if (countRequested) label += L"  (count pending)";
+    return label;
+}
+
 void populateViewList(sqlite3* db = nullptr) {
     if (!gReviewView) return;
     SendMessageW(gReviewView, LB_RESETCONTENT, 0, 0);
@@ -981,7 +1078,8 @@ void populateViewList(sqlite3* db = nullptr) {
     }
     for (size_t i : candidates) {
         gVisibleViews.push_back(i);
-        SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(views()[i].displayName));
+        const std::wstring label = displayNameWithCountState(views()[i], -1, db != nullptr);
+        SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     SendMessageW(gReviewView, LB_SETCURSEL, 0, 0);
 }
@@ -997,16 +1095,75 @@ void populateViewListForCurrentContextNoThrow() {
     } catch (...) {
         populateViewList();
     }
+    startViewCountRefreshNoThrow();
 }
 
+void startViewCountRefreshNoThrow() {
+    const unsigned long long requestId = ++gViewCountRequestSeq;
+    try {
+        if (gViewCountThread.joinable()) gViewCountThread.detach();
+    } catch (...) {}
+    if (gOpenedCaseDb.empty() || gVisibleViews.empty() || !gReviewView) return;
+    const std::wstring dbPath = gOpenedCaseDb;
+    const std::vector<size_t> visible = gVisibleViews;
+    const HWND owner = GetParent(gReviewView);
+    if (!owner || !IsWindow(owner)) return;
+    try {
+        gViewCountThread = std::thread([requestId, dbPath, visible, owner]() {
+            auto* result = new ViewCountsResult();
+            result->requestId = requestId;
+            result->viewIndices = visible;
+            result->counts.assign(visible.size(), -1);
+            try {
+                ReadOnlyDb db(dbPath);
+                for (size_t i = 0; i < visible.size(); ++i) {
+                    if (gShuttingDown.load() || requestId != gViewCountRequestSeq.load()) { delete result; return; }
+                    const size_t idx = visible[i];
+                    if (idx < views().size()) result->counts[i] = countRowsForViewBoundedNoThrow(db.get(), views()[idx], requestId, 400);
+                }
+            } catch (...) {
+            }
+            if (gShuttingDown.load() || requestId != gViewCountRequestSeq.load()) { delete result; return; }
+            if (!PostMessageW(owner, WM_VIEW_COUNTS_RESULT, 0, reinterpret_cast<LPARAM>(result))) delete result;
+        });
+    } catch (...) {
+        try { if (gViewCountThread.joinable()) gViewCountThread.detach(); } catch (...) {}
+    }
+}
+
+void applyViewCountsResult(ViewCountsResult* result) {
+    if (!result) return;
+    std::unique_ptr<ViewCountsResult> holder(result);
+    if (result->requestId != gViewCountRequestSeq.load()) return;
+    if (!gReviewView || result->viewIndices.size() != gVisibleViews.size()) return;
+    for (size_t i = 0; i < gVisibleViews.size(); ++i) {
+        if (result->viewIndices[i] != gVisibleViews[i]) return;
+    }
+    const int sel = static_cast<int>(SendMessageW(gReviewView, LB_GETCURSEL, 0, 0));
+    SendMessageW(gReviewView, LB_RESETCONTENT, 0, 0);
+    for (size_t i = 0; i < gVisibleViews.size(); ++i) {
+        const size_t idx = gVisibleViews[i];
+        if (idx >= views().size()) continue;
+        const long long n = i < result->counts.size() ? result->counts[i] : -1;
+        const std::wstring label = displayNameWithCountState(views()[idx], n, n < 0);
+        SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+    }
+    if (!gVisibleViews.empty()) SendMessageW(gReviewView, LB_SETCURSEL, std::min(std::max(sel, 0), static_cast<int>(gVisibleViews.size()) - 1), 0);
+}
 
 void refillReviewViewListFromVisible() {
     if (!gReviewView) return;
+    const int oldSel = static_cast<int>(SendMessageW(gReviewView, LB_GETCURSEL, 0, 0));
     SendMessageW(gReviewView, LB_RESETCONTENT, 0, 0);
+    const bool countRequested = !gOpenedCaseDb.empty();
     for (size_t idx : gVisibleViews) {
-        if (idx < views().size()) SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(views()[idx].displayName));
+        if (idx < views().size()) {
+            const std::wstring label = displayNameWithCountState(views()[idx], -1, countRequested);
+            SendMessageW(gReviewView, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+        }
     }
-    if (!gVisibleViews.empty()) SendMessageW(gReviewView, LB_SETCURSEL, 0, 0);
+    if (!gVisibleViews.empty()) SendMessageW(gReviewView, LB_SETCURSEL, std::min(std::max(oldSel, 0), static_cast<int>(gVisibleViews.size()) - 1), 0);
+    startViewCountRefreshNoThrow();
 }
 
 void saveCurrentVisibleViewsAsCustom() {
@@ -1873,28 +2030,53 @@ void scheduleCaseInfoAutosave(HWND hwnd) {
 }
 
 
-void registerExportThread(std::thread worker) {
+void reapCompletedExportThreadsLocked() {
+    for (auto it = gExportThreads.begin(); it != gExportThreads.end();) {
+        if (!it->worker.joinable()) {
+            it = gExportThreads.erase(it);
+            continue;
+        }
+        if (it->done && it->done->load(std::memory_order_acquire)) {
+            try { it->worker.join(); } catch (...) {}
+            it = gExportThreads.erase(it);
+            continue;
+        }
+        ++it;
+    }
+}
+
+void registerExportThread(std::thread worker, std::shared_ptr<std::atomic<bool>> done) {
     try {
         if (!worker.joinable()) return;
         std::lock_guard<std::mutex> lock(gExportThreadsMutex);
-        gExportThreads.emplace_back(std::move(worker));
+        reapCompletedExportThreadsLocked();
+        gExportThreads.emplace_back(std::move(worker), std::move(done));
     } catch (...) {
         try { if (worker.joinable()) worker.detach(); } catch (...) {}
     }
 }
 
+template <typename Fn>
+void registerExportTask(Fn&& fn) {
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    auto worker = std::thread([done, work = std::forward<Fn>(fn)]() mutable {
+        try { work(); } catch (...) {}
+        done->store(true, std::memory_order_release);
+    });
+    registerExportThread(std::move(worker), done);
+}
 
 void joinExportThreadsNoThrow() {
-    std::vector<std::thread> threads;
+    std::vector<ExportThreadHandle> threads;
     try {
         std::lock_guard<std::mutex> lock(gExportThreadsMutex);
         threads.swap(gExportThreads);
     } catch (...) {
         return;
     }
-    for (auto& t : threads) {
+    for (auto& entry : threads) {
         try {
-            if (t.joinable()) t.join();
+            if (entry.worker.joinable()) entry.worker.join();
         } catch (...) {}
     }
 }
@@ -1939,6 +2121,7 @@ bool startIngestThreadNoThrow(HWND owner) {
             gIngestActive.store(false);
             if (!gShuttingDown.load() && owner && IsWindow(owner)) {
                 PostMessageW(owner, WM_SET_INGEST_STATUS, 0, reinterpret_cast<LPARAM>(new std::wstring(L"Ingest worker finished.")));
+                PostMessageW(owner, WM_INGEST_WORKER_DONE_UI, 0, 0);
             }
         });
         return true;
@@ -1963,12 +2146,26 @@ bool postExportResult(HWND owner, UINT msgId, bool ok, std::wstring message) {
     return false;
 }
 
+
+long long lastPageIndexForRows(long long totalRows, int ps) {
+    if (totalRows <= 0 || ps <= 0) return 0;
+    return (totalRows - 1) / ps;
+}
+
+bool reviewLastPageAvailable() {
+    if (gCurrentTotalRows < 0) return false;
+    const int ps = pageSize();
+    return gCurrentPage < lastPageIndexForRows(gCurrentTotalRows, ps);
+}
+
 void setReviewLoadingState(bool loading) {
     gReviewLoadInProgress = loading;
     if (gRefresh) EnableWindow(gRefresh, loading ? FALSE : TRUE);
     if (gCancelLoad) EnableWindow(gCancelLoad, loading ? TRUE : FALSE);
+    if (gFirst) EnableWindow(gFirst, (!loading && gCurrentPage > 0) ? TRUE : FALSE);
     if (gPrev) EnableWindow(gPrev, (!loading && gCurrentPage > 0) ? TRUE : FALSE);
     if (gNext) EnableWindow(gNext, (!loading && gCurrentHasNext) ? TRUE : FALSE);
+    if (gLast) EnableWindow(gLast, (!loading && reviewLastPageAvailable()) ? TRUE : FALSE);
     if (gExportPage) EnableWindow(gExportPage, loading ? FALSE : TRUE);
     if (gExportFiltered) EnableWindow(gExportFiltered, loading ? FALSE : TRUE);
     if (gExportVisible) EnableWindow(gExportVisible, loading ? FALSE : TRUE);
@@ -2186,7 +2383,13 @@ void loadReviewPage() {
             const long long lastRow = row == 0 ? 0 : (static_cast<long long>(requestedPage) * ps + row);
             std::wostringstream os;
             os << L"View: " << v.displayName << L"    Showing " << firstRow << L"-" << lastRow;
-            if (result->totalRows >= 0) os << L" of " << result->totalRows << L" records";
+            if (result->totalRows >= 0) {
+                const long long lastPage = lastPageIndexForRows(result->totalRows, ps);
+                os << L" of " << result->totalRows << L" records";
+                os << L"    Page " << (requestedPage + 1) << L" of " << (lastPage + 1);
+            } else {
+                os << L"    Page " << (requestedPage + 1);
+            }
             os << (result->hasNext ? L"    More rows available" : L"    Last page");
             os << L"    Page size=" << ps;
             if (ps >= 1000000) os << L"    Full review/no GUI row cap mode";
@@ -2231,10 +2434,10 @@ void exportCurrentPage(HWND owner) {
 
     setReviewSummary(L"Export Current Page in progress... GUI remains active.");
     if (gExportPage) EnableWindow(gExportPage, FALSE);
-    registerExportThread(std::thread([owner, request]() {
+    registerExportTask([owner, request]() {
         const GuiExportResult result = GuiExportWorker::exportCurrentPage(request);
         postExportResult(owner, WM_EXPORT_PAGE_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 
@@ -2272,10 +2475,10 @@ void exportFilteredView(HWND owner) {
 
     setReviewSummary(L"Export Filtered in progress... GUI remains active.");
     if (gExportFiltered) EnableWindow(gExportFiltered, FALSE);
-    registerExportThread(std::thread([owner, request]() {
+    registerExportTask([owner, request]() {
         const GuiExportResult result = GuiExportWorker::exportFilteredView(request);
         postExportResult(owner, WM_EXPORT_FILTERED_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 
@@ -2307,10 +2510,10 @@ void exportVisibleViews(HWND owner) {
 
     setReviewSummary(L"Export Visible Views in progress... GUI remains active.");
     if (gExportVisible) EnableWindow(gExportVisible, FALSE);
-    registerExportThread(std::thread([owner, dbPath, viewSpecs, search, outFolder]() {
+    registerExportTask([owner, dbPath, viewSpecs, search, outFolder]() {
         const GuiExportResult result = GuiExportWorker::exportVisibleViews(dbPath, viewSpecs, search, outFolder, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_VISIBLE_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 void exportCheckedArtifacts(HWND owner) {
@@ -2330,10 +2533,10 @@ void exportCheckedArtifacts(HWND owner) {
     setReviewSummary(L"Export Checked in progress... GUI remains active.");
     if (gExportChecked) EnableWindow(gExportChecked, FALSE);
 
-    registerExportThread(std::thread([owner, dbPath, idsToExport, out]() {
+    registerExportTask([owner, dbPath, idsToExport, out]() {
         const GuiExportResult result = GuiExportWorker::exportCheckedArtifacts(dbPath, idsToExport, out, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_CHECKED_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 
@@ -2367,10 +2570,10 @@ void exportCaseDatabaseCsv(HWND owner) {
     const std::wstring dbPath = gOpenedCaseDb;
     setReviewSummary(L"Export SQLite DB CSV in progress... GUI remains active. Chunk rows=" + std::to_wstring(static_cast<unsigned long long>(chunkRows)));
     if (gExportDbCsv) EnableWindow(gExportDbCsv, FALSE);
-    registerExportThread(std::thread([owner, dbPath, outFolder, chunkRows]() {
+    registerExportTask([owner, dbPath, outFolder, chunkRows]() {
         const GuiExportResult result = GuiExportWorker::exportCaseDatabaseTablesChunked(dbPath, outFolder, chunkRows, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_DB_CSV_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 void exportTaggedArtifacts(HWND owner) {
@@ -2389,10 +2592,10 @@ void exportTaggedArtifacts(HWND owner) {
     setTagSummary(L"Export Tagged in progress... GUI remains active.");
     if (gTaggedList) EnableWindow(gTaggedList, FALSE);
 
-    registerExportThread(std::thread([owner, dbPath, tagId, out]() {
+    registerExportTask([owner, dbPath, tagId, out]() {
         const GuiExportResult result = GuiExportWorker::exportTaggedArtifacts(dbPath, tagId, out, []() { return gShuttingDown.load(); });
         postExportResult(owner, WM_EXPORT_TAGGED_RESULT, result.ok, result.message);
-    }));
+    });
 }
 
 
@@ -3037,8 +3240,6 @@ std::wstring stageDisplayName(const std::wstring& stage) {
 }
 
 void worker() {
-    EnableWindow(gRun, FALSE);
-    setCaseMutationControlsEnabled(false);
     postClearProcessLog();
     postProgress(1);
     const auto ingestStart = std::chrono::steady_clock::now();
@@ -3146,6 +3347,12 @@ void worker() {
                     opt.readerToolsDir = opt.sevenZipPath.parent_path();
                 }
             }
+            if (opt.readerToolsDir.empty()) {
+                opt.readerToolsDir = bundledReaderToolsDirectory();
+                if (!opt.readerToolsDir.empty()) {
+                    postLog(L"AFF4/APFS bundled reader tools auto-detected under the portable Release resources folder.");
+                }
+            }
             if (fullNoGuardrails) {
                 opt.enableAff4DynamicProbe = true;
                 opt.aff4ApfsDiagnosticOutputs = true;
@@ -3233,17 +3440,11 @@ void worker() {
         postLog(L"SQLite case DB: " + dbPath);
         postLog(L"Evidence preservation folder: " + getText(gOut) + L"\\EvidencePreservation");
         postLog(L"Review exports: " + getText(gOut) + L"\\exports");
-        setText(gCaseDbPath, dbPath);
-        gOpenedCaseDb = dbPath;
-        try { ReadOnlyDb db(gOpenedCaseDb); populateViewList(db.get()); } catch (...) { populateViewList(); }
-        loadCaseSummary();
-        refreshTagList();
+        postIngestCompleteCaseReady(dbPath);
     } catch (const std::exception& ex) { postLog(L"ERROR: " + widen(ex.what())); postStatus(L"Ingest failed: " + widen(ex.what())); writeGuiCrashFile(L"Caught std::exception: " + widen(ex.what())); }
     catch (...) { postLog(L"ERROR: Unknown non-standard exception"); postStatus(L"Ingest failed: unknown non-standard exception"); writeGuiCrashFile(L"Caught unknown non-standard exception"); }
     monitorDone.store(true);
     if (monitor.joinable()) monitor.join();
-    EnableWindow(gRun, TRUE);
-    setCaseMutationControlsEnabled(true);
 }
 
 
@@ -3371,6 +3572,41 @@ LRESULT CALLBACK ReviewListSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 }
 
 
+LRESULT CALLBACK ReviewLeftSplitterSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    switch (msg) {
+    case WM_SETCURSOR:
+        SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
+        return TRUE;
+    case WM_LBUTTONDOWN: {
+        POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        ClientToScreen(hwnd, &pt);
+        gReviewLeftSplitterDragging = true;
+        gReviewLeftSplitterDragStartX = pt.x;
+        gReviewLeftPaneWidthAtDragStart = gReviewLeftPaneWidth;
+        SetCapture(hwnd);
+        SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+        if (gReviewLeftSplitterDragging && (wp & MK_LBUTTON)) {
+            POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            ClientToScreen(hwnd, &pt);
+            const int delta = pt.x - gReviewLeftSplitterDragStartX;
+            gReviewLeftPaneWidth = std::max(kReviewLeftPaneMinWidth, std::min(kReviewLeftPaneMaxWidth, gReviewLeftPaneWidthAtDragStart + delta));
+            if (HWND parent = GetParent(hwnd)) layoutControls(parent);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+    case WM_CAPTURECHANGED:
+        gReviewLeftSplitterDragging = false;
+        if (GetCapture() == hwnd) ReleaseCapture();
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+
 LRESULT CALLBACK ReviewDetailsSplitterSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
     switch (msg) {
     case WM_SETCURSOR:
@@ -3422,6 +3658,8 @@ void createReviewControls(HWND hwnd) {
     labelR(hwnd, L"Views", 16, y0 + 50, 220, 20);
     gReviewView = addReview(CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, 16, y0 + 72, 220, 580, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_REVIEW_VIEW)), gInst, nullptr));
     SetWindowSubclass(gReviewView, ReviewViewListSubclassProc, 2, 0);
+    gReviewViewSplitter = addReview(CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDVERT | SS_NOTIFY, 240, y0 + 72, kReviewLeftSplitterWidth, 580, hwnd, nullptr, gInst, nullptr));
+    SetWindowSubclass(gReviewViewSplitter, ReviewLeftSplitterSubclassProc, 1, 0);
     gViewSetUp = buttonR(hwnd, L"Move Up", ID_VIEWSET_UP, 16, y0 + 674, 70, 24);
     gViewSetDown = buttonR(hwnd, L"Move Down", ID_VIEWSET_DOWN, 92, y0 + 674, 80, 24);
     gViewSetHide = buttonR(hwnd, L"Hide", ID_VIEWSET_HIDE, 178, y0 + 674, 58, 24);
@@ -3437,9 +3675,11 @@ void createReviewControls(HWND hwnd) {
     EnableWindow(gCancelLoad, FALSE);
     gResetFilters = buttonR(hwnd, L"Reset", ID_REVIEW_RESET_FILTERS, 752, y0 + 21, 72, 24);
     labelR(hwnd, L"Rows/all", 830, y0 + 26, 68, 20); gPageSize = editR(hwnd, 902, y0 + 22, 72, 22, L"250");
-    gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 248, y0 + 52, 96, 24);
-    gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 350, y0 + 52, 88, 24);
-    gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 444, y0 + 52, 104, 24);
+    gFirst = buttonR(hwnd, L"First", ID_REVIEW_FIRST, 248, y0 + 52, 68, 24);
+    gPrev = buttonR(hwnd, L"Previous", ID_REVIEW_PREV, 322, y0 + 52, 96, 24);
+    gNext = buttonR(hwnd, L"Next", ID_REVIEW_NEXT, 424, y0 + 52, 74, 24);
+    gLast = buttonR(hwnd, L"Last", ID_REVIEW_LAST, 504, y0 + 52, 68, 24);
+    gExportPage = buttonR(hwnd, L"Export Page", ID_EXPORT_PAGE, 578, y0 + 52, 104, 24);
     gExportFiltered = buttonR(hwnd, L"Export Filtered", ID_EXPORT_FILTERED, 554, y0 + 52, 118, 24);
     gExportVisible = buttonR(hwnd, L"Export Views", ID_EXPORT_VISIBLE_VIEWS, 678, y0 + 52, 106, 24);
     gExportChecked = buttonR(hwnd, L"Export Checked", ID_EXPORT_CHECKED, 790, y0 + 52, 118, 24);
@@ -3539,6 +3779,7 @@ void moveIf(HWND h, int x, int y, int w, int hgt) {
 
 void stabilizeReviewControlZOrder(HWND hwnd) {
     if (!isInvestigationTabIndex(gActiveTabIndex)) return;
+    if (gReviewViewSplitter) SetWindowPos(gReviewViewSplitter, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     if (gList) SetWindowPos(gList, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     if (gRowDetailsSplitter) SetWindowPos(gRowDetailsSplitter, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     if (gRowDetailsLabel) SetWindowPos(gRowDetailsLabel, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -3595,28 +3836,38 @@ void layoutControls(HWND hwnd) {
     moveIf(gIngestProgress, 128, y0 + 504, right - 128, 20);
     moveIf(gLog, 16, y0 + 532, right - 16, std::max(120, bottom - (y0 + 532)));
 
-    moveIf(gReviewViewProfile, 96, y0 + 22, 150, 96);
+    const int maxLeftPaneWidth = std::max(kReviewLeftPaneMinWidth, std::min(kReviewLeftPaneMaxWidth, right - 520));
+    if (gReviewLeftPaneWidth <= 0) gReviewLeftPaneWidth = kReviewLeftPaneDefaultWidth;
+    gReviewLeftPaneWidth = std::min(std::max(gReviewLeftPaneWidth, kReviewLeftPaneMinWidth), maxLeftPaneWidth);
+    const int leftX = 16;
+    const int splitterX = leftX + gReviewLeftPaneWidth + 4;
+    const int reviewX = splitterX + kReviewLeftSplitterWidth + kReviewLeftPaneGap;
+    const int reviewW = std::max(420, right - reviewX);
+    moveIf(gReviewViewProfile, 96, y0 + 22, std::max(96, gReviewLeftPaneWidth - 80), 96);
     const int viewSetButtonsY = bottom - 64;
-    moveIf(gReviewView, 16, y0 + 72, 220, std::max(220, viewSetButtonsY - (y0 + 72) - 8));
-    moveIf(gViewSetUp, 16, viewSetButtonsY, 70, 24);
-    moveIf(gViewSetDown, 92, viewSetButtonsY, 80, 24);
-    moveIf(gViewSetHide, 178, viewSetButtonsY, 58, 24);
-    moveIf(gViewSetSave, 16, viewSetButtonsY + 30, 86, 24);
-    moveIf(gViewSetReset, 108, viewSetButtonsY + 30, 86, 24);
-    const int reviewX = 248;
-    const int reviewW = right - reviewX;
-    // Compact review action bar: two short rows, kept clear of Dashboard/Index.
-    moveIf(gSearch, 304, y0 + 22, 250, 22);
-    moveIf(gRefresh, 564, y0 + 21, 80, 24);
-    moveIf(gCancelLoad, 650, y0 + 21, 96, 24);
-    moveIf(gResetFilters, 752, y0 + 21, 72, 24);
-    moveIf(gPageSize, 902, y0 + 22, 72, 22);
-    moveIf(gPrev, reviewX, y0 + 52, 96, 24);
-    moveIf(gNext, reviewX + 102, y0 + 52, 88, 24);
-    moveIf(gExportPage, reviewX + 196, y0 + 52, 104, 24);
-    moveIf(gExportFiltered, reviewX + 306, y0 + 52, 118, 24);
-    moveIf(gExportVisible, reviewX + 430, y0 + 52, 106, 24);
-    moveIf(gExportChecked, reviewX + 542, y0 + 52, 118, 24);
+    const int viewListH = std::max(220, viewSetButtonsY - (y0 + 72) - 8);
+    moveIf(gReviewView, leftX, y0 + 72, gReviewLeftPaneWidth, viewListH);
+    moveIf(gReviewViewSplitter, splitterX, y0 + 72, kReviewLeftSplitterWidth, viewListH);
+    moveIf(gViewSetUp, leftX, viewSetButtonsY, 70, 24);
+    moveIf(gViewSetDown, leftX + 76, viewSetButtonsY, 80, 24);
+    moveIf(gViewSetHide, leftX + 162, viewSetButtonsY, 58, 24);
+    moveIf(gViewSetSave, leftX, viewSetButtonsY + 30, 86, 24);
+    moveIf(gViewSetReset, leftX + 92, viewSetButtonsY + 30, 86, 24);
+    // Compact review action bar. The main grid shifts right when the investigator widens
+    // the left view-selector pane, so keep interactive controls anchored to reviewX/right.
+    moveIf(gSearch, reviewX + 56, y0 + 22, std::min(250, std::max(120, right - reviewX - 520)), 22);
+    moveIf(gRefresh, reviewX + 316, y0 + 21, 80, 24);
+    moveIf(gCancelLoad, reviewX + 402, y0 + 21, 96, 24);
+    moveIf(gResetFilters, reviewX + 504, y0 + 21, 72, 24);
+    moveIf(gPageSize, right - 72, y0 + 22, 72, 22);
+    moveIf(gFirst, reviewX, y0 + 52, 68, 24);
+    moveIf(gPrev, reviewX + 74, y0 + 52, 96, 24);
+    moveIf(gNext, reviewX + 176, y0 + 52, 74, 24);
+    moveIf(gLast, reviewX + 256, y0 + 52, 68, 24);
+    moveIf(gExportPage, reviewX + 330, y0 + 52, 104, 24);
+    moveIf(gExportFiltered, reviewX + 440, y0 + 52, 118, 24);
+    moveIf(gExportVisible, reviewX + 564, y0 + 52, 106, 24);
+    moveIf(gExportChecked, reviewX + 676, y0 + 52, 118, 24);
     moveIf(gExportDbCsv, right - 118, y0 + 52, 118, 24);
     moveIf(gCsvChunkRows, right - 90, y0 + 80, 90, 22);
     moveIf(gClearChecked, reviewX, y0 + 80, 108, 24);
@@ -3904,9 +4155,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             postProgress(0);
             gCancelIngestRequested.store(false);
+            if (gRun) EnableWindow(gRun, FALSE);
+            setCaseMutationControlsEnabled(false);
             if (gCancelIngestButton) EnableWindow(gCancelIngestButton, TRUE);
             postStatus(L"Queued: ingest worker starting.");
             if (!startIngestThreadNoThrow(hwnd)) {
+                if (gRun) EnableWindow(gRun, TRUE);
+                setCaseMutationControlsEnabled(true);
                 postStatus(L"ERROR: ingest worker could not be started.");
             }
             return 0;
@@ -3974,8 +4229,10 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case ID_CTX_REMOVE_TAG_CHECKED: { try { removeTagFromArtifacts(selectedTagId(), checkedArtifactIds(), true); } catch (const std::exception& ex) { setTagSummary(L"ERROR removing checked-row tag: " + widen(ex.what())); } return 0; }
         case ID_CTX_CLEAR_CHECKED: { clearCheckedArtifactIdsNoThrow(); clearPersistedCheckedArtifactsNoThrow(); loadReviewPage(); return 0; }
         case ID_CTX_MANAGE_TAGS: { switchToTagsTab(); return 0; }
+        case ID_REVIEW_FIRST: { gCurrentPage = 0; loadReviewPage(); return 0; }
         case ID_REVIEW_PREV: { if (gCurrentPage > 0) --gCurrentPage; loadReviewPage(); return 0; }
-        case ID_REVIEW_NEXT: { ++gCurrentPage; loadReviewPage(); return 0; }
+        case ID_REVIEW_NEXT: { if (gCurrentHasNext) ++gCurrentPage; loadReviewPage(); return 0; }
+        case ID_REVIEW_LAST: { if (gCurrentTotalRows >= 0) gCurrentPage = static_cast<int>(lastPageIndexForRows(gCurrentTotalRows, pageSize())); loadReviewPage(); return 0; }
         case ID_EXPORT_PAGE: { exportCurrentPage(hwnd); return 0; }
         case ID_EXPORT_FILTERED: { exportFilteredView(hwnd); return 0; }
         case ID_EXPORT_VISIBLE_VIEWS: { exportVisibleViews(hwnd); return 0; }
@@ -4014,6 +4271,27 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SET_INGEST_STATUS: { auto* s = reinterpret_cast<std::wstring*>(lp); if (s) { setText(gIngestStatus, *s); delete s; } if (!gIngestActive.load() && gCancelIngestButton) EnableWindow(gCancelIngestButton, FALSE); return 0; }
     case WM_SET_INGEST_PROGRESS: { int pct = static_cast<int>(wp); if (pct < 0) pct = 0; if (pct > 100) pct = 100; if (gIngestProgress) SendMessageW(gIngestProgress, PBM_SETPOS, static_cast<WPARAM>(pct), 0); return 0; }
     case WM_REVIEW_PAGE_RESULT: { completeReviewPageLoad(reinterpret_cast<ReviewPageResult*>(lp)); return 0; }
+    case WM_VIEW_COUNTS_RESULT: { applyViewCountsResult(reinterpret_cast<ViewCountsResult*>(lp)); return 0; }
+    case WM_INGEST_CASE_READY: {
+        auto* s = reinterpret_cast<std::wstring*>(lp);
+        if (s) {
+            setText(gCaseDbPath, *s);
+            gOpenedCaseDb = *s;
+            closeReadOnlyDbPoolNoThrow();
+            populateViewListForCurrentContextNoThrow();
+            loadCaseSummary();
+            refreshTagList();
+            if (isInvestigationTabIndex(gActiveTabIndex)) loadReviewPage();
+            delete s;
+        }
+        return 0;
+    }
+    case WM_INGEST_WORKER_DONE_UI: {
+        if (gRun) EnableWindow(gRun, TRUE);
+        setCaseMutationControlsEnabled(true);
+        if (gCancelIngestButton) EnableWindow(gCancelIngestButton, FALSE);
+        return 0;
+    }
     case WM_EXPORT_PAGE_RESULT: {
         auto* s = reinterpret_cast<std::wstring*>(lp);
         if (s) { setReviewSummary(*s); delete s; }
@@ -4064,7 +4342,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (mmi) { mmi->ptMinTrackSize.x = 1040; mmi->ptMinTrackSize.y = 900; }
         return 0;
     }
-    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); closeReadOnlyDbPoolNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } if (gRichEditModule) { FreeLibrary(gRichEditModule); gRichEditModule = nullptr; gRichEditAvailable = false; gRichEditClassName = L"EDIT"; } PostQuitMessage(0); return 0; }
+    case WM_DESTROY: { gShuttingDown.store(true); gCancelIngestRequested.store(true); cancelAndJoinReviewThreadNoThrow(); try { ++gViewCountRequestSeq; if (gViewCountThread.joinable()) gViewCountThread.join(); } catch (...) {} joinExportThreadsNoThrow(); joinIngestThreadNoThrow(); closeReadOnlyDbPoolNoThrow(); KillTimer(hwnd, ID_AUTOSAVE_TIMER); saveCaseInformationCore(true); if (gLogoBitmap) { DeleteObject(gLogoBitmap); gLogoBitmap = nullptr; } if (gUiFont) { DeleteObject(gUiFont); gUiFont = nullptr; } if (gRichEditModule) { FreeLibrary(gRichEditModule); gRichEditModule = nullptr; gRichEditAvailable = false; gRichEditClassName = L"EDIT"; } PostQuitMessage(0); return 0; }
     default: return DefWindowProcW(hwnd, msg, wp, lp);
     }
     return DefWindowProcW(hwnd, msg, wp, lp);

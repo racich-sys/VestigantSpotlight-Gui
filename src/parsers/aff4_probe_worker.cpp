@@ -111,6 +111,39 @@ void appendReaderToolRootCandidates(std::vector<fs::path>& out, const fs::path& 
     appendPathCandidates(out, root / "src", names);
 }
 
+fs::path executableDirectoryNoThrow() {
+#ifdef _WIN32
+    std::vector<wchar_t> buffer(32768, L'\0');
+    const DWORD n = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (n == 0 || n >= buffer.size()) return {};
+    std::error_code ec;
+    fs::path exePath(buffer.data());
+    fs::path dir = exePath.parent_path();
+    if (dir.empty() || !fs::exists(dir, ec)) return {};
+    return dir;
+#else
+    return {};
+#endif
+}
+
+void appendPortableReleaseResourceCandidates(std::vector<fs::path>& out, const std::vector<std::string>& names) {
+    std::error_code ec;
+    const fs::path exeDir = executableDirectoryNoThrow();
+    if (!exeDir.empty()) {
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "reader_tools", names);
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "aff4_cpp_lite", names);
+        appendReaderToolRootCandidates(out, exeDir / "resources" / "apfs_tools", names);
+        appendReaderToolRootCandidates(out, exeDir / "reader_tools", names);
+    }
+    const fs::path cwd = fs::current_path(ec);
+    if (!ec && !cwd.empty()) {
+        appendReaderToolRootCandidates(out, cwd / "resources" / "reader_tools", names);
+        appendReaderToolRootCandidates(out, cwd / "resources" / "aff4_cpp_lite", names);
+        appendReaderToolRootCandidates(out, cwd / "resources" / "apfs_tools", names);
+        appendReaderToolRootCandidates(out, cwd / "reader_tools", names);
+    }
+}
+
 std::vector<fs::path> splitSearchPath(const std::string& searchPath) {
     std::vector<fs::path> dirs;
     if (searchPath.empty()) return dirs;
@@ -132,6 +165,7 @@ fs::path findToolCandidate(const RunOptions& opt, const std::string& envVar, con
     const std::string explicitTool = getenvString(envVar.c_str());
     if (!explicitTool.empty()) candidates.emplace_back(explicitTool);
     appendReaderToolRootCandidates(candidates, opt.readerToolsDir, names);
+    appendPortableReleaseResourceCandidates(candidates, names);
     const std::string readerRoot = getenvString("VESTIGANT_READER_TOOLS");
     if (!readerRoot.empty()) appendReaderToolRootCandidates(candidates, fs::path(readerRoot), names);
     const std::string aff4CppLiteRoot = getenvString("VESTIGANT_AFF4_CPP_LITE_ROOT");

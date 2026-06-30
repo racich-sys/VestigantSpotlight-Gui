@@ -289,6 +289,26 @@ template <typename T> std::string joinNums(const std::vector<T>& v) {
     return os.str();
 }
 
+template <typename T> std::string formatRealNoScientific(T value) {
+    if (!std::isfinite(static_cast<double>(value))) return {};
+    std::ostringstream os;
+    os << std::fixed << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
+    std::string out = os.str();
+    const auto dot = out.find('.');
+    if (dot != std::string::npos) {
+        while (!out.empty() && out.back() == '0') out.pop_back();
+        if (!out.empty() && out.back() == '.') out.pop_back();
+    }
+    if (out == "-0") out = "0";
+    return out;
+}
+
+template <typename T> std::string joinRealsNoScientific(const std::vector<T>& v) {
+    std::ostringstream os;
+    for (std::size_t i = 0; i < v.size(); ++i) { if (i) os << "; "; os << formatRealNoScientific(v[i]); }
+    return os.str();
+}
+
 std::string formatUnixUtcFromSeconds(double seconds) {
     if (!std::isfinite(seconds)) return {};
     // Defensive forensic parsing: experimental structured decoding can misread
@@ -2566,12 +2586,12 @@ private:
             }
             case 0x0A: {
                 if ((dataLen % 8u) != 0u) throw std::runtime_error("V1 double array has invalid byte alignment");
-                if (dataLen == 8) { std::ostringstream os; os << readDouble(); return os.str(); }
+                if (dataLen == 8) return formatRealNoScientific(readDouble());
                 const auto count = static_cast<std::size_t>(dataLen / 8u);
                 if (count > MaxDecodedArrayValues) throw std::runtime_error("V1 double array exceeds value safety cap");
                 std::vector<double> values; values.reserve(count);
                 for (std::size_t i = 0; i < count; ++i) values.push_back(readDouble());
-                return joinNums(values);
+                return joinRealsNoScientific(values);
             }
             case 0x0B: return join(splitNullUtf8(readBytes(dataLen)));
             case 0x0C: {
@@ -2631,14 +2651,14 @@ private:
 
     std::string readFloatOrArray(std::uint8_t propType, int depth) {
         checkDepth(depth);
-        if ((propType & 0x02u) == 0x02u) { auto byteCount = readBoundedByteCount("float array byte count", 4); const auto count = byteCount / 4; if (count > MaxDecodedArrayValues) throw std::runtime_error("float array exceeds value safety cap"); std::vector<float> a; a.reserve(count); for (std::size_t i = 0; i < count; ++i) a.push_back(readFloat()); return joinNums(a); }
-        std::ostringstream os; os << readFloat(); return os.str();
+        if ((propType & 0x02u) == 0x02u) { auto byteCount = readBoundedByteCount("float array byte count", 4); const auto count = byteCount / 4; if (count > MaxDecodedArrayValues) throw std::runtime_error("float array exceeds value safety cap"); std::vector<float> a; a.reserve(count); for (std::size_t i = 0; i < count; ++i) a.push_back(readFloat()); return joinRealsNoScientific(a); }
+        return formatRealNoScientific(readFloat());
     }
 
     std::string readDoubleOrArray(std::uint8_t propType, int depth) {
         checkDepth(depth);
-        if ((propType & 0x02u) == 0x02u) { auto byteCount = readBoundedByteCount("double array byte count", 8); const auto count = byteCount / 8; if (count > MaxDecodedArrayValues) throw std::runtime_error("double array exceeds value safety cap"); std::vector<double> a; a.reserve(count); for (std::size_t i = 0; i < count; ++i) a.push_back(readDouble()); return joinNums(a); }
-        std::ostringstream os; os << readDouble(); return os.str();
+        if ((propType & 0x02u) == 0x02u) { auto byteCount = readBoundedByteCount("double array byte count", 8); const auto count = byteCount / 8; if (count > MaxDecodedArrayValues) throw std::runtime_error("double array exceeds value safety cap"); std::vector<double> a; a.reserve(count); for (std::size_t i = 0; i < count; ++i) a.push_back(readDouble()); return joinRealsNoScientific(a); }
+        return formatRealNoScientific(readDouble());
     }
 
     std::string readStringOrStrings(std::uint8_t propType, int depth) {

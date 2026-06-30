@@ -334,6 +334,39 @@ INSERT INTO raw_key_values(source_id,store_guid,store_path,source_db,inode_num,s
 }
 
 
+
+bool runUnsignedIdentifierTextAffinitySmokeTest(const fs::path& out) {
+    fs::path dbPath = out / "unsigned_identifier_text_affinity" / "unsigned_identifier_text_affinity.case.sqlite";
+    std::error_code ec;
+    fs::create_directories(dbPath.parent_path(), ec);
+    fs::remove(dbPath, ec);
+    try {
+        CaseDatabase db;
+        db.open(dbPath);
+        db.initializeSchema();
+        const std::string largeApfsId = "17689226253308400000";
+        const std::string largeParentId = "9453143601530140000";
+        db.exec("INSERT INTO raw_records(source_id,store_guid,store_path,source_db,inode_num,store_id,parent_inode_num,flags,last_updated_raw,last_updated_utc,file_name,content_type,content_type_tree,where_froms,display_name,full_path,record_state,logical_size_bytes,physical_size_bytes) VALUES('s','g','/staged/g','/staged/g/store.db','" + largeApfsId + "','sid','" + largeParentId + "','','','2025-01-01T00:00:00Z','large.txt','','','','','','PARTIAL_OR_NO_PATH','','');");
+        db.exec("INSERT INTO artifacts(source_id,store_guid,inode_num,parent_inode_num,file_name,best_path,confidence) VALUES('s','g','" + largeApfsId + "','" + largeParentId + "','large.txt','/large.txt','HIGH');");
+        db.exec("INSERT INTO parent_inode_links(source_id,store_guid,child_artifact_id,child_inode_num,child_parent_inode_num,child_file_name,parent_inode_num,confidence) VALUES('s','g',1,'" + largeApfsId + "','" + largeParentId + "','large.txt','" + largeParentId + "','HIGH');");
+        auto textScalar = [&](const std::string& sql) -> std::string {
+            auto st = db.prepare(sql);
+            if (!st.stepRow()) return {};
+            return st.colText(0);
+        };
+        if (textScalar("SELECT typeof(inode_num) FROM raw_records WHERE source_id='s'") != "text") return false;
+        if (textScalar("SELECT inode_num FROM raw_records WHERE source_id='s'") != largeApfsId) return false;
+        if (textScalar("SELECT typeof(parent_inode_num) FROM artifacts WHERE source_id='s'") != "text") return false;
+        if (textScalar("SELECT parent_inode_num FROM artifacts WHERE source_id='s'") != largeParentId) return false;
+        if (textScalar("SELECT typeof(child_inode_num) FROM parent_inode_links WHERE source_id='s'") != "text") return false;
+        if (textScalar("SELECT child_inode_num FROM parent_inode_links WHERE source_id='s'") != largeApfsId) return false;
+    } catch (const std::exception& ex) {
+        std::cerr << "Unsigned identifier text affinity smoke test failed: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
     fs::path out = argc > 1 ? fs::path(argv[1]) : fs::temp_directory_path() / "VestigantSpotlight_tests";
     std::error_code ec;
@@ -345,6 +378,7 @@ int main(int argc, char** argv) {
     if (!runIosCoreProbeTextContextSmokeTest(out)) { std::cerr << "iOS core probe text context smoke test failed\n"; ok = false; }
     if (!runIosProductionReadinessSmokeTest(out)) { std::cerr << "iOS production readiness smoke test failed\n"; ok = false; }
     if (!runParentInodePathReconstructionSmokeTest(out)) { std::cerr << "Parent-inode path reconstruction smoke test failed\n"; ok = false; }
+    if (!runUnsignedIdentifierTextAffinitySmokeTest(out)) { std::cerr << "Unsigned identifier text affinity smoke test failed\n"; ok = false; }
     if (!runRecursiveCteSafetySmokeTest(out)) { std::cerr << "Recursive CTE safety smoke test failed\n"; ok = false; }
     if (!runIosAppDbParserSmokeTest()) { std::cerr << "iOS app DB parser smoke test failed\n"; ok = false; }
     if (!runApfsModuleSmokeTest()) { std::cerr << "APFS module smoke test failed\n"; ok = false; }
