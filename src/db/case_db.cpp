@@ -931,6 +931,27 @@ CREATE TABLE IF NOT EXISTS ios_app_parsed_records (
   provenance TEXT,
   created_utc TEXT
 );
+CREATE TABLE IF NOT EXISTS ios_app_db_spotlight_flag_candidates (
+  ios_spotlight_flag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_id TEXT,
+  ios_db_id INTEGER,
+  database_normalized_path TEXT,
+  database_name TEXT,
+  database_category TEXT,
+  app_hint TEXT,
+  table_name TEXT,
+  source_primary_key TEXT,
+  flag_column TEXT,
+  flag_value TEXT,
+  related_identifier TEXT,
+  related_title TEXT,
+  related_text_preview TEXT,
+  related_url_or_path TEXT,
+  confidence TEXT,
+  hit_reason TEXT,
+  interpretation_note TEXT,
+  created_utc TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_ios_ffs_path ON ios_ffs_file_inventory(source_id, normalized_path);
 CREATE INDEX IF NOT EXISTS idx_ios_ffs_name ON ios_ffs_file_inventory(source_id, file_name);
 CREATE INDEX IF NOT EXISTS idx_ios_ffs_lookup_path ON ios_ffs_path_lookup(source_id, normalized_path);
@@ -942,6 +963,8 @@ CREATE INDEX IF NOT EXISTS idx_ios_db_record_dbid ON ios_app_database_record_inv
 CREATE INDEX IF NOT EXISTS idx_ios_app_parsed_source ON ios_app_parsed_records(source_id, database_category, record_category);
 CREATE INDEX IF NOT EXISTS idx_ios_app_parsed_db ON ios_app_parsed_records(ios_db_id, table_name);
 CREATE INDEX IF NOT EXISTS idx_ios_app_parsed_lookup ON ios_app_parsed_records(source_id, url, contact_or_participant, item_identifier);
+CREATE INDEX IF NOT EXISTS idx_ios_spotlight_flag_source ON ios_app_db_spotlight_flag_candidates(source_id, database_category, app_hint);
+CREATE INDEX IF NOT EXISTS idx_ios_spotlight_flag_db ON ios_app_db_spotlight_flag_candidates(ios_db_id, table_name, flag_column);
 )SQL");
 
     auto ensureColumn = [this](const std::string& table, const std::string& column, const std::string& type) {
@@ -2228,27 +2251,42 @@ WHERE lower(COALESCE(item_identifier,'')) LIKE '%spotlight%'
    OR lower(COALESCE(item_identifier,'')) LIKE '%uniqueidentifier%'
    OR lower(COALESCE(item_identifier,'')) LIKE '%domainidentifier%'
    OR lower(COALESCE(text_snippet,'')) LIKE '%indexed%';
+
+
+DROP VIEW IF EXISTS vw_ios_app_db_spotlight_flag_candidates;
+CREATE VIEW vw_ios_app_db_spotlight_flag_candidates AS
+SELECT ios_spotlight_flag_id AS flag_candidate_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, source_primary_key, flag_column, flag_value, related_identifier, related_title,
+       related_text_preview, related_url_or_path, confidence, hit_reason, interpretation_note, created_utc
+FROM ios_app_db_spotlight_flag_candidates;
 )VSQLFIX",
 R"VSQLFIX(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_enabled_summary;
 CREATE VIEW vw_ios_app_db_spotlight_enabled_summary AS
 SELECT d.source_id,d.ios_db_id,d.normalized_path AS database_normalized_path,d.database_name,d.database_category,d.app_hint,
        COUNT(DISTINCT s.hit_id) AS schema_hit_count,
+       COUNT(DISTINCT f.flag_candidate_id) AS flag_candidate_count,
        COUNT(DISTINCT r.candidate_id) AS row_candidate_count,
        COALESCE(MIN(s.confidence),'NO_SCHEMA_INDICATOR') AS schema_confidence_sample,
        COALESCE(MIN(s.hit_reason),'NO_SCHEMA_INDICATOR') AS schema_reason_sample,
+       COALESCE(MIN(f.confidence),'NO_FLAG_CANDIDATE') AS flag_confidence_sample,
+       COALESCE(MIN(f.hit_reason),'NO_FLAG_CANDIDATE') AS flag_reason_sample,
        CASE
+         WHEN COUNT(DISTINCT f.flag_candidate_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SPOTLIGHT_FLAG_AND_ROW_CANDIDATES_PRESENT'
+         WHEN COUNT(DISTINCT f.flag_candidate_id)>0 THEN 'APP_DB_SPOTLIGHT_FLAG_CANDIDATES_PRESENT'
          WHEN COUNT(DISTINCT s.hit_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SCHEMA_AND_ROW_SEARCH_INDICATORS_PRESENT'
          WHEN COUNT(DISTINCT s.hit_id)>0 THEN 'APP_DB_SCHEMA_SEARCH_INDICATORS_PRESENT'
          WHEN COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_ROW_SEARCH_INDICATORS_PRESENT'
          ELSE 'NO_APP_DB_SPOTLIGHT_INDICATOR_DETECTED'
        END AS review_status,
-       'App DB indicator only. Use as a roadmap to app-specific parsing/CoreSpotlight correlation, not as proof that iOS Spotlight indexed the row.' AS interpretation_note
+       'App DB schema/flag indicator only. A flag value can show app-declared search/Spotlight eligibility state, but it is not proof that iOS CoreSpotlight actually indexed the row unless correlated.' AS interpretation_note
 FROM ios_app_database_inventory d
 LEFT JOIN vw_ios_app_db_spotlight_schema_hits s ON s.ios_db_id=d.ios_db_id AND s.source_id=d.source_id
+LEFT JOIN vw_ios_app_db_spotlight_flag_candidates f ON f.ios_db_id=d.ios_db_id AND f.source_id=d.source_id
 LEFT JOIN vw_ios_app_db_spotlight_row_candidates r ON r.ios_db_id=d.ios_db_id AND r.source_id=d.source_id
 GROUP BY d.source_id,d.ios_db_id,d.normalized_path,d.database_name,d.database_category,d.app_hint
-HAVING schema_hit_count>0 OR row_candidate_count>0
-ORDER BY schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
+HAVING schema_hit_count>0 OR flag_candidate_count>0 OR row_candidate_count>0
+ORDER BY flag_candidate_count DESC, schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
 
 DROP VIEW IF EXISTS vw_ios_database_artifact_inventory;
 CREATE VIEW vw_ios_database_artifact_inventory AS
@@ -7598,12 +7636,19 @@ CREATE TABLE IF NOT EXISTS ios_app_parsed_records (
   table_name TEXT, record_category TEXT, source_primary_key TEXT, record_timestamp_utc TEXT, timestamp_source TEXT, contact_or_participant TEXT, url TEXT, title TEXT,
   file_path TEXT, item_identifier TEXT, text_snippet TEXT, parse_status TEXT, provenance TEXT, created_utc TEXT
 );
+CREATE TABLE IF NOT EXISTS ios_app_db_spotlight_flag_candidates (
+  ios_spotlight_flag_id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT, ios_db_id INTEGER, database_normalized_path TEXT, database_name TEXT, database_category TEXT, app_hint TEXT,
+  table_name TEXT, source_primary_key TEXT, flag_column TEXT, flag_value TEXT, related_identifier TEXT, related_title TEXT, related_text_preview TEXT, related_url_or_path TEXT,
+  confidence TEXT, hit_reason TEXT, interpretation_note TEXT, created_utc TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_ios_ffs_path ON ios_ffs_file_inventory(source_id, normalized_path);
 CREATE INDEX IF NOT EXISTS idx_ios_ffs_lookup_path ON ios_ffs_path_lookup(source_id, normalized_path);
 CREATE INDEX IF NOT EXISTS idx_ios_db_category ON ios_app_database_inventory(source_id, database_category, app_hint);
 CREATE INDEX IF NOT EXISTS idx_ios_db_record_source ON ios_app_database_record_inventory(source_id, database_category, table_name);
 CREATE INDEX IF NOT EXISTS idx_ios_app_parsed_source ON ios_app_parsed_records(source_id, database_category, record_category);
 CREATE INDEX IF NOT EXISTS idx_ios_app_parsed_db ON ios_app_parsed_records(ios_db_id, table_name);
+CREATE INDEX IF NOT EXISTS idx_ios_spotlight_flag_source ON ios_app_db_spotlight_flag_candidates(source_id, database_category, app_hint);
+CREATE INDEX IF NOT EXISTS idx_ios_spotlight_flag_db ON ios_app_db_spotlight_flag_candidates(ios_db_id, table_name, flag_column);
 
 DROP VIEW IF EXISTS vw_ios_relevant_fields;
 CREATE VIEW vw_ios_relevant_fields AS
@@ -7890,27 +7935,42 @@ WHERE lower(COALESCE(item_identifier,'')) LIKE '%spotlight%'
    OR lower(COALESCE(item_identifier,'')) LIKE '%uniqueidentifier%'
    OR lower(COALESCE(item_identifier,'')) LIKE '%domainidentifier%'
    OR lower(COALESCE(text_snippet,'')) LIKE '%indexed%';
+
+
+DROP VIEW IF EXISTS vw_ios_app_db_spotlight_flag_candidates;
+CREATE VIEW vw_ios_app_db_spotlight_flag_candidates AS
+SELECT ios_spotlight_flag_id AS flag_candidate_id,
+       source_id, ios_db_id, database_normalized_path, database_name, database_category, app_hint,
+       table_name, source_primary_key, flag_column, flag_value, related_identifier, related_title,
+       related_text_preview, related_url_or_path, confidence, hit_reason, interpretation_note, created_utc
+FROM ios_app_db_spotlight_flag_candidates;
 )VSGUI",
         R"VSGUI(DROP VIEW IF EXISTS vw_ios_app_db_spotlight_enabled_summary;
 CREATE VIEW vw_ios_app_db_spotlight_enabled_summary AS
 SELECT d.source_id,d.ios_db_id,d.normalized_path AS database_normalized_path,d.database_name,d.database_category,d.app_hint,
        COUNT(DISTINCT s.hit_id) AS schema_hit_count,
+       COUNT(DISTINCT f.flag_candidate_id) AS flag_candidate_count,
        COUNT(DISTINCT r.candidate_id) AS row_candidate_count,
        COALESCE(MIN(s.confidence),'NO_SCHEMA_INDICATOR') AS schema_confidence_sample,
        COALESCE(MIN(s.hit_reason),'NO_SCHEMA_INDICATOR') AS schema_reason_sample,
+       COALESCE(MIN(f.confidence),'NO_FLAG_CANDIDATE') AS flag_confidence_sample,
+       COALESCE(MIN(f.hit_reason),'NO_FLAG_CANDIDATE') AS flag_reason_sample,
        CASE
+         WHEN COUNT(DISTINCT f.flag_candidate_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SPOTLIGHT_FLAG_AND_ROW_CANDIDATES_PRESENT'
+         WHEN COUNT(DISTINCT f.flag_candidate_id)>0 THEN 'APP_DB_SPOTLIGHT_FLAG_CANDIDATES_PRESENT'
          WHEN COUNT(DISTINCT s.hit_id)>0 AND COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_SCHEMA_AND_ROW_SEARCH_INDICATORS_PRESENT'
          WHEN COUNT(DISTINCT s.hit_id)>0 THEN 'APP_DB_SCHEMA_SEARCH_INDICATORS_PRESENT'
          WHEN COUNT(DISTINCT r.candidate_id)>0 THEN 'APP_DB_ROW_SEARCH_INDICATORS_PRESENT'
          ELSE 'NO_APP_DB_SPOTLIGHT_INDICATOR_DETECTED'
        END AS review_status,
-       'App DB indicator only. Use as a roadmap to app-specific parsing/CoreSpotlight correlation, not as proof that iOS Spotlight indexed the row.' AS interpretation_note
+       'App DB schema/flag indicator only. A flag value can show app-declared search/Spotlight eligibility state, but it is not proof that iOS CoreSpotlight actually indexed the row unless correlated.' AS interpretation_note
 FROM ios_app_database_inventory d
 LEFT JOIN vw_ios_app_db_spotlight_schema_hits s ON s.ios_db_id=d.ios_db_id AND s.source_id=d.source_id
+LEFT JOIN vw_ios_app_db_spotlight_flag_candidates f ON f.ios_db_id=d.ios_db_id AND f.source_id=d.source_id
 LEFT JOIN vw_ios_app_db_spotlight_row_candidates r ON r.ios_db_id=d.ios_db_id AND r.source_id=d.source_id
 GROUP BY d.source_id,d.ios_db_id,d.normalized_path,d.database_name,d.database_category,d.app_hint
-HAVING schema_hit_count>0 OR row_candidate_count>0
-ORDER BY schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
+HAVING schema_hit_count>0 OR flag_candidate_count>0 OR row_candidate_count>0
+ORDER BY flag_candidate_count DESC, schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name;
 
 DROP VIEW IF EXISTS vw_ios_database_artifact_inventory;
 CREATE VIEW vw_ios_database_artifact_inventory AS

@@ -1,4 +1,4 @@
-param([string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_115")
+param([string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_119")
 $ErrorActionPreference = "Stop"
 $ReleaseRoot = Join-Path $SourceRoot "build-msvc\Release"
 $Required = @(

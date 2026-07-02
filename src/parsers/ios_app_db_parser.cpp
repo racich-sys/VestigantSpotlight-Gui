@@ -804,6 +804,148 @@ std::string summarizeSqliteRowValues(sqlite3_stmt* st,
 }
 
 
+
+std::vector<std::string> sqliteColumnNamesLocal(sqlite3* ext, const std::string& tableName) {
+    std::vector<std::string> cols;
+    std::string sql = "PRAGMA table_info(" + sqlIdentLocal(tableName) + ")";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return cols;
+    while (sqlite3_step(st) == SQLITE_ROW && cols.size() < 120) {
+        const unsigned char* txt = sqlite3_column_text(st, 1);
+        if (txt) cols.emplace_back(reinterpret_cast<const char*>(txt));
+    }
+    sqlite3_finalize(st);
+    return cols;
+}
+
+bool isIosSpotlightFlagColumnNameLocal(const std::string& columnName) {
+    const std::string c = toLower(columnName);
+    if (c.empty()) return false;
+    if (c.find("spotlight") != std::string::npos || c.find("corespotlight") != std::string::npos || c.find("core_spotlight") != std::string::npos) return true;
+    if (c.find("searchable") != std::string::npos || c.find("indexable") != std::string::npos) return true;
+    if (c.find("search_index") != std::string::npos || c.find("searchindex") != std::string::npos) return true;
+    if (c.find("index_status") != std::string::npos || c.find("indexstate") != std::string::npos || c.find("index_state") != std::string::npos) return true;
+    if (c.find("indexed") != std::string::npos && (c.rfind("is", 0) == 0 || c.rfind("has", 0) == 0 || c.find("search") != std::string::npos)) return true;
+    if (c.find("donated") != std::string::npos && (c.find("search") != std::string::npos || c.find("spotlight") != std::string::npos)) return true;
+    if ((c.find("eligible") != std::string::npos || c.find("enabled") != std::string::npos || c.find("disabled") != std::string::npos) &&
+        (c.find("search") != std::string::npos || c.find("spotlight") != std::string::npos || c.find("index") != std::string::npos)) return true;
+    return false;
+}
+
+bool isIosSpotlightFlagTableNameLocal(const std::string& tableName) {
+    const std::string t = toLower(tableName);
+    return t.find("spotlight") != std::string::npos || t.find("corespotlight") != std::string::npos ||
+           t.find("core_spotlight") != std::string::npos || t.find("searchable") != std::string::npos;
+}
+
+bool isIosSpotlightContextColumnNameLocal(const std::string& columnName) {
+    const std::string c = toLower(columnName);
+    if (c == "rowid" || c == "z_pk" || c == "id" || c == "guid" || c == "uuid") return true;
+    return c.find("identifier") != std::string::npos || c.find("guid") != std::string::npos || c.find("uuid") != std::string::npos ||
+           c.find("domain") != std::string::npos || c.find("message") != std::string::npos || c.find("chat") != std::string::npos ||
+           c.find("thread") != std::string::npos || c.find("title") != std::string::npos || c.find("name") != std::string::npos ||
+           c.find("text") != std::string::npos || c.find("body") != std::string::npos || c.find("url") != std::string::npos ||
+           c.find("path") != std::string::npos || c.find("date") != std::string::npos || c.find("time") != std::string::npos;
+}
+
+std::string clippedSqliteTextLocal(sqlite3_stmt* st, int index, std::size_t maxLen) {
+    if (index < 0) return {};
+    const int typ = sqlite3_column_type(st, index);
+    if (typ == SQLITE_NULL || typ == SQLITE_BLOB) return {};
+    std::string v = sqliteColumnText(st, index);
+    v = trim(v);
+    if (v.size() > maxLen) v.resize(maxLen);
+    return v;
+}
+
+std::size_t scanIosAppDbSpotlightFlagCandidates(const std::string& sourceId,
+                                                const IosAppDbInventory& inv,
+                                                sqlite3* ext,
+                                                const std::string& table,
+                                                SqlStatement& flagIns) {
+    const std::vector<std::string> cols = sqliteColumnNamesLocal(ext, table);
+    if (cols.empty()) return 0;
+    std::vector<std::string> flagCols;
+    for (const auto& col : cols) {
+        if (isIosSpotlightFlagColumnNameLocal(col)) flagCols.push_back(col);
+    }
+    if (flagCols.empty() && !isIosSpotlightFlagTableNameLocal(table)) return 0;
+    if (flagCols.empty()) {
+        for (const auto& col : cols) {
+            if (isIosSpotlightContextColumnNameLocal(col)) flagCols.push_back(col);
+            if (flagCols.size() >= 4) break;
+        }
+    }
+    if (flagCols.empty()) return 0;
+
+    constexpr int MaxFlagRowsPerTable = 250;
+    std::string sql = "SELECT rowid AS __rowid__, * FROM " + sqlIdentLocal(table) + " LIMIT " + std::to_string(MaxFlagRowsPerTable);
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(ext, sql.c_str(), -1, &st, nullptr) != SQLITE_OK || !st) return 0;
+    std::size_t inserted = 0;
+    const int colCount = sqlite3_column_count(st);
+    std::map<std::string, int> lowerCols;
+    for (int i = 0; i < colCount; ++i) {
+        const char* namePtr = sqlite3_column_name(st, i);
+        if (namePtr) lowerCols[toLower(namePtr)] = i;
+    }
+    auto idx = [&](const std::vector<std::string>& candidates, bool containsMatch = true) { return findColumnIndex(lowerCols, candidates, containsMatch); };
+    const int pkCol = idx({"__rowid__", "z_pk", "rowid", "id"}, false);
+    const int identCol = idx({"uniqueidentifier", "domainidentifier", "guid", "uuid", "identifier", "zuniqueid", "zmessageid", "zchatid", "zjid", "zcontactjid"}, true);
+    const int titleCol = idx({"title", "name", "ztitle", "zname", "zdisplayname", "zpushname", "zcaption"}, true);
+    const int textCol = idx({"text", "body", "message", "ztext", "zbody", "zmessage", "zsummary", "zcaption"}, true);
+    const int urlCol = idx({"url", "path", "file", "zurl", "zpath", "zfilename", "zmediaurl"}, true);
+
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        const std::string pk = clippedSqliteTextLocal(st, pkCol, 256);
+        const std::string relatedIdentifier = clippedSqliteTextLocal(st, identCol, 700);
+        const std::string relatedTitle = clippedSqliteTextLocal(st, titleCol, 700);
+        const std::string relatedText = clippedSqliteTextLocal(st, textCol, 900);
+        const std::string relatedUrl = clippedSqliteTextLocal(st, urlCol, 900);
+        for (const auto& flagColName : flagCols) {
+            auto it = lowerCols.find(toLower(flagColName));
+            if (it == lowerCols.end()) continue;
+            const std::string value = clippedSqliteTextLocal(st, it->second, 256);
+            if (value.empty() && !isIosSpotlightFlagTableNameLocal(table)) continue;
+            const std::string lc = toLower(flagColName);
+            std::string confidence = "LOW_APP_DB_SEARCH_SCHEMA_ROW_SAMPLE";
+            std::string reason = "SPOTLIGHT_OR_SEARCH_FLAG_COLUMN_SAMPLE";
+            if (lc.find("spotlight") != std::string::npos || lc.find("corespotlight") != std::string::npos || lc.find("core_spotlight") != std::string::npos) {
+                confidence = "MEDIUM_APP_DB_SPOTLIGHT_FLAG_VALUE";
+                reason = "SPOTLIGHT_COLUMN_VALUE_PRESENT";
+            } else if (lc.find("searchable") != std::string::npos || lc.find("indexable") != std::string::npos || lc.find("search_index") != std::string::npos || lc.find("searchindex") != std::string::npos) {
+                confidence = "MEDIUM_APP_DB_SEARCH_ELIGIBILITY_FLAG_VALUE";
+                reason = "SEARCHABLE_OR_INDEXABLE_COLUMN_VALUE_PRESENT";
+            }
+            int b = 1;
+            flagIns.bind(b++, sourceId);
+            flagIns.bind(b++, inv.id);
+            flagIns.bind(b++, inv.norm);
+            flagIns.bind(b++, inv.name);
+            flagIns.bind(b++, inv.cat);
+            flagIns.bind(b++, inv.app);
+            flagIns.bind(b++, table);
+            flagIns.bind(b++, pk);
+            flagIns.bind(b++, flagColName);
+            flagIns.bind(b++, value);
+            flagIns.bind(b++, relatedIdentifier);
+            flagIns.bind(b++, relatedTitle);
+            flagIns.bind(b++, relatedText);
+            flagIns.bind(b++, relatedUrl);
+            flagIns.bind(b++, confidence);
+            flagIns.bind(b++, reason);
+            flagIns.bind(b++, "App database flag/setting candidate only. It may show app-declared Spotlight/search eligibility state, not proof of CoreSpotlight indexing without correlation.");
+            flagIns.bind(b++, nowUtc());
+            flagIns.stepDone();
+            flagIns.reset();
+            ++inserted;
+            if (inserted >= 500) { sqlite3_finalize(st); return inserted; }
+        }
+    }
+    sqlite3_finalize(st);
+    return inserted;
+}
+
 bool sqliteTableExistsLocal(sqlite3* ext, const std::string& tableName) {
     sqlite3_stmt* st = nullptr;
     int rc = sqlite3_prepare_v2(ext, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", -1, &st, nullptr);
@@ -1654,6 +1796,7 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
     std::size_t tableRows = 0;
     std::size_t opened = 0;
     std::size_t parsedRows = 0;
+    std::size_t spotlightFlagRows = 0;
     try {
         db.begin();
         writeStatus("ios_app_db_record_inventory_db_transaction", "started metadata import and bounded row parsing transaction");
@@ -1667,8 +1810,14 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
             del.bind(1, sourceId);
             del.stepDone();
         }
+        {
+            auto del = db.prepare("DELETE FROM ios_app_db_spotlight_flag_candidates WHERE source_id=?");
+            del.bind(1, sourceId);
+            del.stepDone();
+        }
         auto ins = db.prepare("INSERT INTO ios_app_database_record_inventory(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,row_count,sample_columns,record_category,parse_status,notes,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)");
         auto parsedIns = db.prepare("INSERT INTO ios_app_parsed_records(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,record_category,source_primary_key,record_timestamp_utc,timestamp_source,contact_or_participant,url,title,file_path,item_identifier,text_snippet,parse_status,provenance,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        auto flagIns = db.prepare("INSERT INTO ios_app_db_spotlight_flag_candidates(source_id,ios_db_id,database_normalized_path,database_name,database_category,app_hint,table_name,source_primary_key,flag_column,flag_value,related_identifier,related_title,related_text_preview,related_url_or_path,confidence,hit_reason,interpretation_note,created_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         auto upd = db.prepare("UPDATE ios_app_database_inventory SET parse_status=?, record_inventory_status=? WHERE ios_db_id=?");
 
         std::size_t dbIndex = 0;
@@ -1728,6 +1877,15 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
                 ins.bind(13, nowUtc());
                 ins.stepDone();
                 ins.reset();
+                if (rowCount > 0) {
+                    try {
+                        spotlightFlagRows += scanIosAppDbSpotlightFlagCandidates(sourceId, inv, ext, table, flagIns);
+                    } catch (const std::exception& ex) {
+                        writeStatus("ios_app_db_spotlight_flag_scan_warning", "ios_db_id=" + std::to_string(inv.id) + " table=" + table + " error=" + ex.what());
+                    } catch (...) {
+                        writeStatus("ios_app_db_spotlight_flag_scan_warning", "ios_db_id=" + std::to_string(inv.id) + " table=" + table + " error=unknown");
+                    }
+                }
                 if (rowCount > 0 && IosAppDbParser::isTargetRecordCategory(recCat)) {
                     try {
                         parsedRows += IosAppDbParser::parseTable(sourceId, inv, ext, table, parseDecision, parsedIns);
@@ -1773,7 +1931,7 @@ void IosAppDbParser::parseRecordInventories(CaseDatabase& db,
         writeStatus("ios_app_db_timeline_promotion_complete", "timeline/usage promotion complete from parsed app records");
         db.commit();
         log.info("iOS app database record inventory: extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
-        writeStatus("ios_app_db_record_inventory", "extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows));
+        writeStatus("ios_app_db_record_inventory", "extracted_databases=" + std::to_string(invs.size()) + " opened=" + std::to_string(opened) + " table_rows=" + std::to_string(tableRows) + " parsed_app_records=" + std::to_string(parsedRows) + " spotlight_flag_candidates=" + std::to_string(spotlightFlagRows));
     } catch (const std::exception& ex) {
         db.rollbackNoThrow();
         log.warn(std::string("Unable to parse iOS app database record inventory: ") + ex.what());

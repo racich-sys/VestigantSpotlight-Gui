@@ -1,0 +1,51 @@
+Vestigant Spotlight V1.6.119 PowerShell commands
+
+Default AFF4/APFS thin run:
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_119-AfterDownload.ps1
+
+Build only:
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_119-AfterDownload.ps1 -Workflow BuildOnly
+
+Launch GUI after build:
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Launch-V1_6_119-GUI.ps1
+
+Portable runtime check after build:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_119\build-msvc\Release\Check-PortableRuntime.ps1
+
+Expected portable Release ZIP after build:
+D:\Downloads\VestigantSpotlightPortable_V1_6_119.zip
+D:\Downloads\VestigantSpotlightPortable_V1_6_119.zip.sha256.txt
+
+Manual portable export after build:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_119\tools\Export-PortableReleaseZip.ps1 -SourceRoot T:\VestigantSpotlightInv_V1_6_119 -ZipPath D:\Downloads\VestigantSpotlightPortable_V1_6_119.zip
+
+Expected AFF4/APFS validation upload:
+D:\Downloads\Upload_Thin_MacOS_AFF4_V1_6_119.zip
+D:\Downloads\V1_6_119_build.log
+D:\Downloads\V1_6_119_AFF4_WRAPPER_RUN_SUMMARY.txt
+
+One-click iOS test matrix after download/build:
+powershell -ExecutionPolicy Bypass -File D:\Downloads\Run-V1_6_119-iOS-TestMatrix-AfterDownload.ps1 -CleanOut
+
+Default iOS test matrix after build:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_119\scripts\Run-V1_6_119-iOS-TestMatrix-AndZip.ps1 -CleanOut
+
+App-DB Spotlight/search eligibility focused iOS validation:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_119\scripts\Run-V1_6_119-iOS-AppDbSpotlight-AndZip.ps1 -CleanOut
+
+Thin iOS CoreSpotlight sanity run only:
+powershell -ExecutionPolicy Bypass -File T:\VestigantSpotlightInv_V1_6_119\scripts\Run-V1_6_119-iOS-CoreSpotlight-AndZip.ps1 -CleanOut
+
+Expected iOS validation uploads:
+D:\Downloads\Upload_iOS_TestMatrix_V1_6_119.zip
+D:\Downloads\Upload_iOS_AppDbSpotlight_V1_6_119.zip
+D:\Downloads\Upload_Thin_iOS_CoreSpotlight_V1_6_119.zip
+
+Main iOS checks:
+exports/ios_app_db_spotlight_enabled_summary.csv
+exports/ios_app_db_spotlight_flag_candidates.csv or sample
+exports/ios_app_db_spotlight_schema_hits.csv or sample
+exports/ios_app_db_spotlight_row_candidates.csv or sample
+
+Interpretation rule:
+Rows in ios_app_db_spotlight_flag_candidates are app-declared Spotlight/search eligibility indicators only, not proof of actual CoreSpotlight indexing unless correlated.

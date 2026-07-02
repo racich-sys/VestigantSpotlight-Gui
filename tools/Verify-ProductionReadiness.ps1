@@ -1,6 +1,6 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_115",
-  [string]$ExpectedVersion = "1.6.115"
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_119",
+  [string]$ExpectedVersion = "1.6.119"
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,14 +26,15 @@ $mdFiles = Get-ChildItem -LiteralPath $SourceRoot -Recurse -File -Filter "*.md" 
   Where-Object { $_.FullName -notmatch "\\build-" }
 if ($mdFiles.Count -ne 5) { Add-Issue "Expected exactly 5 active Markdown files but found $($mdFiles.Count)" }
 
-Test-RelFile "Run-V1_6_115-AfterDownload.ps1" | Out-Null
-Test-RelFile "Build-V1_6_115-FromDownloadedZip.ps1" | Out-Null
-Test-RelFile "Launch-V1_6_115-GUI.ps1" | Out-Null
-Test-RelFile "POWERSHELL_COMMANDS_V1_6_115.txt" | Out-Null
+Test-RelFile "Run-V1_6_119-AfterDownload.ps1" | Out-Null
+Test-RelFile "Build-V1_6_119-FromDownloadedZip.ps1" | Out-Null
+Test-RelFile "Launch-V1_6_119-GUI.ps1" | Out-Null
+Test-RelFile "POWERSHELL_COMMANDS_V1_6_119.txt" | Out-Null
 Test-RelFile "tools\Stage-PortableRelease.ps1" | Out-Null
 Test-RelFile "tools\Verify-PortableReleaseLayout.ps1" | Out-Null
 Test-RelFile "tools\Export-PortableReleaseZip.ps1" | Out-Null
 Test-RelFile "tools\Verify-ThinIdentifierCsvPrecision.ps1" | Out-Null
+Test-RelFile "tools\Verify-SpotlightExternalVolumePrecision.ps1" | Out-Null
 Test-RelFile "resources\reader_tools\libaff4.dll" | Out-Null
 Test-RelFile "resources\reader_tools\zlib1.dll" | Out-Null
 Test-RelFile "resources\reader_tools\snappy.dll" | Out-Null

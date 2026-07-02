@@ -1530,9 +1530,11 @@ ORDER BY probe_category, string_probe_rows DESC, store_guid, source_db
         else exportQuery(db, exportDir / "ios_app_parsed_records_sample.csv", "SELECT * FROM vw_ios_app_parsed_records ORDER BY database_category, record_category, record_timestamp_utc, database_name, table_name, ios_app_record_id LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_db_spotlight_schema_hits.csv", "SELECT * FROM vw_ios_app_db_spotlight_schema_hits ORDER BY confidence, database_category, app_hint, database_name, table_name", log);
         else exportQuery(db, exportDir / "ios_app_db_spotlight_schema_hits_sample.csv", "SELECT * FROM vw_ios_app_db_spotlight_schema_hits ORDER BY confidence, database_category, app_hint, database_name, table_name LIMIT 5000", log);
+        if (supportDataExport) exportQuery(db, exportDir / "ios_app_db_spotlight_flag_candidates.csv", "SELECT * FROM vw_ios_app_db_spotlight_flag_candidates ORDER BY confidence, database_category, app_hint, database_name, table_name, flag_candidate_id", log);
+        else exportQuery(db, exportDir / "ios_app_db_spotlight_flag_candidates_sample.csv", "SELECT * FROM vw_ios_app_db_spotlight_flag_candidates ORDER BY confidence, database_category, app_hint, database_name, table_name, flag_candidate_id LIMIT 5000", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_app_db_spotlight_row_candidates.csv", "SELECT * FROM vw_ios_app_db_spotlight_row_candidates ORDER BY confidence, database_category, app_hint, database_name, table_name, candidate_id", log);
         else exportQuery(db, exportDir / "ios_app_db_spotlight_row_candidates_sample.csv", "SELECT * FROM vw_ios_app_db_spotlight_row_candidates ORDER BY confidence, database_category, app_hint, database_name, table_name, candidate_id LIMIT 5000", log);
-        exportQuery(db, exportDir / "ios_app_db_spotlight_enabled_summary.csv", "SELECT * FROM vw_ios_app_db_spotlight_enabled_summary ORDER BY schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name", log);
+        exportQuery(db, exportDir / "ios_app_db_spotlight_enabled_summary.csv", "SELECT * FROM vw_ios_app_db_spotlight_enabled_summary ORDER BY flag_candidate_count DESC, schema_hit_count DESC, row_candidate_count DESC, database_category, app_hint, database_name", log);
         exportQuery(db, exportDir / "ios_app_parsed_record_summary.csv", "SELECT * FROM vw_ios_app_parsed_record_summary ORDER BY database_category, record_category", log);
         if (supportDataExport) exportQuery(db, exportDir / "ios_apple_messages_parsed_records.csv", "SELECT * FROM vw_ios_apple_messages_parsed_records ORDER BY record_timestamp_utc, ios_app_record_id", log);
         exportQuery(db, exportDir / "ios_apple_messages_parsed_summary.csv", "SELECT * FROM vw_ios_apple_messages_parsed_summary ORDER BY record_category, parse_status", log);
@@ -2450,6 +2452,11 @@ ORDER BY source_id, confidence, volume_name_or_token, hit_id
 SELECT hit_id,source_id,store_guid,source_db,dictionary_table,dictionary_field,dictionary_value,evidence_type,confidence,reason,validation_note,created_utc
 FROM spotlight_external_volume_dictionary_hits
 ORDER BY source_id, confidence, dictionary_table, dictionary_value, hit_id
+)SQL", log);
+    exportQuery(db, exportDir / "spotlight_external_volume_volfs_hits.csv", R"SQL(
+SELECT hit_id,source_id,artifact_id,raw_kv_id,store_guid,source_db,inode_num,source_table,source_field,volume_name_or_token,path_or_value,confidence,reason,validation_note,created_utc
+FROM spotlight_external_volume_volfs_hits
+ORDER BY source_id, hit_id
 )SQL", log);
     exportQuery(db, exportDir / "orphaned_or_deleted_candidates.csv", R"SQL(
 SELECT candidate_id,artifact_id,source_id,store_guid,inode_num,file_name,best_path,content_type,existence_status,orphan_reason,index_text_snippet

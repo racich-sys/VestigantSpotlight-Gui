@@ -1,5 +1,5 @@
 param(
-  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_115",
+  [string]$SourceRoot = "T:\VestigantSpotlightInv_V1_6_119",
   [string]$ReaderToolsRoot = "",
   [switch]$RequireAff4ReaderTools,
   [switch]$NoPathSearch

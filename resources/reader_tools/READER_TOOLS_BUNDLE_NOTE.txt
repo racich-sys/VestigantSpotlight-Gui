@@ -4,7 +4,7 @@ This package includes the AFF4 runtime files needed by Vestigant Spotlight's por
 
 Redistribution/license status has not been independently verified in this chat. Treat as an internal/test bundle unless licensing is reviewed before external distribution.
 
-V1.6.115 update: user-supplied Microsoft VC++ runtime DLLs are bundled for portable internal testing:
+V1.6.119 update: user-supplied Microsoft VC++ runtime DLLs are bundled for portable internal testing:
 - MSVCP140.dll
 - VCRUNTIME140.dll
 - VCRUNTIME140_1.dll

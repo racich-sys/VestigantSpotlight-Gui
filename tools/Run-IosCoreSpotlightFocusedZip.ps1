@@ -261,7 +261,7 @@ try {
           "status=incomplete_run_diagnostic_bundle",
           "cli_exit_code=$cliExit",
           "missing_required_upload_samples=$($missingRequiredUploadSamples -join ';')",
-          "note=V1.6.115 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
+          "note=V1.6.119 preserves incomplete-run upload ZIPs for review when the CLI exits before bounded exports are generated."
         ) -Encoding UTF8
       } catch {}
     } else {
@@ -270,6 +270,27 @@ try {
   }
 } finally {
   $zipForValidation.Dispose()
+}
+
+# V1.6.119 iOS production path: verify that focused iOS upload bundles contain
+# the CoreSpotlight/app-DB validation surfaces needed to evaluate Spotlight viability.
+try {
+  $iosValidationAudit = Join-Path $ScriptRoot "Verify-iOSSpotlightValidationOutputs.ps1"
+  if (Test-Path -LiteralPath $iosValidationAudit -PathType Leaf) {
+    $auditArgs = @("-ExecutionPolicy", "Bypass", "-File", $iosValidationAudit, "-ZipPath", $ZipPath)
+    if ($MaterializeIosSupportDb -or $DiagnosticFullNativeDb -or ($EffectiveExportProfile -in @("support", "diagnostics", "full"))) {
+      $auditArgs += "-RequireAppDbSpotlightExports"
+    }
+    if ($cliExit -ne 0) { $auditArgs += "-AllowIncompleteRun" }
+    powershell @auditArgs
+    if ($LASTEXITCODE -ne 0) { throw "iOS Spotlight validation output audit failed with exit code $LASTEXITCODE" }
+  }
+} catch {
+  if ($cliExit -ne 0) {
+    Write-Warning "iOS validation output audit failed after a nonzero CLI exit; preserving diagnostic ZIP: $($_.Exception.Message)"
+  } else {
+    throw
+  }
 }
 
 if (!$NoClipboardOrExplorer) {

@@ -1,0 +1,23 @@
+Vestigant Spotlight V1.6.119 validation summary
+
+Changes:
+- Added tools/Verify-iOSSpotlightValidationOutputs.ps1.
+- Added scripts/Run-V1_6_119-iOS-AppDbSpotlight-AndZip.ps1.
+- Added scripts/Run-V1_6_119-iOS-TestMatrix-AndZip.ps1.
+- Updated tools/Run-IosCoreSpotlightFocusedZip.ps1 to run the iOS upload-output audit after ZIP creation.
+- Updated tools/Create-SourceProbeUploadZip.ps1 to include iOS app DB Spotlight/search eligibility exports and samples.
+- Added -ReuseIosCache parameter to Run-V1_6_119-iOS-Production-AndZip.ps1.
+- Preserved V1.6.118 iOS App DB Spotlight flag candidate parsing/export/view behavior.
+
+Local validation performed by package builder:
+- Linux CMake build and self-test.
+- CLI version check.
+- MSVC raw-string risk audit equivalent.
+- Active Markdown count check.
+- ZIP integrity check.
+
+Not verified by package builder:
+- Windows/MSVC V1.6.119 build.
+- Real iOS CoreSpotlight run.
+- Real iOS App DB Spotlight/search eligibility run.
+- Windows GUI runtime behavior.

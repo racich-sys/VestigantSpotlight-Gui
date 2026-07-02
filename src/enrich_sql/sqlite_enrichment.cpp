@@ -660,7 +660,7 @@ WHERE a.source_id=?
             " unresolved_or_relative_links=" + std::to_string(directParentUnresolvedRows) +
             " actionable_weak_artifact_rows=" + std::to_string(parentChainActionableWeakArtifactRows));
 
-        // V1.6.115: skip the expensive recursive parent-inode chain when it cannot
+        // V1.6.119: skip the expensive recursive parent-inode chain when it cannot
         // improve investigator-facing artifact paths.  V1.6.97 proved that this
         // AFF4/APFS case spent ~14.5 minutes in the recursive review query, then
         // parent-inode path apply updated zero artifacts.  Direct parent-inode links
@@ -1294,8 +1294,7 @@ SELECT kv.source_id,kv.raw_kv_id,a.artifact_id,kv.store_guid,kv.source_db,kv.ino
        CASE WHEN lower(kv.field_value) LIKE '%/.vol/%' OR lower(kv.field_value) LIKE '%file:///.vol/%' THEN 'VOLFS_OR_DOT_VOL_REFERENCE'
             WHEN lower(kv.field_value) LIKE '%file:///volumes/%' THEN 'FILE_URL_VOLUMES_PATH'
             WHEN lower(kv.field_value) LIKE '%/volumes/%' THEN 'RAW_VALUE_VOLUMES_PATH'
-            WHEN lower(kv.field_value) LIKE '%removable%' OR lower(kv.field_value) LIKE '%external%' OR lower(kv.field_value) LIKE '%mount%' OR lower(kv.field_value) LIKE '%usb%' THEN 'RAW_VALUE_VOLUME_RELATED_TOKEN'
-            ELSE 'RAW_VALUE_VOLUME_REVIEW_TOKEN' END,
+            ELSE 'RAW_VALUE_EXPLICIT_PATH_OR_VOLFS' END,
        CASE
          WHEN kv.field_value LIKE '/System/Volumes/Data/Volumes/%' THEN substr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), 1, CASE WHEN instr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), '/')>0 THEN instr(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1), '/')-1 ELSE length(substr(kv.field_value, length('/System/Volumes/Data/Volumes/') + 1)) END)
          WHEN kv.field_value LIKE '/Volumes/%' THEN substr(substr(kv.field_value, length('/Volumes/') + 1), 1, CASE WHEN instr(substr(kv.field_value, length('/Volumes/') + 1), '/')>0 THEN instr(substr(kv.field_value, length('/Volumes/') + 1), '/')-1 ELSE length(substr(kv.field_value, length('/Volumes/') + 1)) END)
@@ -1305,7 +1304,7 @@ SELECT kv.source_id,kv.raw_kv_id,a.artifact_id,kv.store_guid,kv.source_db,kv.ino
        END,
        substr(kv.field_value,1,1200),
        CASE WHEN lower(kv.field_value) LIKE '%/volumes/%' OR lower(kv.field_value) LIKE '%file:///volumes/%' THEN 'MEDIUM_RAW_SPOTLIGHT_VALUE_PATH_INDICATOR' ELSE 'LOW_RAW_SPOTLIGHT_VALUE_TOKEN_REVIEW_REQUIRED' END,
-       'Raw decoded Store-V2 key/value contains Spotlight-only external-volume path or volume-related token.',
+       'Raw decoded Store-V2 key/value contains explicit /Volumes, file:///Volumes, or .vol path evidence.',
        'Spotlight-only investigative lead; verify against artifact/path/date context before interpretation.',
        strftime('%Y-%m-%dT%H:%M:%SZ','now')
 FROM raw_key_values kv
@@ -1314,11 +1313,7 @@ WHERE kv.source_id=)SQL" + sid + R"SQL(
   AND (lower(kv.field_value) LIKE '%/volumes/%'
        OR lower(kv.field_value) LIKE '%file:///volumes/%'
        OR lower(kv.field_value) LIKE '%/.vol/%'
-       OR lower(kv.field_value) LIKE '%file:///.vol/%'
-       OR lower(kv.field_name) LIKE '%volume%'
-       OR lower(kv.field_name) LIKE '%mount%'
-       OR ((lower(kv.field_name) LIKE '%path%' OR lower(kv.field_name) LIKE '%url%' OR lower(kv.field_name) LIKE '%where%' OR lower(kv.field_name) LIKE '%volume%' OR lower(kv.field_name) LIKE '%mount%' OR lower(kv.field_name) LIKE '%device%' OR lower(kv.field_name) LIKE '%disk%')
-           AND (lower(kv.field_value) LIKE '%removable%' OR lower(kv.field_value) LIKE '%external%' OR lower(kv.field_value) LIKE '%mount%' OR lower(kv.field_value) LIKE '%usb%')))
+       OR lower(kv.field_value) LIKE '%file:///.vol/%')
   AND NOT (lower(kv.field_value) LIKE '/system/volumes/data/%' AND lower(kv.field_value) NOT LIKE '/system/volumes/data/volumes/%')
   AND NOT (lower(kv.field_value) LIKE '%/system/volumes/data/%' AND lower(kv.field_value) NOT LIKE '%/system/volumes/data/volumes/%')
   AND lower(kv.field_value) NOT LIKE '/system/volumes/preboot%'
@@ -1337,7 +1332,7 @@ SELECT c.source_id,c.cache_text_id,c.linked_artifact_id,c.store_guid,c.cache_num
        CASE WHEN lower(c.decoded_text) LIKE '%/.vol/%' THEN '.vol' ELSE 'CACHE_TEXT_VOLUME_TOKEN' END,
        substr(c.decoded_text,1,1200),
        CASE WHEN lower(c.decoded_text) LIKE '%/volumes/%' OR lower(c.decoded_text) LIKE '%file:///volumes/%' THEN 'MEDIUM_CACHE_TEXT_PATH_INDICATOR' ELSE 'LOW_CACHE_TEXT_TOKEN_REVIEW_REQUIRED' END,
-       'Spotlight Cache text contains mounted-volume path or volume-related token.',
+       'Spotlight Cache text contains explicit /Volumes, file:///Volumes, or .vol path evidence.',
        'Spotlight-only investigative lead; cache text may be content text rather than filesystem proof.',
        strftime('%Y-%m-%dT%H:%M:%SZ','now')
 FROM spotlight_cache_text c
